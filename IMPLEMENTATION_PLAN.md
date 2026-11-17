@@ -10,6 +10,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Kernfunktionen ohne KI: Personen, Beziehungen, Notizen/Erinnerungen, Aufgaben, Suche und deutsche Weboberfläche.
 - [x] MCP-Server mit Streamable HTTP und authentifizierten, typisierten Werkzeugen (4 Kernwerkzeuge erfolgreich mit offiziellem Client geprüft).
 - [x] Compose-Datei, Konfigurationsbeispiel, Betriebs- und Architekturhinweise.
+- [x] Backend-Tests (3 bestanden), Next.js-Produktionsbuild, SQLite-Migration und Compose-Health/API-/MCP-Szenarien ausgeführt.
 - [ ] PostgreSQL/Redis/Worker-Betrieb und umfassendere Phase-1-Domänen (Gespräche, Ereignisse, Leihgaben, Geschenke, Termine).
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
 - [ ] Regelbasierte Scheduler, Benachrichtigungen, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
