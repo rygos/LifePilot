@@ -12,13 +12,28 @@ docker compose up --build
 
 Die Anwendung ist standardmäßig unter `http://localhost:3000` erreichbar. REST/OpenAPI liegt standardmäßig unter `http://localhost:8000/docs`, MCP unter `http://localhost:8002/mcp`. Ports lassen sich über `WEB_PORT`, `API_PORT` und `MCP_PORT` ändern. Beim ersten Start wird genau ein Bootstrap-Benutzer aus den Umgebungsvariablen angelegt. PostgreSQL persistiert seine Daten im Volume `lifepilot-postgres`; das Volume `lifepilot-data` bleibt für SQLite-Dateien verfügbar. Redis ist nicht öffentlich erreichbar; der lokale Port lässt sich über `REDIS_PORT` ändern und bindet standardmäßig nur an Loopback.
 
+Die Weboberfläche kann als PWA installiert werden. Im Offline-Modus bleibt die App-Shell erreichbar; persönliche Daten und API-Änderungen werden aus Datenschutzgründen nicht lokal zwischengespeichert.
+
 Für lokale API-Entwicklung: `cd apps/api && python -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && alembic upgrade head && uvicorn lifepilot.main:app --reload`. Das Webprojekt benötigt Node 20+; `cd apps/web && npm install && npm run dev`.
+
+## PWA und Browser-End-to-End-Test
+
+Manifest, installierbare PNG-/SVG-Symbole und Service Worker werden unter `/manifest.webmanifest`, `/icon-192.png`, `/icon-512.png`, `/icon.svg` und `/sw.js` bereitgestellt. Der Service Worker speichert nur die App-Shell und statische Dateien; `/api/`-Antworten werden nie in den Cache geschrieben. Für Updates versioniert `sw.js` den Cache und entfernt ältere App-Shell-Caches.
+
+Der Playwright-End-to-End-Test benötigt eine laufende, erreichbare API, eine zuvor erstellte Produktionsversion (`cd apps/web && npm run build`) und Chromium (`npx playwright install chromium`). Er meldet sich über die Oberfläche an, legt zwei Testpersonen an, prüft die automatische Gegenrichtung einer Beziehung und lädt die Offline-App-Shell. Die Testpersonen werden nach dem Lauf über die API entfernt.
+
+```sh
+cd apps/web
+LIFEPILOT_E2E_USERNAME=admin LIFEPILOT_E2E_PASSWORD='<Passwort>' npm run test:e2e
+```
+
+Alternativ verwendet der Test `LIFE_PILOT_BOOTSTRAP_USERNAME` und `LIFE_PILOT_BOOTSTRAP_PASSWORD` aus der Umgebung. Bei abweichenden URLs lassen sich `LIFEPILOT_E2E_WEB_URL` und `LIFEPILOT_E2E_API_URL` setzen.
 
 Für den Backend-Testlauf Redis mit `docker compose up -d redis` starten und in `apps/api` `REDIS_URL=redis://127.0.0.1:16379/15 pytest tests -q` ausführen. Der Redis-Sperrtest wird übersprungen, wenn `REDIS_URL` fehlt.
 
 ## MCP
 
-MCP nutzt Streamable HTTP und Bearer-Token. Für getrennte Berechtigungen stellt `POST /api/auth/mcp-token` mit JSON `{ "username": "...", "password": "...", "access": "read_only" }` ein Nur-Lese-Token aus; `access: "read_write"` schaltet Schreibwerkzeuge frei. MCP-Tokens sind auf den MCP-Endpunkt beschränkt und können keine REST-Freigabe bestätigen. Benutzer-Token können umgekehrt nicht am MCP-Endpunkt verwendet werden. Die normale Anmeldung über `/api/auth/token` oder `/api/auth/login` erzeugt ein Benutzer-Token mit Lese- und Schreibrechten. Den MCP-Endpunkt `http://<host>:8002/mcp` und `Authorization: Bearer <token>` im Client konfigurieren. Codex kann beispielsweise mit `{"mcpServers":{"lifepilot":{"url":"http://localhost:8002/mcp","headers":{"Authorization":"Bearer <token>"}}}}` verbunden werden. Die Werkzeuge umfassen Personen und Beziehungen, Erinnerungen, Gespräche, Aufgaben, Termine, Projekte, Leihgaben, Geschenke sowie Briefings. Schreiboperationen verwenden dieselben Besitzerprüfungen und Geschäftsoperationen wie die REST-API. Kritische Löschungen erstellen einen Antrag; sie werden erst ausgeführt, wenn der angemeldete Benutzer sie im Dashboard unter „Freigaben“ bestätigt. Anträge können auch abgelehnt werden. MCP-Schreibvorgänge werden mit Benutzer, Ressource, Aktion und Zeitpunkt protokolliert. Der angemeldete Benutzer kann die eigenen Einträge über `audit_search` oder `GET /api/audit` abrufen. Tokens wie Passwörter behandeln.
+MCP nutzt Streamable HTTP und Bearer-Token. Für getrennte Berechtigungen stellt `POST /api/auth/mcp-token` mit JSON `{ "username": "...", "password": "...", "access": "read_only" }` ein Nur-Lese-Token aus; `access: "read_write"` schaltet Schreibwerkzeuge frei. MCP-Tokens sind auf den MCP-Endpunkt beschränkt und können keine REST-Freigabe bestätigen. Benutzer-Token können umgekehrt nicht am MCP-Endpunkt verwendet werden. Die normale Anmeldung über `/api/auth/token` oder `/api/auth/login` erzeugt ein Benutzer-Token mit Lese- und Schreibrechten. Den MCP-Endpunkt `http://<host>:8002/mcp` und `Authorization: Bearer <token>` im Client konfigurieren. Codex kann beispielsweise mit `{"mcpServers":{"lifepilot":{"url":"http://localhost:8002/mcp","headers":{"Authorization":"Bearer <token>"}}}}` verbunden werden. Die Werkzeuge umfassen Profile, Personen, Beziehungen, Notizen und Erinnerungsreview, Gespräche, Aufgaben, Termine, Wiedervorlagen, Projekte, Leihgaben, Geschenke sowie Briefings. Löschungen laufen über eine benutzergenehmigte Freigabe; ein Personenmerge verlangt eine ausdrückliche `confirm: true`-Angabe und schreibt alle Verknüpfungen in einer Transaktion um. Schreiboperationen verwenden Besitzerprüfungen und auditierte Geschäftsoperationen. Der angemeldete Benutzer kann die eigenen Einträge über `audit_search` oder `GET /api/audit` abrufen. Tokens wie Passwörter behandeln.
 
 Für den lokalen Testbetrieb waren die Standardports 8000 und 3000 bereits belegt; dort wurde daher `API_PORT=8001` und `WEB_PORT=3001` verwendet. Das beeinflusst die `.env.example` nicht.
 
@@ -54,7 +69,7 @@ Migrationen laufen beim API-Start via Alembic. Compose verwendet PostgreSQL 16 m
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md) und [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Noch fehlen u.a. Datei-Uploads, vollständige CRUD-Abdeckung sowie automatisierte End-to-End- und Datenschutztests. Personen- und Tagesbriefings zeigen belegte gespeicherte Einträge samt Quellkennungen. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), [ARCHITECTURE.md](ARCHITECTURE.md) und [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Noch fehlen unter anderem Datei-Uploads, kontrollierte Mehrbenutzerfreigaben, Kalenderintegrationen, externe Benachrichtigungskanäle und ein automatischer Umzug bestehender SQLite-Daten nach PostgreSQL. Personen- und Tagesbriefings zeigen belegte gespeicherte Einträge samt Quellkennungen. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellung ist nicht enthalten.
 
 ## Termine und Erinnerungen
 

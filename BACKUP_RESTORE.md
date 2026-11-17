@@ -48,3 +48,19 @@ docker compose exec -T db pg_restore --list < /srv/backups/lifepilot/lifepilot-2
 - PostgreSQL-Backups enthalten Schema, Daten und pgvector-Inhalte; Container-Images und `.env` sind nicht Bestandteil der Sicherung.
 - Ein SQLite-Restore wird zunächst in ein Staging-Verzeichnis geschrieben und muss unter Wartung manuell in das App-Datenvolume kopiert werden.
 - Vor einem Update ein Backup erstellen. Nach einem Restore Migrationen nur auf der Staging-Datenbank ausführen und die Anwendung erst nach erfolgreicher Prüfung umschalten.
+
+## Automatisierte Betriebsprüfungen
+
+Nach dem Einrichten von `.env` lässt sich der PostgreSQL-Backup-/Restorepfad in einer eigenen Compose-Umgebung prüfen. Das Skript migriert eine isolierte PostgreSQL-Datenbank, sichert sie, restauriert in eine neue Staging-Datenbank, prüft die aktuelle Alembic-Version und den Bootstrap-Benutzer und entfernt anschließend die Testcontainer:
+
+```sh
+scripts/test-postgres-restore.sh
+```
+
+Für einen laufenden Hauptstack prüft dieses Skript den Neustart von Redis, PostgreSQL, API, Web, Scheduler und Worker einzeln. Es vergleicht vor und nach dem Neustart einen Hash der Benutzer-, Personen- und Beziehungsdatensätze und wartet auf API-/Web-Erreichbarkeit:
+
+```sh
+scripts/verify-compose-restart.sh
+```
+
+Bei abweichenden Ports `API_PORT` und `WEB_PORT` setzen oder `LIFEPILOT_RESTART_API_URL` und `LIFEPILOT_RESTART_WEB_URL` angeben. Der Restoretest verwendet `PG_RESTORE_API_PORT` und `PG_RESTORE_MCP_PORT` für seine isolierte Umgebung.

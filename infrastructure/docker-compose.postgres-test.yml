@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}

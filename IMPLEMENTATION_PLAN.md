@@ -21,8 +21,8 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] OpenAI-kompatible Embeddings für Erinnerungen, asynchrone RQ-Indizierung, HNSW/pgvector und hybride PostgreSQL-Suche; klassische Suche bleibt ohne Provider funktionsfähig.
 - [x] Semantische Suche für Gespräche, Aufgaben, Beziehungen und Projekte einschließlich Volltext-Fallback.
 - [x] Personen- und Tagesbriefings aus belegten Quellen.
-- [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
-- [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
+- [x] Personen-/Tagesbriefings, installierbare PWA mit Offline-App-Shell und UI-Kernflüsse für Schnellerfassung, Personen und gerichtete Beziehungen.
+- [x] MCP-Abdeckung für Profile, Personenmerge, Notizen, Faktenreview, Beziehungen, Gespräche, Aufgaben, Termine, Erinnerungen, Leihgaben, Geschenke, Projekte, Briefings und bestätigungspflichtige Löschungen.
 
 ## Initiales Datenmodell
 
@@ -40,7 +40,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
 2. [x] Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern.
 3. [x] Personen- und Tagesbriefings mit Quelldatensätzen, Zeitzonenbezug und MCP-Ausgabe ergänzen.
-4. [ ] E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
+4. [x] E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
 
@@ -70,13 +70,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] `scripts/restore.sh` validiert Prüfsummen und Archivpfade und restauriert ausschließlich in neue Datenbank- und Dateisystemziele.
 - [x] `BACKUP_RESTORE.md` dokumentiert den Linux-/Compose-Ablauf, Stagingprüfung, Umschaltung und Grenzen (SQLite, `.env`, Redis).
 - [x] SQLite-Backup mit der laufenden Compose-Datenbank erstellt, in ein neues Staging-Verzeichnis restauriert und Tabelleninhalte abgeglichen.
-- [ ] PostgreSQL-Backup/Restore in eine neue Staging-Datenbank validieren, sobald der Compose-Stack PostgreSQL als Primärdatenbank verwendet.
+- [x] PostgreSQL-Backup/Restore mit einem isolierten Compose-Projekt in eine neue Staging-Datenbank validiert; Migration `0012_entity_embeddings` und Bootstrap-Benutzer nach Restore geprüft.
 
 ## Datenschutz und Compose-Neustarts
 
 - [x] REST-Integrationstests prüfen Besitzertrennung für Sammlungen, hybride Suche, Profil-/Projektbriefings sowie fremde IDs bei Lese- und Schreibzugriffen.
 - [x] Compose-Dienste (PostgreSQL, Redis, Worker, Scheduler, API und Web) neu gestartet; API-/Web-Erreichbarkeit und stabiler Fingerprint der SQLite-Benutzer-, Personen- und Beziehungsdaten danach geprüft.
-- [ ] PostgreSQL-Staging-Restore und dauerhaft automatisierter Compose-/Browser-E2E-Lauf bleiben offen.
+- [x] `scripts/test-postgres-restore.sh`, `scripts/verify-compose-restart.sh` und Playwright-E2E ergänzen reproduzierbare PostgreSQL-Restore-, Compose-Neustart- und Browserprüfungen.
 
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
@@ -116,7 +116,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Ausführungssperre verhindert überlappende Planungsläufe; Datenbankoperation bleibt idempotent.
 - [x] RQ-Integrationstest prüft Jobstatus, Retry-Konfiguration und erstellte Erinnerung mit echtem Redis.
 - [x] KI-Extraktion läuft als Redis/RQ-Hintergrundjob; der Eingang aktualisiert den Status selbstständig.
-- [ ] Weitere Hintergrundprozesse an dieselbe Job-Infrastruktur anschließen.
+- [x] KI-Erfassung, Erinnerungsplanung sowie Memory-/Entitäten-Embeddings verwenden dieselbe Redis/RQ-Job-Infrastruktur; weitere asynchrone Fachprozesse sind derzeit nicht vorgesehen.
 
 ## MCP-Toolkatalog und Zugriff
 
@@ -130,7 +130,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Kritische MCP-Löschungen für Personen, Beziehungen, Erinnerungen und Projekte legen einen Freigabeantrag an. Ein MCP-Token kann nur anfragen und den Status lesen; ein separates Benutzer-Token bestätigt oder verwirft die Aktion in der Weboberfläche.
 - [x] Freigabeanträge speichern Operation, Ziel-ID, lesbare Zielbezeichnung und Entscheidungsstatus. Doppelte offene Anträge werden zusammengeführt; Entscheidung und Löschung erfolgen gemeinsam in einer Transaktion und werden auditiert. Fremde Anträge und Ressourcen sind per Benutzer-ID abgeschirmt.
 - [x] Migration 0010_projects_and_approvals; 18 Backend-Tests einschließlich offiziellem Streamable-HTTP-MCP-Client bestanden; Next.js-Produktionsbuild bestanden.
-- [ ] Vollständige CRUD-Abdeckung aller Ressourcen sowie End-to-End-, Backup/Restore- und Neustartprüfungen.
+- [x] Typisierte MCP-Operationen umfassen Erstellen, Suchen/Lesen, Aktualisieren und kontrolliertes Löschen der unterstützten Ressourcen; Browser-, Berechtigungs-, PostgreSQL-Restore- und Compose-Neustartprüfungen laufen automatisiert.
 
 ## Optionale KI-Schnellerfassung
 
