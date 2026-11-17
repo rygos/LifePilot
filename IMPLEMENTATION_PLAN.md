@@ -18,7 +18,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Verbindung aus dem API-Container zum PostgreSQL-Dienst mit Passwortvariable und SQLAlchemy geprüft (`SELECT 1`); vorhandene Installationen mit SQLite-URL laufen weiter auf SQLite.
 - [x] Redis 7 per Compose mit Healthcheck ergänzen; Scheduler-Zyklen über eine zeitlich begrenzte Sperre koordinieren, während Erinnerungsdaten in PostgreSQL bleiben.
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
-- [ ] Ruhezeiten, Wiederholungsregeln, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
+- [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
 ## Initiales Datenmodell
@@ -35,10 +35,9 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Nächste Schritte
 
 1. Redis-Jobqueue für KI-Verarbeitung und weitere Hintergrundaufgaben ergänzen; Redis koordiniert derzeit nur Scheduler-Zyklen.
-2. Regeln für Ruhezeiten, Wiederholungen und Ereignisänderungen erweitern.
-3. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
-4. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
-5. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
+2. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
+3. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
+4. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
 
@@ -62,3 +61,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Doppelte Beziehungspaare werden erkannt und abgewiesen; Migration `0005_relationship_inverses` deckt vorhandene Beziehungen mit neutraler Gegenrichtung ab.
 - [x] Browser-Test: „Tochter von“ speichert und zeigt „Vater von“, Formularwerte werden zurückgesetzt, Wechsel des Personenprofils lädt die passenden Felder.
 - [x] Weitere Create-Formulare greifen nach asynchronem Speichern nicht mehr auf das geleerte Event-Target zu.
+
+## Ruhezeiten, Wiederholungen und Terminänderungen
+
+- [x] Benutzerprofil speichert IANA-Zeitzone und optionales Ruhezeitfenster; Ruhezeiten blenden fällige In-App-Benachrichtigungen aus.
+- [x] Aufgaben können mit Tagesintervall und Enddatum wiederholt werden; Abschluss plant genau eine nächste Aufgabe samt Erinnerung.
+- [x] Terminänderungen sind im Dashboard bearbeitbar, erhalten bei Bedarf die bisherige Dauer und aktualisieren die verknüpfte Erinnerung.
+- [x] Browser-Formulare senden Fälligkeiten als UTC-Zeitpunkte; Task-, Event- und Reminder-Antworten kennzeichnen UTC auch nach Speicherung über SQLite.
+- [x] Migration `0007_recurring_tasks_and_quiet_hours`, SQLite-Migrationslauf, 9 Backend-Tests mit aktivem Redis und Next.js-Produktionsbuild geprüft.
+- [x] SQLite- und PostgreSQL-Migration bis `0007_quiet_hours_repeat`; Compose-API gesund und Web-Container mit aktualisiertem Frontend gestartet.
+- [x] Browser-Smoke-Test für wiederkehrende Aufgabe samt Folgeaufgabe, Terminbearbeitung, UTC-Zeitdarstellung und Ruhezeitprofil; responsive Oberfläche bei 1440 px und 390 px in Hell- und Dunkelmodus geprüft, kein mobiler Horizontalüberlauf.

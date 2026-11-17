@@ -16,6 +16,15 @@
 
 Layout: Dashboard people region - edit and inspect one selected person while retaining the overview -> expandable profile panel within the existing dashboard grid; scroll owner: document; anti-patterns: nested scroll areas, horizontal overflow at mobile width, disconnected relationship labels.
 
+Layout: Dashboard scheduling controls - create tasks and appointments, adjust a saved appointment, and set personal quiet hours -> existing dashboard cards with compact labeled forms and inline appointment details; scroll owner: document; anti-patterns: hidden required fields, nested scroll areas, horizontal overflow at mobile width.
+
+## Screen brief: Dashboard scheduling controls
+
+- Primary action: save a task, appointment, or personal schedule preference.
+- Content priority: task title and deadline; appointment title and local start time; profile time zone and quiet-hours range.
+- Interaction: optional repeat interval for dated tasks; appointment changes preserve duration and update their reminder.
+- Excluded: calendar views, notification delivery preferences, and event recurrence.
+
 ## Components and behavior
 
 - Person records remain in the existing two-column dashboard card; selecting a person opens their editable profile and relationships in place.

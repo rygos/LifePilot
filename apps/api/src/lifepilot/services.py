@@ -1,7 +1,19 @@
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
+from datetime import datetime
 from fastapi import HTTPException
+from zoneinfo import ZoneInfo
 from lifepilot.models import Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
+
+def is_quiet_hours(owner: User, now: datetime) -> bool:
+    if owner.quiet_hours_start is None or owner.quiet_hours_end is None:
+        return False
+    local_time = now.astimezone(ZoneInfo(owner.timezone_name)).time()
+    start = owner.quiet_hours_start
+    end = owner.quiet_hours_end
+    if start < end:
+        return start <= local_time < end
+    return local_time >= start or local_time < end
 
 def owned_person(db: Session, person_id: str | None, owner: User):
     if person_id is None: return None

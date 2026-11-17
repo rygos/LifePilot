@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from uuid import uuid4
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from lifepilot.db import Base
 
@@ -18,6 +18,9 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
     address: Mapped[str] = mapped_column(Text, default="")
+    timezone_name: Mapped[str] = mapped_column(String(64), default="Europe/Berlin", server_default="Europe/Berlin")
+    quiet_hours_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    quiet_hours_end: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class Person(Base):
@@ -57,6 +60,8 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(240))
     description: Mapped[str] = mapped_column(Text, default="")
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    repeat_interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeat_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, default=2)
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

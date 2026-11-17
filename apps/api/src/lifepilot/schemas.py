@@ -1,5 +1,14 @@
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime, time, timezone
+from typing import Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+def as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 class Credentials(BaseModel):
     username: str
@@ -38,10 +47,29 @@ class TaskIn(BaseModel):
     person_id: str | None = None
     due_at: datetime | None = None
     priority: int = Field(default=2, ge=1, le=3)
+    repeat_interval_days: int | None = Field(default=None, ge=1, le=365)
+    repeat_until: datetime | None = None
+
+    @model_validator(mode="after")
+    def recurrence_requires_due_date(self) -> Self:
+        if self.repeat_interval_days is not None and self.due_at is None:
+            raise ValueError("Wiederholende Aufgaben benötigen ein Fälligkeitsdatum")
+        if self.repeat_until is not None and (self.repeat_interval_days is None or self.due_at is None):
+            raise ValueError("Ein Enddatum benötigt eine Wiederholung und ein Fälligkeitsdatum")
+        if self.repeat_until is not None and self.due_at is not None:
+            if (self.repeat_until.utcoffset() is None) != (self.due_at.utcoffset() is None):
+                raise ValueError("Fälligkeitsdatum und Wiederholungsende müssen dieselbe Zeitzonenart verwenden")
+            if self.repeat_until <= self.due_at:
+                raise ValueError("Das Wiederholungsende muss nach dem ersten Fälligkeitsdatum liegen")
+        return self
 class TaskOut(TaskIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     status: str
+
+    @field_serializer("due_at", "repeat_until")
+    def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
+        return as_utc(value)
 class RelationshipIn(BaseModel):
     source_person_id: str
     target_person_id: str
@@ -59,6 +87,9 @@ class ProfileOut(BaseModel):
     email: str | None
     phone: str | None
     address: str
+    timezone_name: str
+    quiet_hours_start: time | None
+    quiet_hours_end: time | None
 
 class ProfileUpdate(BaseModel):
     full_name: str = ""
@@ -67,6 +98,31 @@ class ProfileUpdate(BaseModel):
     email: str | None = None
     phone: str | None = None
     address: str = ""
+    timezone_name: str = Field(default="Europe/Berlin", min_length=1, max_length=64)
+    quiet_hours_start: time | None = None
+    quiet_hours_end: time | None = None
+
+    @field_validator("timezone_name")
+    @classmethod
+    def timezone_must_exist(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError("Unbekannte Zeitzone") from error
+        return value
+
+    @model_validator(mode="after")
+    def quiet_hours_must_be_a_pair(self) -> Self:
+        quiet_fields = {"quiet_hours_start", "quiet_hours_end"}
+        submitted = quiet_fields & self.model_fields_set
+        if submitted and submitted != quiet_fields:
+            raise ValueError("Ruhezeit benötigt Start und Ende")
+        if submitted == quiet_fields:
+            if (self.quiet_hours_start is None) != (self.quiet_hours_end is None):
+                raise ValueError("Ruhezeit benötigt Start und Ende")
+            if self.quiet_hours_start == self.quiet_hours_end and self.quiet_hours_start is not None:
+                raise ValueError("Start und Ende der Ruhezeit dürfen nicht gleich sein")
+        return self
 
 class RelationshipOut(BaseModel):
     id: str
@@ -142,6 +198,22 @@ class EventIn(BaseModel):
     participant_ids: list[str] = Field(default_factory=list)
     source_memory_id: str | None = None
 
+class EventPatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    location: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    participant_ids: list[str] | None = None
+    source_memory_id: str | None = None
+
+    @model_validator(mode="after")
+    def required_fields_cannot_be_cleared(self) -> Self:
+        required_fields = {"title", "description", "location", "starts_at", "participant_ids"}
+        if any(getattr(self, field) is None for field in required_fields & self.model_fields_set):
+            raise ValueError("Pflichtfelder eines Termins dürfen nicht geleert werden")
+        return self
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -152,6 +224,10 @@ class EventOut(BaseModel):
     ends_at: datetime | None
     source_memory_id: str | None
     participant_ids: list[str]
+
+    @field_serializer("starts_at", "ends_at")
+    def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
+        return as_utc(value)
 
 class ReminderIn(BaseModel):
     title: str
@@ -168,6 +244,10 @@ class ReminderOut(BaseModel):
     snoozed_until: datetime | None
     task_id: str | None
     event_id: str | None
+
+    @field_serializer("due_at", "snoozed_until")
+    def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
+        return as_utc(value)
 
 class ReminderAction(BaseModel):
     state: str

@@ -5,15 +5,16 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
-from lifepilot.models import Conversation, ConversationParticipant, Event, EventParticipant, Gift, Loan, Memory, Person, Relationship, Reminder, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, ReminderAction, ReminderIn, ReminderOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
+from lifepilot.models import Conversation, ConversationParticipant, Gift, Loan, Memory, Person, Relationship, Task, User
+from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, GiftIn, GiftOut, LoanIn, LoanOut, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.security import resolve_bearer_user
 from lifepilot.services import owned_person, relationship_create, search
+from lifepilot.planner import router as planner_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.web_origin], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
+app.include_router(planner_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -110,26 +112,6 @@ def memory_list(db: Session = Depends(get_db), user: User = Depends(current_user
     if q: stmt = stmt.where(or_(Memory.title.ilike(f"%{q}%"), Memory.content.ilike(f"%{q}%")))
     return db.scalars(stmt.order_by(Memory.created_at.desc())).all()
 
-@app.post("/api/tasks", response_model=TaskOut, status_code=201)
-def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    owned_person(db, data.person_id, user)
-    task = Task(owner_id=user.id, **data.model_dump()); db.add(task); db.commit(); db.refresh(task); return task
-
-@app.get("/api/tasks", response_model=list[TaskOut])
-def task_list(db: Session = Depends(get_db), user: User = Depends(current_user), status: str | None = None):
-    stmt = select(Task).where(Task.owner_id == user.id)
-    if status: stmt = stmt.where(Task.status == status)
-    return db.scalars(stmt.order_by(Task.due_at.is_(None), Task.due_at)).all()
-
-@app.patch("/api/tasks/{task_id}/complete", response_model=TaskOut)
-def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
-    if task is None: raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-    task.status = "done"
-    reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id, Reminder.state == "scheduled"))
-    if reminder: reminder.state = "done"
-    db.commit(); db.refresh(task); return task
-
 @app.get("/api/search")
 def memory_search(q: str = Query(min_length=1), db: Session = Depends(get_db), user: User = Depends(current_user)):
     return search(db, user, q)
@@ -187,57 +169,6 @@ def gift_list(db: Session = Depends(get_db), user: User = Depends(current_user),
     stmt = select(Gift).where(Gift.owner_id == user.id)
     if person_id: stmt = stmt.where(Gift.person_id == person_id)
     return db.scalars(stmt.order_by(Gift.created_at.desc())).all()
-
-def event_output(db: Session, event: Event, owner_id: str) -> EventOut:
-    participant_ids = list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == owner_id)).all())
-    return EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
-
-@app.post("/api/events", response_model=EventOut, status_code=201)
-def event_create(data: EventIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    participant_ids = list(dict.fromkeys(data.participant_ids))
-    if participant_ids:
-        valid_ids = set(db.scalars(select(Person.id).where(Person.owner_id == user.id, Person.id.in_(participant_ids))).all())
-        if valid_ids != set(participant_ids): raise HTTPException(status_code=404, detail="Mindestens eine beteiligte Person wurde nicht gefunden")
-    if data.source_memory_id and db.scalar(select(Memory.id).where(Memory.id == data.source_memory_id, Memory.owner_id == user.id)) is None: raise HTTPException(status_code=404, detail="Quellerinnerung nicht gefunden")
-    if data.ends_at and data.ends_at < data.starts_at: raise HTTPException(status_code=422, detail="Das Ende muss nach dem Beginn liegen")
-    event = Event(owner_id=user.id, **data.model_dump(exclude={"participant_ids"})); db.add(event); db.flush()
-    db.add_all(EventParticipant(event_id=event.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
-    db.commit(); db.refresh(event); return event_output(db, event, user.id)
-
-@app.get("/api/events", response_model=list[EventOut])
-def event_list(db: Session = Depends(get_db), user: User = Depends(current_user), from_at: datetime | None = None, to_at: datetime | None = None, person_id: str | None = None):
-    stmt = select(Event).where(Event.owner_id == user.id)
-    if from_at: stmt = stmt.where(Event.starts_at >= from_at)
-    if to_at: stmt = stmt.where(Event.starts_at <= to_at)
-    if person_id: stmt = stmt.join(EventParticipant).where(EventParticipant.person_id == person_id, EventParticipant.owner_id == user.id)
-    return [event_output(db, event, user.id) for event in db.scalars(stmt.order_by(Event.starts_at)).all()]
-
-@app.post("/api/reminders", response_model=ReminderOut, status_code=201)
-def reminder_create(data: ReminderIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    if bool(data.task_id) == bool(data.event_id): raise HTTPException(status_code=422, detail="Eine Erinnerung muss genau einer Aufgabe oder einem Termin zugeordnet sein")
-    if data.task_id and db.scalar(select(Task.id).where(Task.id == data.task_id, Task.owner_id == user.id)) is None: raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-    if data.event_id and db.scalar(select(Event.id).where(Event.id == data.event_id, Event.owner_id == user.id)) is None: raise HTTPException(status_code=404, detail="Termin nicht gefunden")
-    row = Reminder(owner_id=user.id, **data.model_dump()); db.add(row); db.commit(); db.refresh(row); return row
-
-@app.get("/api/reminders", response_model=list[ReminderOut])
-def reminder_list(db: Session = Depends(get_db), user: User = Depends(current_user), state: str | None = None):
-    stmt = select(Reminder).where(Reminder.owner_id == user.id)
-    if state: stmt = stmt.where(Reminder.state == state)
-    return db.scalars(stmt.order_by(Reminder.due_at)).all()
-
-@app.get("/api/notifications", response_model=list[ReminderOut])
-def notifications(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    now = datetime.now(timezone.utc)
-    return db.scalars(select(Reminder).where(Reminder.owner_id == user.id, Reminder.state == "scheduled", or_(and_(Reminder.snoozed_until.is_(None), Reminder.due_at <= now), Reminder.snoozed_until <= now)).order_by(Reminder.due_at)).all()
-
-@app.patch("/api/reminders/{reminder_id}", response_model=ReminderOut)
-def reminder_update(reminder_id: str, data: ReminderAction, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    if data.state not in {"scheduled", "done", "muted"}: raise HTTPException(status_code=422, detail="Ungültiger Erinnerungsstatus")
-    row = db.scalar(select(Reminder).where(Reminder.id == reminder_id, Reminder.owner_id == user.id))
-    if row is None: raise HTTPException(status_code=404, detail="Erinnerung nicht gefunden")
-    row.state = data.state; row.snoozed_until = data.snoozed_until
-    if data.snoozed_until: row.state = "scheduled"
-    db.commit(); db.refresh(row); return row
 
 @app.get("/api/briefing/daily")
 def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):

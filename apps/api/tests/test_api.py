@@ -130,3 +130,69 @@ def test_events_scheduler_notifications_and_reminder_actions(client, auth):
     assert client.patch(f"/api/tasks/{task_reminder['id']}/complete", headers=auth).json()["status"] == "done"
     updated_reminders = client.get("/api/reminders", headers=auth).json()
     assert next(item for item in updated_reminders if item["id"] == linked_reminder["id"])["state"] == "done"
+
+def test_recurring_tasks_and_quiet_hours(client, auth):
+    from datetime import datetime, time, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from lifepilot.services import is_quiet_hours
+
+    owner = User(timezone_name="Europe/Berlin", quiet_hours_start=time(22), quiet_hours_end=time(7))
+    assert is_quiet_hours(owner, datetime(2026, 11, 17, 23, tzinfo=timezone.utc))
+    assert not is_quiet_hours(owner, datetime(2026, 11, 17, 6, tzinfo=timezone.utc))
+
+    now = datetime.now(timezone.utc)
+    invalid = client.post("/api/tasks", headers=auth, json={"title": "Ungültige Wiederholung", "repeat_interval_days": 2})
+    assert invalid.status_code == 422
+    created = client.post("/api/tasks", headers=auth, json={"title": "Pflanzen gießen", "due_at": (now - timedelta(days=5)).isoformat(), "repeat_interval_days": 2, "repeat_until": (now + timedelta(days=10)).isoformat()})
+    assert created.status_code == 201
+    assert client.patch(f"/api/tasks/{created.json()['id']}/complete", headers=auth).status_code == 200
+    tasks = client.get("/api/tasks?status=open", headers=auth).json()
+    successor = next(task for task in tasks if task["title"] == "Pflanzen gießen")
+    assert successor["repeat_interval_days"] == 2
+    assert successor["due_at"].endswith("+00:00") or successor["due_at"].endswith("Z")
+    successor_due = datetime.fromisoformat(successor["due_at"].replace("Z", "+00:00"))
+    assert successor_due.replace(tzinfo=timezone.utc) > now
+    before = len(tasks)
+    client.patch(f"/api/tasks/{created.json()['id']}/complete", headers=auth)
+    assert len(client.get("/api/tasks?status=open", headers=auth).json()) == before
+
+    due = client.post("/api/tasks", headers=auth, json={"title": "Ruhezeit-Prüfung", "due_at": (now - timedelta(minutes=2)).isoformat()}).json()
+    from sqlalchemy.orm import Session
+    from lifepilot.scheduler import schedule_due_items
+    with Session(engine) as db:
+        schedule_due_items(db)
+    local_now = now.astimezone(ZoneInfo("Europe/Berlin"))
+    start = (local_now - timedelta(minutes=1)).strftime("%H:%M")
+    end = (local_now + timedelta(minutes=1)).strftime("%H:%M")
+    profile = client.patch("/api/profile", headers=auth, json={"timezone_name": "Europe/Berlin", "quiet_hours_start": start, "quiet_hours_end": end})
+    assert profile.status_code == 200
+    assert client.get("/api/notifications", headers=auth).json() == []
+    invalid_zone = client.patch("/api/profile", headers=auth, json={"timezone_name": "Mars/Olympus"})
+    assert invalid_zone.status_code == 422
+    client.patch("/api/profile", headers=auth, json={"quiet_hours_start": None, "quiet_hours_end": None})
+    notifications = client.get("/api/notifications", headers=auth).json()
+    assert any(item["title"] == "Ruhezeit-Prüfung" and item["task_id"] == due["id"] for item in notifications)
+
+def test_event_reschedule_updates_existing_reminder(client, auth):
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime.now(timezone.utc) + timedelta(days=3)
+    end = start + timedelta(hours=2)
+    event = client.post("/api/events", headers=auth, json={"title": "Zahnarzt", "starts_at": start.isoformat(), "ends_at": end.isoformat()})
+    assert event.status_code == 201
+    reminder = client.post("/api/reminders", headers=auth, json={"title": "Zahnarzt", "due_at": start.isoformat(), "event_id": event.json()["id"]})
+    assert reminder.status_code == 201
+    new_start = start + timedelta(days=1)
+    changed = client.patch(f"/api/events/{event.json()['id']}", headers=auth, json={"starts_at": new_start.isoformat(), "title": "Kontrolle"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["title"] == "Kontrolle"
+    updated = next(item for item in client.get("/api/reminders", headers=auth).json() if item["id"] == reminder.json()["id"])
+    assert updated["title"] == "Kontrolle"
+    assert updated["due_at"].endswith("+00:00") or updated["due_at"].endswith("Z")
+    reminder_due = datetime.fromisoformat(updated["due_at"].replace("Z", "+00:00"))
+    assert reminder_due.replace(tzinfo=timezone.utc) == new_start
+    with __import__("sqlalchemy").orm.Session(engine) as db:
+        from lifepilot.models import Event
+        stored = db.get(Event, event.json()["id"])
+        assert stored is not None and stored.ends_at is not None
+        assert stored.ends_at.replace(tzinfo=timezone.utc) - stored.starts_at.replace(tzinfo=timezone.utc) == timedelta(hours=2)

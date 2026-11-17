@@ -1,4 +1,5 @@
 import "./style.css";
+import "./schedule.css";
 
 export const metadata = { title: "LifePilot", description: "Dein persönliches digitales Gedächtnis" };
 
