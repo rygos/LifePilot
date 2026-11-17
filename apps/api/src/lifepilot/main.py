@@ -18,6 +18,8 @@ from lifepilot.planner import router as planner_router
 from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
 from lifepilot.approval_routes import router as approval_router
+from lifepilot.embedding_jobs import enqueue_memory_embedding
+from lifepilot.search_routes import router as search_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +35,7 @@ app.include_router(planner_router)
 app.include_router(capture_router)
 app.include_router(project_router)
 app.include_router(approval_router)
+app.include_router(search_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -117,7 +120,9 @@ def relationship_delete(relationship_id: str, db: Session = Depends(get_db), use
 @app.post("/api/memories", response_model=MemoryOut, status_code=201)
 def memory_create(data: MemoryIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owned_person(db, data.person_id, user)
-    memory = Memory(owner_id=user.id, **data.model_dump()); db.add(memory); db.commit(); db.refresh(memory); return memory
+    memory = Memory(owner_id=user.id, **data.model_dump()); db.add(memory); db.commit(); db.refresh(memory)
+    enqueue_memory_embedding(memory.id, user.id)
+    return memory
 
 @app.get("/api/memories", response_model=list[MemoryOut])
 def memory_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None, q: str = ""):

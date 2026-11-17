@@ -15,5 +15,9 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = ""
+    embedding_timeout_seconds: int = Field(default=15, ge=1, le=120)
 
 settings = Settings()

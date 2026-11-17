@@ -11,6 +11,7 @@ from lifepilot.capture_jobs import enqueue_capture_job
 from lifepilot.capture_schemas import AcceptedMemory, CaptureIn, CaptureOut, CaptureReview, CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import get_db
+from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.models import Capture, Memory, User
 from lifepilot.security import current_user
 
@@ -87,6 +88,8 @@ def capture_review(capture_id: str, data: CaptureReview, db: Session = Depends(g
     row.status = "reviewed"
     row.reviewed_at = datetime.now(timezone.utc)
     db.commit()
+    for memory in memories:
+        enqueue_memory_embedding(memory.id, user.id)
     return [AcceptedMemory(id=memory.id, title=memory.title) for memory in memories]
 
 

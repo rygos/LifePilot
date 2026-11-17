@@ -18,7 +18,8 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Verbindung aus dem API-Container zum PostgreSQL-Dienst mit Passwortvariable und SQLAlchemy geprüft (`SELECT 1`); vorhandene Installationen mit SQLite-URL laufen weiter auf SQLite.
 - [x] Redis 7 per Compose mit Healthcheck und persistentem AOF-Volume; Scheduler-Zyklen koordinieren und Hintergrundjobs über RQ mit begrenzten Wiederholungen verarbeiten.
 - [x] Optionale LLM-Extraktion mit expliziter Prüfung, Quellenbezug und OpenAI-kompatibler API.
-- [ ] Embeddings, semantische Suche und hybride Suche.
+- [x] OpenAI-kompatible Embeddings für Erinnerungen, asynchrone RQ-Indizierung, HNSW/pgvector und hybride PostgreSQL-Suche; klassische Suche bleibt ohne Provider funktionsfähig.
+- [ ] Semantische Suche für weitere Ressourcentypen und Briefings.
 - [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
@@ -36,10 +37,18 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Nächste Schritte
 
 1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
-2. Embeddings und hybride Suche implementieren, danach Briefings.
+2. Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern, danach Briefings.
 3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
+
+## Embeddings und hybride Gedächtnissuche
+
+- [x] OpenAI-kompatibler Embedding-Adapter mit Modell-/URL-/Timeout-Konfiguration und Validierung von Vektoren mit 768 Dimensionen.
+- [x] Erinnerungen werden nach REST-, MCP- und geprüfter Schnellerfassung asynchron über die bestehende Redis/RQ-Queue indiziert; Modell- und Inhaltshash vermeiden unnötige Neuindizierung.
+- [x] Migration 0011_memory_embeddings speichert Vektoren und erzeugt auf PostgreSQL einen HNSW-Cosinusindex; SQLite bleibt für lokale Nutzung und Tests verfügbar.
+- [x] PostgreSQL kombiniert Volltext-Ranking und Vektor-Ranking. Der Suchendpunkt ordnet lexikalische, Volltext- und semantische Treffer per Reciprocal Rank Fusion und bleibt bei Provider-Ausfall klassisch durchsuchbar.
+- [x] Eine authentifizierte Reindex-Aktion im Dashboard plant vorhandene Erinnerungen ein. Tests prüfen semantische Treffer, Besitzertrennung, idempotente Indizierung und den Fallback bei Provider-Ausfall.
 
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.

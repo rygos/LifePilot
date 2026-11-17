@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from lifepilot.audit import ACTOR_KEY
 from lifepilot.config import settings
 from lifepilot.db import engine
+from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
 from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
 from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
@@ -65,13 +66,14 @@ try:
         with mcp_session(owner_id) as db:
             user = db.get(User, owner_id); owned_person(db, person_id, user)
             row = Memory(owner_id=owner_id, person_id=person_id, title=title, content=content); db.add(row); db.commit(); db.refresh(row)
+            enqueue_memory_embedding(row.id, owner_id)
             return MemoryOut.model_validate(row).model_dump(mode="json")
     @mcp.tool()
     def memory_search_tool(query: str) -> dict:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
             user = db.get(User, owner_id); result = search(db, user, query)
-            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]]}
+            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]], "search_info": result["search_info"]}
 
     @mcp.tool(name="person_get")
     def person_get_mcp(person_id: str) -> dict:
@@ -123,6 +125,7 @@ try:
             for key, value in (("title", title), ("content", content), ("person_id", person_id), ("occurred_at", parsed_occurred_at)):
                 if value is not None: setattr(row, key, value)
             db.commit(); db.refresh(row)
+            enqueue_memory_embedding(row.id, owner_id)
             return MemoryOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="memory_delete")

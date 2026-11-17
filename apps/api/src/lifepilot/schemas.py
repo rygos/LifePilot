@@ -44,6 +44,11 @@ class ApprovalOut(BaseModel):
     status: str
     created_at: datetime
     decided_at: datetime | None
+
+class ReindexOut(BaseModel):
+    queued: int
+    failed: int
+    semantic_enabled: bool
 class PersonIn(BaseModel):
     first_name: str
     last_name: str = ""
