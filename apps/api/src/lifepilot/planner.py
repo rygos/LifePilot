@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import Event, EventParticipant, Memory, Person, Reminder, Task, User
+from lifepilot.models import Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
 from lifepilot.security import current_user
@@ -29,6 +29,8 @@ def utc_datetime(value: datetime) -> datetime:
 @router.post("/api/tasks", response_model=TaskOut, status_code=201)
 def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
     owned_person(db, data.person_id, user)
+    if data.project_id and db.scalar(select(Project.id).where(Project.id == data.project_id, Project.owner_id == user.id)) is None:
+        raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
     task = Task(owner_id=user.id, **data.model_dump())
     db.add(task)
     db.commit()

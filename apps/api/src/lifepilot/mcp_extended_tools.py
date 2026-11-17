@@ -3,8 +3,8 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import select
 
-from lifepilot.capture_routes import capture_review
-from lifepilot.capture_schemas import CaptureReview
+from lifepilot.capture_routes import capture_create, capture_review
+from lifepilot.capture_schemas import CaptureIn, CaptureReviewIn, CaptureSuggestion
 from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.main import profile_update
@@ -41,6 +41,13 @@ def _request_delete(owner_id: str, model: type, resource_id: str, operation: str
 
 
 def register_extended_tools(mcp: FastMCP) -> None:
+    @mcp.tool(name="memory_capture")
+    def memory_capture_mcp(original_text: str) -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            result = capture_create(CaptureIn(original_text=original_text), db, db.get(User, owner_id))
+            return result.model_dump(mode="json")
+
     @mcp.tool(name="profile_get")
     def profile_get_mcp() -> dict:
         owner_id = mcp_user()
@@ -152,12 +159,12 @@ def register_extended_tools(mcp: FastMCP) -> None:
             return request_approval(db, owner_id, "memory_delete", row.id, row.title)
 
     @mcp.tool(name="memory_review")
-    def memory_review_mcp(capture_id: str, accepted_indices: list[int]) -> list[dict]:
+    def memory_review_mcp(capture_id: str, accepted_indices: list[int], person_assignments: dict[int, str] | None = None, related_person_assignments: dict[int, str] | None = None, project_assignments: dict[int, str] | None = None, create_people: list[int] | None = None, create_related_people: list[int] | None = None, confirmations: list[int] | None = None, suggestions: list[CaptureSuggestion] | None = None) -> list[dict]:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
             if db.scalar(select(Capture.id).where(Capture.id == capture_id, Capture.owner_id == owner_id)) is None:
                 raise ValueError("Eingabe nicht gefunden")
-            created = capture_review(capture_id, CaptureReview(accepted_indices=accepted_indices), db, db.get(User, owner_id))
+            created = capture_review(capture_id, CaptureReviewIn(accepted_indices=accepted_indices, person_assignments=person_assignments or {}, related_person_assignments=related_person_assignments or {}, project_assignments=project_assignments or {}, create_people=create_people or [], create_related_people=create_related_people or [], confirmations=confirmations or [], suggestions=suggestions), db, db.get(User, owner_id))
             return [row.model_dump(mode="json") for row in created]
 
     @mcp.tool(name="relationship_update")

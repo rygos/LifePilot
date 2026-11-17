@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.request import Request
 
@@ -10,7 +11,7 @@ from lifepilot.capture_jobs import process_capture_job
 from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Capture, Memory, User
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Memory, MemoryProject, Person, PersonNameHistory, Project, Relationship, Reminder, Task, User
 from lifepilot.security import create_token
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,24 +33,25 @@ def test_capture_review_only_persists_explicitly_accepted_suggestions(client, au
     monkeypatch.setattr(settings, "llm_model", "small-local-model")
     monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
     queued: list[tuple[str, str]] = []
+    martin = client.post("/api/people", headers=auth, json={"first_name": "Martin", "last_name": "CaptureTest"}).json()
     monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: queued.append((capture_id, owner_id)))
     monkeypatch.setattr(
         "lifepilot.capture_jobs.extract_facts",
-        lambda text: [
-            CaptureSuggestion(title="Wunsch", content="Martin wünscht sich einen Roman.", person_name="Martin"),
-            CaptureSuggestion(title="Gespräch", content="Martin hat angerufen.", occurred_at=None),
+        lambda text, captured_at=None: [
+            CaptureSuggestion(title="Wunsch", content="Martin wünscht sich einen Roman.", person_name="Martin CaptureTest"),
+            CaptureSuggestion(kind="conversation", title="Gespräch", content="Martin hat angerufen.", person_name="Martin CaptureTest", occurred_at=None),
         ],
     )
     capture = client.post("/api/captures", headers=auth, json={"original_text": "Martin wünscht sich einen Roman und hat angerufen."}).json()
     assert capture["status"] == "pending"
     assert queued and queued[0][0] == capture["id"]
     assert process_capture_job(capture["id"], queued[0][1]) == "ready"
-    capture = client.get("/api/captures", headers=auth).json()[0]
+    capture = next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == capture["id"])
     assert capture["status"] == "ready"
     assert len(capture["suggestions"]) == 2
     invalid = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [4]})
     assert invalid.status_code == 422
-    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0]})
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": martin["id"]}})
     assert accepted.status_code == 201
     assert accepted.json()[0]["title"] == "Wunsch"
     assert client.get("/api/memories", headers=auth).json()[0]["source_capture_id"] == capture["id"]
@@ -60,7 +62,7 @@ def test_capture_failure_keeps_original_and_other_users_cannot_read_it(client, a
     monkeypatch.setattr(settings, "llm_model", "small-local-model")
     monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
     monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
-    def fail_provider(text: str) -> list[CaptureSuggestion] | None:
+    def fail_provider(text: str, captured_at=None) -> list[CaptureSuggestion] | None:
         raise ProviderError("Der Anbieter ist nicht erreichbar")
 
     monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", fail_provider)
@@ -125,3 +127,184 @@ def test_openai_compatible_extractor_rejects_malformed_model_output(monkeypatch)
     monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(b'{"choices":[{"message":{"content":"{}"}}]}'))
     with pytest.raises(ProviderError):
         extract_facts("Unstrukturierter Text")
+
+
+def test_review_links_verified_conversation_to_person_and_project_without_inventing_task(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "Abeler"}).json()
+    project = client.post("/api/projects", headers=auth, json={"name": "6012 - OAS Umzüge"}).json()
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [
+        CaptureSuggestion(kind="conversation", title="Gespräch über Projekt 6012", content="Kristin sprach mit mir über das Projekt.", person_name="Kristin Abeler", project_name="6012 - OAS Umzüge", date_precision="day", occurred_at=datetime(2026, 11, 16, 12, tzinfo=timezone.utc)),
+    ])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Kristin Abeler hat heute mit mir über das Projekt 6012 - OAS Umzüge gesprochen."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    assert process_capture_job(capture["id"], owner_id) == "ready"
+    suggestion = next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == capture["id"])["suggestions"][0]
+    assert suggestion["person_id"] == person["id"]
+    assert suggestion["project_id"] == project["id"]
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": person["id"]}}).json()
+    assert accepted[0]["resource_type"] == "conversation"
+    with Session(engine) as db:
+        conversation = db.get(Conversation, accepted[0]["resource_id"])
+        assert conversation is not None and conversation.original_note == capture["original_text"]
+        assert db.scalar(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == conversation.id)) == person["id"]
+        assert db.scalar(select(ConversationProject.project_id).where(ConversationProject.conversation_id == conversation.id)) == project["id"]
+        assert db.scalar(select(Task.id).where(Task.owner_id == owner_id, Task.title == "Gespräch über Projekt 6012")) is None
+
+
+def test_review_stores_former_name_with_original_source_after_explicit_confirmation(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "Abeler"}).json()
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [
+        CaptureSuggestion(kind="former_name", title="Früherer Name", content="Kristin Dölz", person_name="Kristin Abeler", occurred_at=datetime(2026, 2, 1, tzinfo=timezone.utc), date_precision="approximate", confirmation_required=True),
+    ])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Kristin hieß vor der Hochzeit Anfang des Jahres noch Dölz."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    assert next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == capture["id"])["suggestions"][0]["person_candidates"]
+    response = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0]})
+    assert response.status_code == 422
+    accepted_response = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "confirmations": [0], "person_assignments": {"0": person["id"]}})
+    assert accepted_response.status_code == 201, accepted_response.text
+    accepted = accepted_response.json()
+    assert accepted[0]["resource_type"] == "person_name"
+    assert client.get(f"/api/people?q=Dölz", headers=auth).json()[0]["id"] == person["id"]
+    assert client.get(f"/api/people/{person['id']}/names", headers=auth).json()[0]["name"] == "Kristin Dölz"
+    assert client.get(f"/api/people/{person['id']}/names", headers=auth).json()[0]["source_capture_id"] == capture["id"]
+
+
+def test_review_stores_approximate_marriage_as_biography_not_calendar_event(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "Abeler"}).json()
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [CaptureSuggestion(kind="life_event", title="Hochzeit", content="Kristin hat geheiratet.", person_name="Kristin Abeler", date_precision="approximate", confirmation_required=True)])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Kristin hat Anfang des Jahres geheiratet."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    event_ids_before = {item["id"] for item in client.get("/api/events", headers=auth).json()}
+    blocked = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0]})
+    assert blocked.status_code == 422
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "confirmations": [0], "person_assignments": {"0": person["id"]}}).json()
+    assert accepted[0]["resource_type"] == "life_event"
+    life_event = client.get(f"/api/briefing/person/{person['id']}", headers=auth).json()["life_events"][0]
+    assert life_event["title"] == "Hochzeit"
+    assert life_event["occurred_at"] is None
+    assert life_event["date_precision"] == "approximate"
+    assert life_event["source_capture_id"] == capture["id"]
+    assert {item["id"] for item in client.get("/api/events", headers=auth).json()} == event_ids_before
+
+
+def test_capture_review_keeps_source_when_project_is_explicitly_assigned(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "Abeler"}).json()
+    project = client.post("/api/projects", headers=auth, json={"name": "8823 - OAS Umzüge"}).json()
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [CaptureSuggestion(kind="fact", title="Projektverknüpfung", content="Kristin hat mir das Projekt ausdrücklich übergeben.", person_name="Kristin Abeler", project_name="6012 - OAS Umzüge", confirmation_required=True)])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Kristin hat mir das Projekt 6012 ausdrücklich übergeben."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    assert next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == capture["id"])["suggestions"][0]["person_candidates"]
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "confirmations": [0], "person_assignments": {"0": person["id"]}, "project_assignments": {"0": project["id"]}})
+    assert accepted.status_code == 201, accepted.text
+    with Session(engine) as db:
+        memory = db.get(Memory, accepted.json()[0]["id"])
+        assert memory is not None and memory.source_capture_id == capture["id"] and memory.person_id == person["id"]
+        assert db.scalar(select(MemoryProject.project_id).where(MemoryProject.memory_id == memory.id)) == project["id"]
+
+
+def test_review_resolves_project_code_and_creates_explicitly_dated_follow_up(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    person = client.post("/api/people", headers=auth, json={"first_name": "Rita", "last_name": "Projektfall"}).json()
+    project = client.post("/api/projects", headers=auth, json={"name": "7659 - OAS Umzüge"}).json()
+    due_at = datetime(2026, 11, 24, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [
+        CaptureSuggestion(kind="task", title="Rückmeldung zu 7659 erfragen", content="Rita soll Rückmeldung geben.", person_name="Rita Projektfall", project_name="7659", due_at=due_at, date_precision="day"),
+    ])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Rita meldet sich zum Projekt 7659 am 24. November."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    suggestion = next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == capture["id"])["suggestions"][0]
+    assert suggestion["project_id"] == project["id"]
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0]}).json()
+    with Session(engine) as db:
+        task = db.get(Task, accepted[0]["resource_id"])
+        assert task is not None and task.person_id == person["id"] and task.project_id == project["id"]
+        assert task.due_at.replace(tzinfo=timezone.utc) == due_at
+        assert db.scalar(select(Reminder.id).where(Reminder.task_id == task.id, Reminder.owner_id == owner_id)) is not None
+
+
+def test_review_links_relationship_both_directions_and_source(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    mother = client.post("/api/people", headers=auth, json={"first_name": "Mutter", "last_name": "CaptureRelation"}).json()
+    daughter = client.post("/api/people", headers=auth, json={"first_name": "Tochter", "last_name": "CaptureRelation"}).json()
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [
+        CaptureSuggestion(kind="relationship", title="Mutter und Tochter", content="Die Personen sind Mutter und Tochter.", person_name="Mutter CaptureRelation", person_candidates=[mother["id"]], related_person_name="Tochter CaptureRelation", related_person_candidates=[daughter["id"]], relationship_type="Mutter von", inverse_relationship_type="Tochter von", confirmation_required=True),
+    ])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Die Mutter ist die Mutter der Tochter."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    refused = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": mother["id"]}})
+    assert refused.status_code == 422
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": mother["id"]}, "related_person_assignments": {"0": daughter["id"]}, "confirmations": [0]})
+    assert accepted.status_code == 201, accepted.text
+    links = client.get(f"/api/relationships?person_id={daughter['id']}", headers=auth).json()
+    assert any(link["source_person_id"] == mother["id"] and link["relationship_type"] == "Mutter von" and link["inverse_relationship_type"] == "Tochter von" for link in links)
+    with Session(engine) as db:
+        relation_id = accepted.json()[0]["resource_id"]
+        relationship = db.get(Relationship, relation_id)
+        assert relationship is not None and relationship.source_memory_id
+        source = db.get(Memory, relationship.source_memory_id)
+        assert source is not None and source.source_capture_id == capture["id"]
+
+
+def test_review_can_create_explicitly_named_person_only_after_confirmation(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: [
+        CaptureSuggestion(kind="conversation", title="Gespräch mit Lia Neumann", content="Lia berichtete vom neuen Verein.", person_name="Lia Neumann"),
+    ])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Ich habe heute Lia Neumann kennengelernt."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(capture["id"], owner_id)
+    rejected = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "create_people": [0]})
+    assert rejected.status_code == 422
+    assert not any(person["first_name"] == "Lia" and person["last_name"] == "Neumann" for person in client.get("/api/people", headers=auth).json())
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "create_people": [0], "confirmations": [0]})
+    assert accepted.status_code == 201, accepted.text
+    conversation = next(item for item in client.get("/api/conversations", headers=auth).json() if item["id"] == accepted.json()[0]["resource_id"])
+    created_people = [person for person in client.get("/api/people", headers=auth).json() if person["first_name"] == "Lia" and person["last_name"] == "Neumann"]
+    assert len(created_people) == 1
+    assert conversation["participant_ids"] == [created_people[0]["id"]]
+
+
+def test_relative_day_uses_capture_timestamp_not_processing_timestamp(monkeypatch) -> None:
+    from lifepilot.capture_ai import extract_facts
+
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    captured_at = datetime(2026, 11, 17, 8, tzinfo=timezone.utc)
+    result = {"suggestions": [{"kind": "conversation", "title": "Treffen", "content": "Ich traf Kristin Gestern.", "person_name": "Kristin", "occurred_at": None, "date_precision": "unknown"}]}
+    monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(result)}}]}).encode()))
+    suggestions = extract_facts("Ich traf Kristin Gestern.", captured_at)
+    assert suggestions is not None
+    assert suggestions[0].occurred_at == datetime(2026, 11, 16, 12, tzinfo=timezone.utc)
+    assert suggestions[0].date_precision == "day"
+    assert "2026-11-16" in suggestions[0].content

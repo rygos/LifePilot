@@ -79,6 +79,7 @@ class TaskIn(BaseModel):
     title: str
     description: str = ""
     person_id: str | None = None
+    project_id: str | None = None
     due_at: datetime | None = None
     priority: int = Field(default=2, ge=1, le=3)
     repeat_interval_days: int | None = Field(default=None, ge=1, le=365)
@@ -173,6 +174,7 @@ class ConversationIn(BaseModel):
     title: str
     original_note: str
     participant_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list)
     occurred_at: datetime | None = None
     location: str = ""
     summary: str = ""
@@ -187,6 +189,7 @@ class ConversationOut(BaseModel):
     occurred_at: datetime | None
     created_at: datetime
     participant_ids: list[str]
+    project_ids: list[str] = Field(default_factory=list)
 
 class LoanIn(BaseModel):
     item_name: str

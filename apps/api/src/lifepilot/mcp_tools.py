@@ -74,7 +74,7 @@ try:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
             user = db.get(User, owner_id); result = search(db, user, query)
-            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]], "relationships": [row.model_dump(mode="json") for row in result["relationships"]], "projects": [ProjectOut.model_validate(row).model_dump(mode="json") for row in result["projects"]], "search_info": result["search_info"]}
+            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]], "relationships": [row.model_dump(mode="json") for row in result["relationships"]], "projects": [ProjectOut.model_validate(row).model_dump(mode="json") for row in result["projects"]], "life_events": [{"id": row.id, "person_id": row.person_id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None, "date_precision": row.date_precision, "source_capture_id": row.source_capture_id} for row in result["life_events"]], "search_info": result["search_info"]}
 
     @mcp.tool(name="person_get")
     def person_get_mcp(person_id: str) -> dict:
@@ -139,10 +139,10 @@ try:
             return request_approval(db, owner_id, "memory_delete", row.id, row.title)
 
     @mcp.tool(name="conversation_create")
-    def conversation_create_mcp(title: str, original_note: str, participant_ids: list[str] | None = None, occurred_at: str | None = None, location: str = "", summary: str = "") -> dict:
+    def conversation_create_mcp(title: str, original_note: str, participant_ids: list[str] | None = None, project_ids: list[str] | None = None, occurred_at: str | None = None, location: str = "", summary: str = "") -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            row = conversation_create(ConversationIn(title=title, original_note=original_note, participant_ids=participant_ids or [], occurred_at=occurred_at, location=location, summary=summary), db, db.get(User, owner_id))
+            row = conversation_create(ConversationIn(title=title, original_note=original_note, participant_ids=participant_ids or [], project_ids=project_ids or [], occurred_at=occurred_at, location=location, summary=summary), db, db.get(User, owner_id))
             return row.model_dump(mode="json")
 
     @mcp.tool(name="conversation_search")
@@ -152,11 +152,11 @@ try:
             return [row.model_dump(mode="json") for row in conversation_list(db, db.get(User, owner_id), person_id, query)]
 
     @mcp.tool(name="task_create")
-    def task_create_mcp(title: str, description: str = "", person_id: str | None = None, due_at: str | None = None, priority: int = 2, repeat_interval_days: int | None = None, repeat_until: str | None = None) -> dict:
+    def task_create_mcp(title: str, description: str = "", person_id: str | None = None, project_id: str | None = None, due_at: str | None = None, priority: int = 2, repeat_interval_days: int | None = None, repeat_until: str | None = None) -> dict:
         from lifepilot.planner import task_create as create_task
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            row = create_task(TaskIn(title=title, description=description, person_id=person_id, due_at=due_at, priority=priority, repeat_interval_days=repeat_interval_days, repeat_until=repeat_until), db, db.get(User, owner_id))
+            row = create_task(TaskIn(title=title, description=description, person_id=person_id, project_id=project_id, due_at=due_at, priority=priority, repeat_interval_days=repeat_interval_days, repeat_until=repeat_until), db, db.get(User, owner_id))
             return TaskOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="task_search")

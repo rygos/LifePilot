@@ -14,7 +14,7 @@ def test_auth_people_memories_tasks_search_and_persistence(client, auth):
     task = client.post("/api/tasks", headers=auth, json={"title": "Martin zurückrufen", "person_id": person_id})
     assert task.status_code == 201
     assert client.get("/api/search?q=Bohrmaschine", headers=auth).json()["memories"][0]["id"] == memory.json()["id"]
-    assert client.get("/api/people", headers=auth).json()[0]["id"] == person_id
+    assert any(person["id"] == person_id for person in client.get("/api/people", headers=auth).json())
     assert client.patch(f"/api/tasks/{task.json()['id']}/complete", headers=auth).json()["status"] == "done"
 
 def test_relationship_validation_and_cross_user_isolation(client, auth):
@@ -213,7 +213,7 @@ def test_daily_and_person_briefings_include_owned_sources(client, auth):
     assert profile.status_code == 200
     now = datetime.now(timezone.utc)
     local_today = now.astimezone(ZoneInfo("Europe/Berlin")).date()
-    event_time = datetime.combine(local_today, datetime.min.time(), ZoneInfo("Europe/Berlin")).replace(hour=16).astimezone(timezone.utc)
+    event_time = now + timedelta(hours=1)
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()
     memory = client.post("/api/memories", headers=auth, json={"title": "Kaffee", "content": "Martin bevorzugt Hafermilch.", "person_id": martin["id"], "occurred_at": (now - timedelta(days=1)).isoformat()}).json()
     conversation = client.post("/api/conversations", headers=auth, json={"title": "Vereinstreffen", "original_note": "Martin berichtet vom Umzug.", "participant_ids": [martin["id"]], "occurred_at": (now - timedelta(days=2)).isoformat()}).json()

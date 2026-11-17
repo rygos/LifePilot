@@ -1,19 +1,22 @@
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from redis.exceptions import RedisError
 
 from lifepilot.capture_jobs import enqueue_capture_job
-from lifepilot.capture_schemas import AcceptedMemory, CaptureIn, CaptureOut, CaptureReview, CaptureSuggestion
+from lifepilot.capture_schemas import AcceptedMemory, CaptureIn, CaptureOut, CaptureReviewIn, CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.embedding_jobs import enqueue_memory_embedding
-from lifepilot.models import Capture, Memory, User
+from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
 from lifepilot.security import current_user
+from lifepilot.services import relationship_create
 
 router = APIRouter(prefix="/api/captures", tags=["Eingang"])
 suggestion_list = TypeAdapter(list[CaptureSuggestion])
@@ -29,6 +32,48 @@ def capture_output(row: Capture) -> CaptureOut:
         created_at=row.created_at,
         reviewed_at=row.reviewed_at,
     )
+
+
+def _resolve_person(db: Session, owner: User, suggestion: CaptureSuggestion, assignment: str | None) -> Person | None:
+    person_id = assignment or suggestion.person_id
+    if person_id:
+        person = db.scalar(select(Person).where(Person.id == person_id, Person.owner_id == owner.id))
+        if person is None:
+            raise HTTPException(status_code=404, detail="Zugeordnete Person nicht gefunden")
+        return person
+    if not suggestion.person_name:
+        return None
+    term = suggestion.person_name.strip()
+    rows = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), (Person.first_name + " " + Person.last_name).ilike(term), Person.nickname.ilike(term))).limit(6)).all()
+    return rows[0] if len(rows) == 1 else None
+
+
+def _resolve_project(db: Session, owner: User, suggestion: CaptureSuggestion, assignment: str | None) -> Project | None:
+    project_id = assignment or suggestion.project_id
+    if project_id:
+        project = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == owner.id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Zugeordnetes Projekt nicht gefunden")
+        return project
+    if not suggestion.project_name:
+        return None
+    term = suggestion.project_name.strip()
+    rows = db.scalars(select(Project).where(Project.owner_id == owner.id, Project.name.ilike(term)).limit(6)).all()
+    return rows[0] if len(rows) == 1 else None
+
+
+def _create_person_from_explicit_name(db: Session, owner: User, name: str, created: dict[str, Person]) -> Person:
+    normalized = " ".join(name.split())
+    if not normalized:
+        raise HTTPException(status_code=422, detail="Zum Anlegen einer Person wird ein Name benötigt")
+    key = normalized.casefold()
+    if key not in created:
+        first_name, _, last_name = normalized.partition(" ")
+        person = Person(owner_id=owner.id, first_name=first_name, last_name=last_name)
+        db.add(person)
+        db.flush()
+        created[key] = person
+    return created[key]
 
 
 @router.post("", response_model=CaptureOut, status_code=201)
@@ -63,34 +108,127 @@ def capture_list(db: Session = Depends(get_db), user: User = Depends(current_use
 
 
 @router.post("/{capture_id}/review", response_model=list[AcceptedMemory], status_code=201)
-def capture_review(capture_id: str, data: CaptureReview, db: Session = Depends(get_db), user: User = Depends(current_user)) -> list[AcceptedMemory]:
+def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> list[AcceptedMemory]:
     row = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == user.id))
     if row is None:
         raise HTTPException(status_code=404, detail="Eingabe nicht gefunden")
     if row.status != "ready":
         raise HTTPException(status_code=409, detail="Diese Eingabe enthält keine prüfbaren Vorschläge")
-    suggestions = suggestion_list.validate_json(row.suggestions_json)
-    if len(set(data.accepted_indices)) != len(data.accepted_indices) or any(index < 0 or index >= len(suggestions) for index in data.accepted_indices):
+    suggestions = data.suggestions or suggestion_list.validate_json(row.suggestions_json)
+    accepted_indices = data.accepted_indices
+    if len(set(accepted_indices)) != len(accepted_indices) or any(index < 0 or index >= len(suggestions) for index in accepted_indices):
         raise HTTPException(status_code=422, detail="Mindestens eine Vorschlagsauswahl ist ungültig")
-    accepted = [suggestions[index] for index in data.accepted_indices]
-    memories: list[Memory] = []
-    for suggestion in accepted:
-        memory = Memory(
-            owner_id=user.id,
-            title=suggestion.title,
-            content=suggestion.content,
-            source="capture",
-            source_capture_id=row.id,
-            occurred_at=suggestion.occurred_at,
-        )
-        memories.append(memory)
-        db.add(memory)
-    row.status = "reviewed"
-    row.reviewed_at = datetime.now(timezone.utc)
-    db.commit()
-    for memory in memories:
+    if any(index not in accepted_indices for index in [*data.person_assignments, *data.related_person_assignments, *data.project_assignments, *data.create_people, *data.create_related_people, *data.confirmations]):
+        raise HTTPException(status_code=422, detail="Zuordnungen und Bestätigungen müssen ausgewählte Vorschläge betreffen")
+    if len(set(data.create_people)) != len(data.create_people) or len(set(data.create_related_people)) != len(data.create_related_people):
+        raise HTTPException(status_code=422, detail="Personen können pro Vorschlag nur einmal neu angelegt werden")
+    if set(data.create_people) & set(data.person_assignments) or set(data.create_related_people) & set(data.related_person_assignments):
+        raise HTTPException(status_code=422, detail="Bitte eine vorhandene Person zuordnen oder eine neue Person anlegen")
+    create_indices = set(data.create_people) | set(data.create_related_people)
+    if any(index not in data.confirmations for index in create_indices):
+        raise HTTPException(status_code=422, detail="Neue Personen müssen ausdrücklich bestätigt werden")
+    if any(suggestions[index].confirmation_required and index not in data.confirmations for index in accepted_indices):
+        raise HTTPException(status_code=422, detail="Mindestens ein Vorschlag benötigt eine ausdrückliche Bestätigung")
+    accepted: list[AcceptedMemory] = []
+    memory_rows: list[Memory] = []
+    created_people: dict[str, Person] = {}
+    try:
+        for index in accepted_indices:
+            suggestion = suggestions[index]
+            person = _create_person_from_explicit_name(db, user, suggestion.person_name, created_people) if index in data.create_people and suggestion.person_name else _resolve_person(db, user, suggestion, data.person_assignments.get(index))
+            project = _resolve_project(db, user, suggestion, data.project_assignments.get(index))
+            if suggestion.person_name and person is None:
+                raise HTTPException(status_code=422, detail=f"Person für Vorschlag {index + 1} ist nicht eindeutig zugeordnet")
+            if suggestion.kind in {"former_name", "life_event"} and index not in data.confirmations:
+                raise HTTPException(status_code=422, detail="Biografische Angaben müssen ausdrücklich bestätigt werden")
+            match suggestion.kind:
+                case "conversation":
+                    conversation = Conversation(owner_id=user.id, title=suggestion.title, original_note=row.original_text, summary=suggestion.content, occurred_at=suggestion.occurred_at)
+                    db.add(conversation)
+                    db.flush()
+                    if person:
+                        db.add(ConversationParticipant(conversation_id=conversation.id, person_id=person.id, owner_id=user.id))
+                    if project:
+                        db.add(ConversationProject(conversation_id=conversation.id, project_id=project.id, owner_id=user.id))
+                    accepted.append(AcceptedMemory(id=conversation.id, title=conversation.title, kind=suggestion.kind, resource_id=conversation.id, resource_type="conversation"))
+                case "former_name":
+                    if person is None:
+                        raise HTTPException(status_code=422, detail="Früherer Name benötigt eine Personenzuordnung")
+                    name = suggestion.former_name or suggestion.content
+                    history = PersonNameHistory(owner_id=user.id, person_id=person.id, name=name, name_type="former", valid_until=suggestion.occurred_at, source_capture_id=row.id, confirmed=True)
+                    db.add(history)
+                    db.flush()
+                    accepted.append(AcceptedMemory(id=history.id, title=suggestion.title, kind=suggestion.kind, resource_id=history.id, resource_type="person_name"))
+                case "life_event":
+                    if person is None:
+                        raise HTTPException(status_code=422, detail="Lebensereignis benötigt eine eindeutig zugeordnete Person")
+                    life_event = PersonLifeEvent(owner_id=user.id, person_id=person.id, title=suggestion.title, details=suggestion.content, occurred_at=suggestion.occurred_at, date_precision=suggestion.date_precision, source_capture_id=row.id, confirmed=True)
+                    db.add(life_event)
+                    db.flush()
+                    accepted.append(AcceptedMemory(id=life_event.id, title=life_event.title, kind=suggestion.kind, resource_id=life_event.id, resource_type="life_event"))
+                case "relationship":
+                    if person is None or not suggestion.related_person_name:
+                        raise HTTPException(status_code=422, detail="Beziehung benötigt zwei eindeutig zugeordnete Personen")
+                    related_id = data.related_person_assignments.get(index) or suggestion.related_person_id
+                    related = _create_person_from_explicit_name(db, user, suggestion.related_person_name, created_people) if index in data.create_related_people and suggestion.related_person_name else db.scalar(select(Person).where(Person.id == related_id, Person.owner_id == user.id)) if related_id else None
+                    if related is None:
+                        matches = db.scalars(select(Person).where(Person.owner_id == user.id, or_(Person.first_name.ilike(suggestion.related_person_name), (Person.first_name + " " + Person.last_name).ilike(suggestion.related_person_name))).limit(2)).all()
+                        related = matches[0] if len(matches) == 1 else None
+                    if related is None:
+                        raise HTTPException(status_code=422, detail="Zweite Person der Beziehung ist nicht eindeutig zugeordnet")
+                    memory = Memory(owner_id=user.id, title=suggestion.title, content=row.original_text, person_id=person.id, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                    db.add(memory)
+                    db.flush()
+                    relationship = relationship_create(db, user, person.id, related.id, suggestion.relationship_type or "Beziehung zu", memory.id, True, suggestion.inverse_relationship_type, commit=False)
+                    memory_rows.append(memory)
+                    accepted.append(AcceptedMemory(id=relationship.id, title=suggestion.title, kind=suggestion.kind, resource_id=relationship.id, resource_type="relationship"))
+                case "task":
+                    task = Task(owner_id=user.id, title=suggestion.title, description=suggestion.content, person_id=person.id if person else None, project_id=project.id if project else None, due_at=suggestion.due_at)
+                    db.add(task)
+                    db.flush()
+                    if task.due_at:
+                        db.add(Reminder(owner_id=user.id, title=task.title, due_at=task.due_at, task_id=task.id))
+                    accepted.append(AcceptedMemory(id=task.id, title=task.title, kind=suggestion.kind, resource_id=task.id, resource_type="task"))
+                case "event":
+                    if suggestion.occurred_at is None:
+                        raise HTTPException(status_code=422, detail="Termin benötigt einen konkreten Zeitpunkt")
+                    event = Event(owner_id=user.id, title=suggestion.title, description=suggestion.content, location="", starts_at=suggestion.occurred_at, source_memory_id=None)
+                    db.add(event)
+                    db.flush()
+                    if person:
+                        db.add(EventParticipant(event_id=event.id, person_id=person.id, owner_id=user.id))
+                    db.add(Reminder(owner_id=user.id, title=event.title, due_at=event.starts_at, event_id=event.id))
+                    accepted.append(AcceptedMemory(id=event.id, title=event.title, kind=suggestion.kind, resource_id=event.id, resource_type="event"))
+                case "project_link":
+                    if project is None:
+                        raise HTTPException(status_code=422, detail="Projekt muss zuerst eindeutig zugeordnet werden")
+                    memory = Memory(owner_id=user.id, title=suggestion.title, content=suggestion.content, person_id=person.id if person else None, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                    db.add(memory)
+                    db.flush()
+                    db.add(MemoryProject(memory_id=memory.id, project_id=project.id, owner_id=user.id))
+                    memory_rows.append(memory)
+                    accepted.append(AcceptedMemory(id=memory.id, title=memory.title, kind=suggestion.kind, resource_id=memory.id, resource_type="memory"))
+                case "fact":
+                    memory = Memory(owner_id=user.id, title=suggestion.title, content=suggestion.content, person_id=person.id if person else None, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                    db.add(memory)
+                    db.flush()
+                    if project:
+                        db.add(MemoryProject(memory_id=memory.id, project_id=project.id, owner_id=user.id))
+                    memory_rows.append(memory)
+                    accepted.append(AcceptedMemory(id=memory.id, title=memory.title, kind=suggestion.kind, resource_id=memory.id, resource_type="memory"))
+        row.status = "reviewed"
+        row.reviewed_at = datetime.now(timezone.utc)
+        row.suggestions_json = json.dumps([item.model_dump(mode="json") for item in suggestions], ensure_ascii=False)
+        db.commit()
+    except (HTTPException, ValueError):
+        db.rollback()
+        raise
+    for memory in memory_rows:
         enqueue_memory_embedding(memory.id, user.id)
-    return [AcceptedMemory(id=memory.id, title=memory.title) for memory in memories]
+    for result in accepted:
+        if result.resource_type in {"conversation", "task", "relationship"}:
+            enqueue_entity_embedding(result.resource_type, result.id, user.id)
+    return accepted
 
 
 @router.delete("/{capture_id}", status_code=204)

@@ -11,7 +11,7 @@ from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.embeddings import EmbeddingProviderError, embed_text, embedding_provider_configured
 from lifepilot.entity_embedding_jobs import EntityMatches, semantic_entity_matches
 from lifepilot.entity_types import EntityType
-from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, Person, Project, Relationship, Task, User
+from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User
 from lifepilot.schemas import ProjectIn, ProjectPatch, RelationshipOut
 
 class SearchInfo(TypedDict):
@@ -28,6 +28,7 @@ class SearchResults(TypedDict):
     gifts: list[Gift]
     relationships: list[RelationshipOut]
     projects: list[Project]
+    life_events: list[PersonLifeEvent]
     search_info: SearchInfo
 
 def is_quiet_hours(owner: User, now: datetime) -> bool:
@@ -48,8 +49,11 @@ def owned_person(db: Session, person_id: str | None, owner: User):
 
 def search(db: Session, owner: User, query: str) -> SearchResults:
     term = f"%{query.strip()}%"
-    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.address.ilike(term), Person.website.ilike(term), Person.job_title.ilike(term), Person.organization.ilike(term), Person.notes.ilike(term)))).all()
-    lexical_memories = list(db.scalars(select(Memory).where(Memory.owner_id == owner.id, or_(Memory.title.ilike(term), Memory.content.ilike(term))).order_by(Memory.created_at.desc())).all())
+    alias_person_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == owner.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(term))
+    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.address.ilike(term), Person.website.ilike(term), Person.job_title.ilike(term), Person.organization.ilike(term), Person.notes.ilike(term), Person.id.in_(alias_person_ids)))).all()
+    project_ids = select(Project.id).where(Project.owner_id == owner.id, or_(Project.name.ilike(term), Project.description.ilike(term)))
+    memory_ids = select(MemoryProject.memory_id).where(MemoryProject.owner_id == owner.id, MemoryProject.project_id.in_(project_ids))
+    lexical_memories = list(db.scalars(select(Memory).where(Memory.owner_id == owner.id, or_(Memory.title.ilike(term), Memory.content.ilike(term), Memory.id.in_(memory_ids))).order_by(Memory.created_at.desc())).all())
     fulltext_ids = _postgres_fulltext_memory_ids(db, owner.id, query.strip())
     semantic_ids: list[str] = []
     entity_matches: EntityMatches = {"conversation": [], "task": [], "relationship": [], "project": []}
@@ -94,6 +98,7 @@ def search(db: Session, owner: User, query: str) -> SearchResults:
         missing_ids = [entity_id for entity_id in project_ids if entity_id not in project_map]
         project_map.update({row.id: row for row in db.scalars(select(Project).where(Project.owner_id == owner.id, Project.id.in_(missing_ids))).all()})
     projects = [project_map[entity_id] for entity_id in project_ids if entity_id in project_map]
+    life_events = db.scalars(select(PersonLifeEvent).where(PersonLifeEvent.owner_id == owner.id, PersonLifeEvent.confirmed.is_(True), or_(PersonLifeEvent.title.ilike(term), PersonLifeEvent.details.ilike(term))).order_by(PersonLifeEvent.occurred_at.desc().nullslast()).limit(20)).all()
     lexical_relationships = _lexical_relationships(db, owner.id, term)
     relationship_ids = _rank_ids([[row.id for row in lexical_relationships], _postgres_fulltext_entity_ids(db, owner.id, query.strip(), "relationship"), entity_matches["relationship"]])
     relationship_map = {row.id: row for row in lexical_relationships}
@@ -118,7 +123,7 @@ def search(db: Session, owner: User, query: str) -> SearchResults:
         confirmed=row.confirmed,
         source_memory_id=row.source_memory_id,
     ) for row in relationships]
-    return {"people": people, "memories": memories, "tasks": tasks, "conversations": conversations, "loans": loans, "gifts": gifts, "relationships": relationship_views, "projects": projects, "search_info": {"semantic_available": semantic_available, "semantic_matches": len(semantic_ids) + sum(map(len, entity_matches.values())), "fulltext_used": db.get_bind().dialect.name == "postgresql"}}
+    return {"people": people, "memories": memories, "tasks": tasks, "conversations": conversations, "loans": loans, "gifts": gifts, "relationships": relationship_views, "projects": projects, "life_events": life_events, "search_info": {"semantic_available": semantic_available, "semantic_matches": len(semantic_ids) + sum(map(len, entity_matches.values())), "fulltext_used": db.get_bind().dialect.name == "postgresql"}}
 
 
 def _rank_ids(groups: list[list[str]]) -> list[str]:
@@ -200,7 +205,7 @@ def _semantic_memory_ids(db: Session, owner_id: str, query_vector: list[float]) 
     scored.sort(reverse=True)
     return [memory_id for _, memory_id in scored[:20]]
 
-def relationship_create(db: Session, owner: User, source_id: str, target_id: str, relationship_type: str, source_memory_id: str | None, confirmed: bool, inverse_relationship_type: str | None = None):
+def relationship_create(db: Session, owner: User, source_id: str, target_id: str, relationship_type: str, source_memory_id: str | None, confirmed: bool, inverse_relationship_type: str | None = None, commit: bool = True):
     if source_id == target_id: raise HTTPException(status_code=422, detail="Eine Person kann nicht mit sich selbst verknüpft werden")
     owned_person(db, source_id, owner); owned_person(db, target_id, owner)
     if source_memory_id is not None and db.scalar(select(Memory.id).where(Memory.id == source_memory_id, Memory.owner_id == owner.id)) is None:
@@ -209,8 +214,12 @@ def relationship_create(db: Session, owner: User, source_id: str, target_id: str
     existing = db.scalar(select(Relationship).where(Relationship.owner_id == owner.id, or_(and_(Relationship.source_person_id == source_id, Relationship.target_person_id == target_id, Relationship.relationship_type == relationship_type), and_(Relationship.source_person_id == target_id, Relationship.target_person_id == source_id, Relationship.relationship_type == inverse))))
     if existing is not None: raise HTTPException(status_code=409, detail="Diese Beziehung ist bereits gespeichert")
     row = Relationship(owner_id=owner.id, source_person_id=source_id, target_person_id=target_id, relationship_type=relationship_type, inverse_relationship_type=inverse, source_memory_id=source_memory_id, confirmed=confirmed)
-    db.add(row); db.commit(); db.refresh(row)
-    enqueue_entity_embedding("relationship", row.id, owner.id)
+    db.add(row)
+    if commit:
+        db.commit(); db.refresh(row)
+        enqueue_entity_embedding("relationship", row.id, owner.id)
+    else:
+        db.flush()
     return row
 
 def project_list(db: Session, owner: User, query: str = "", status: str | None = None) -> list[Project]:

@@ -14,7 +14,7 @@ from lifepilot.security import create_token, resolve_bearer_scopes
 
 def test_mcp_tools_are_registered() -> None:
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_delete", "task_create", "task_search", "task_update", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
+    assert {"person_create_tool", "person_search_tool", "memory_capture", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_delete", "task_create", "task_search", "task_update", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
 
 
 def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
@@ -38,8 +38,12 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
         ready_capture = Capture(owner_id=owner_id, original_text="Geprüfte KI-Vorschläge")
         ready_capture.status = "ready"
         ready_capture.suggestions_json = json.dumps([{"title": "Geprüfte Notiz", "content": "Nur nach Bestätigung", "person_name": None, "occurred_at": None}])
-        db.add(ready_capture); db.commit()
+        new_person_capture = Capture(owner_id=owner_id, original_text="MCP-Kontakt kennenlernen")
+        new_person_capture.status = "ready"
+        new_person_capture.suggestions_json = json.dumps([{"kind": "conversation", "title": "Gespräch mit MCP-Neu Person", "content": "Wir sprachen über den Verein.", "person_name": "MCP-Neu Person"}])
+        db.add_all([ready_capture, new_person_capture]); db.commit()
         ready_capture_id = ready_capture.id
+        new_person_capture_id = new_person_capture.id
 
     pending_approval: dict[str, str] = {}
     resource_approvals: list[str] = []
@@ -71,6 +75,8 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         assert not project_search.isError and project_id in str(project_search.content)
                         project_get = await session.call_tool("project_get", {"project_id": project_id})
                         assert not project_get.isError and "Nur für den Benutzer" in str(project_get.content)
+                        captured = await session.call_tool("memory_capture", {"original_text": "Der MCP-Originaltext bleibt erhalten."})
+                        assert not captured.isError and "Der MCP-Originaltext bleibt erhalten." in str(captured.content)
                         profile = await session.call_tool("profile_update", {"nickname": "MCP-Profil"})
                         assert not profile.isError and "MCP-Profil" in str(profile.content)
                         note = await session.call_tool("note_create", {"title": "MCP Notiz", "content": "Notizinhalt", "person_id": person_id})
@@ -79,8 +85,12 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         assert not edited_note.isError and "Geänderter Notizinhalt" in str(edited_note.content)
                         found_note = await session.call_tool("note_search", {"query": "Geänderter Notizinhalt"})
                         assert not found_note.isError and note_id in str(found_note.content)
-                        reviewed = await session.call_tool("memory_review", {"capture_id": ready_capture_id, "accepted_indices": [0]})
-                        assert not reviewed.isError and "Geprüfte Notiz" in str(reviewed.content)
+                        reviewed = await session.call_tool("memory_review", {"capture_id": ready_capture_id, "accepted_indices": [0], "suggestions": [{"title": "Korrigierte Notiz", "content": "Korrigierter Inhalt", "kind": "fact"}]})
+                        assert not reviewed.isError and "Korrigierte Notiz" in str(reviewed.content)
+                        new_contact = await session.call_tool("memory_review", {"capture_id": new_person_capture_id, "accepted_indices": [0], "create_people": [0], "confirmations": [0]})
+                        assert not new_contact.isError and "conversation" in str(new_contact.content)
+                        found_new_contact = await session.call_tool("person_search_tool", {"query": "MCP-Neu"})
+                        assert not found_new_contact.isError and "Person" in str(found_new_contact.content)
                         relation = await session.call_tool("relationship_create", {"source_person_id": person_id, "target_person_id": child_id, "relationship_type": "Vater von"})
                         assert not relation.isError and "Tochter von" in str(relation.content)
                         relation_id = json.loads(relation.content[0].text)["id"]

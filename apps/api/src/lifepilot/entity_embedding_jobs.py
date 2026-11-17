@@ -14,7 +14,7 @@ from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.embeddings import EMBEDDING_DIMENSIONS, embed_text, embedding_provider_configured
 from lifepilot.entity_types import EntityType
-from lifepilot.models import Conversation, ConversationParticipant, EntityEmbedding, Person, Project, Relationship, Task
+from lifepilot.models import Conversation, ConversationParticipant, ConversationProject, EntityEmbedding, Person, Project, Relationship, Task
 from lifepilot.scheduler import SCHEDULE_QUEUE_NAME
 
 logger = logging.getLogger(__name__)
@@ -147,14 +147,16 @@ def _entity_text(db: Session, entity_type: EntityType, entity_id: str, owner_id:
                 .where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == owner_id, Person.owner_id == owner_id)
             ).all()
             people = ", ".join(" ".join(part for part in name if part) for name in names)
-            return "\n".join(part for part in (row.title, row.original_note, row.summary, row.location, row.occurred_at.isoformat() if row.occurred_at else "", people) if part)
+            projects = db.scalars(select(Project.name).join(ConversationProject, ConversationProject.project_id == Project.id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == owner_id, Project.owner_id == owner_id)).all()
+            return "\n".join(part for part in (row.title, row.original_note, row.summary, row.location, row.occurred_at.isoformat() if row.occurred_at else "", people, ", ".join(projects)) if part)
         case "task":
             row = db.scalar(select(Task).where(Task.id == entity_id, Task.owner_id == owner_id))
             if row is None:
                 return None
             person = db.scalar(select(Person).where(Person.id == row.person_id, Person.owner_id == owner_id)) if row.person_id else None
             name = " ".join(part for part in (person.first_name, person.last_name) if part) if person else ""
-            return "\n".join(part for part in (row.title, row.description, row.status, row.due_at.isoformat() if row.due_at else "", name) if part)
+            project = db.scalar(select(Project).where(Project.id == row.project_id, Project.owner_id == owner_id)) if row.project_id else None
+            return "\n".join(part for part in (row.title, row.description, row.status, row.due_at.isoformat() if row.due_at else "", name, project.name if project else "") if part)
         case "relationship":
             row = db.scalar(select(Relationship).where(Relationship.id == entity_id, Relationship.owner_id == owner_id))
             if row is None:

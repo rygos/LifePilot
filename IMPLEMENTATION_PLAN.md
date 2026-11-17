@@ -141,3 +141,17 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Eingang in der Weboberfläche zeigt Originaltext, Vorschläge und Fehlerstatus; Vorschläge können einzeln ausgewählt und übernommen werden.
 - [x] Migration `0009_reviewable_captures` und Backend-Tests für Persistenz ohne Provider, Review-Auswahl, Quellverknüpfung, Fehlerbehandlung und Benutzertrennung.
 - [x] Embeddings und hybride Suche für Erinnerungen, Gespräche, Aufgaben, Beziehungen und Projekte; Briefings bleiben offen.
+
+## Zweitgedächtnis: strukturierte Auswertung freier Notizen
+
+- [x] Extraktionsschema unterscheidet Fakten, Gespräche, Beziehungen, frühere Namen, Lebensereignisse, Aufgaben, Termine und Projektverknüpfungen; der Prompt verbietet unbelegte Identitäten, Daten und Aufgaben.
+- [x] Erfassungszeit wird in die Verarbeitung gegeben; eindeutige relative Tage wie „gestern“ werden relativ zum Erfassen aufgelöst, ungefähre Zeiträume behalten ihre Genauigkeit und bekommen keinen erfundenen Zeitpunkt.
+- [x] Person-/Projektauflösung erfolgt nur innerhalb des Besitzers. Ein eindeutiger Name oder Projektcode wird verknüpft; mehrdeutige Treffer werden als Kandidaten angezeigt und müssen gewählt werden.
+- [x] Review übernimmt vorgeschlagene Gespräche samt Originaltext, Teilnehmern und Projekten sowie bestätigte Namenshistorie, Biografie, gerichtete Beziehungen, Aufgaben mit Fälligkeitserinnerung, Termine und projektbezogene Fakten transaktional.
+- [x] Webeingang kann Beziehungen mit zweiter Person auflösen; MCP bietet `memory_capture` und `memory_review` mit Zuordnungen und Bestätigungen.
+- [x] Eine ausdrücklich bestätigte, unbekannte Person kann direkt im Capture-Review angelegt und mit Gespräch oder Beziehung verknüpft werden; ohne Auswahl/Bestätigung entsteht kein Personendatensatz.
+- [x] MCP `memory_review` akzeptiert strukturierte, vom Nutzer korrigierte Vorschläge; Änderungen erfolgen weiter gegen die unveränderte Originalerfassung.
+- [x] Migration `0013_capture_knowledge` ergänzt Namenshistorie, Lebensereignisse, Projektverknüpfungen und Projektzuordnung von Aufgaben; SQLite-Migration bis Head erfolgreich.
+- [x] Tests für Gespräch/Projekt/Person, keine erfundene Aufgabe, frühere Namen mit Quelle, ungenaues Hochzeitsdatum, projektbezogene Aufgabe/Erinnerung, inverse Beziehung/Quelle, relative Zeit und MCP-Erfassung.
+- [ ] Mit einem tatsächlich konfigurierten LM Studio/Ollama-Modell die natürliche Sprache der Kristin-Abeler-Beispielnotiz ausführen und Extraktionsqualität manuell bewerten; Modellendpunkt ist in dieser Laufzeit nicht konfiguriert.
+- [ ] Noch offen: Aufgaben-/Gesprächskorrekturen als versionierte Änderungshistorie; Original-Capture bleibt erhalten, aber nicht jeder Fachdatensatz hat bereits vollständige Revisionseinträge.

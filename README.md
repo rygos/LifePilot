@@ -39,7 +39,7 @@ Für den lokalen Testbetrieb waren die Standardports 8000 und 3000 bereits beleg
 
 ## KI-Konfiguration und Eingang
 
-Die Schnellerfassung speichert den Originaltext zuerst unverändert in `/api/captures`. Ist ein OpenAI-kompatibler Chat-Completions-Endpunkt konfiguriert, verarbeitet der RQ-Worker ihn im Hintergrund. Vorschläge erscheinen im Eingang und werden erst nach manueller Auswahl als Erinnerungen übernommen; die übernommenen Fakten behalten eine Verknüpfung zur Quelle. Ohne Modell, bei einem Providerfehler oder einer nicht verfügbaren Queue bleibt die Eingabe erhalten und kann klassisch weiterverwendet werden.
+Die Schnellerfassung speichert den Originaltext zuerst unverändert in `/api/captures`. Ist ein OpenAI-kompatibler Chat-Completions-Endpunkt konfiguriert, verarbeitet der RQ-Worker ihn im Hintergrund. Geprüfte Vorschläge können Gespräche, Beziehungen mit beiden Richtungen, frühere Namen, biografische Ereignisse, Aufgaben, Termine und projektverknüpfte Fakten erzeugen. Ein Gespräch wird mit gefundenen Personen und Projekten verknüpft; eine Aufgabe wird nur aus einem ausdrücklichen Vorschlag erstellt und erhält bei Fälligkeit eine persistente Erinnerung. Ungefähre biografische Zeiträume werden nicht zu erfundenen Kalenderdaten. Jede Übernahme bleibt auf den unveränderten Originaltext zurückführbar. Mehrdeutige Personen und Projekte benötigen eine Zuordnung; eine unbekannte Person wird nur nach ausdrücklicher Auswahl angelegt. Biografische Angaben und unsichere Aussagen benötigen Bestätigung. Ohne Modell, bei einem Providerfehler oder einer nicht verfügbaren Queue bleibt die Eingabe erhalten.
 
 Für LM Studio, Ollama im OpenAI-kompatiblen Modus oder einen anderen kompatiblen Endpunkt diese Werte in `.env` setzen:
 
@@ -50,7 +50,7 @@ LLM_MODEL=<modellname>
 LLM_TIMEOUT_SECONDS=15
 ```
 
-Danach `docker compose up -d --build api` ausführen. Der Endpunkt muss aus dem API-Container erreichbar sein. Ein fehlender API-Schlüssel ist für lokale Server erlaubt. Die KI verarbeitet nur die jeweilige Eingabe; Personen, Beziehungen und Aufgaben werden durch sie nicht direkt angelegt.
+Danach `docker compose up -d --build api worker` ausführen. Der Endpunkt muss aus dem Worker-Container erreichbar sein. Ein fehlender API-Schlüssel ist für lokale Server erlaubt. Das Modell schlägt strukturierte Änderungen vor; sie werden erst nach Bestätigung über den Eingang oder `memory_review` in die Datenbank übernommen. Mit `memory_review` kann ein MCP-Client einen Vorschlag vor dem Speichern auch korrigiert übergeben. Bei MCP liefert `memory_capture` zunächst die Capture-ID und den Verarbeitungsstatus; anschließend werden Vorschläge geprüft und mit `memory_review` bestätigt.
 
 Semantische Suche wird unabhängig konfiguriert. Das Modell muss 768 Dimensionen zurückgeben; OpenAI-kompatible Anbieter erhalten zusätzlich `dimensions: 768`. Ein lokaler Modellserver kann beispielsweise so aussehen:
 

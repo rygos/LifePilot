@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, Event, EventParticipant, Gift, Loan, Memory, Person, Relationship, Reminder, Task, User
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
 from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import owned_person, relationship_create, search
@@ -77,7 +77,9 @@ def profile_update(data: ProfileUpdate, db: Session = Depends(get_db), user: Use
 @app.get("/api/people", response_model=list[PersonOut])
 def people_list(db: Session = Depends(get_db), user: User = Depends(current_user), q: str = ""):
     stmt = select(Person).where(Person.owner_id == user.id)
-    if q: stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%")))
+    if q:
+        alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
+        stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.id.in_(alias_ids)))
     return db.scalars(stmt.order_by(Person.first_name, Person.last_name)).all()
 
 @app.post("/api/people", response_model=PersonOut, status_code=201)
@@ -87,6 +89,18 @@ def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = De
 @app.get("/api/people/{person_id}", response_model=PersonOut)
 def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return owned_person(db, person_id, user)
+
+@app.get("/api/people/{person_id}/names")
+def person_names(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    rows = db.scalars(select(PersonNameHistory).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.person_id == person_id).order_by(PersonNameHistory.valid_until.desc().nullslast())).all()
+    return [{"id": row.id, "name": row.name, "name_type": row.name_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in rows]
+
+@app.get("/api/people/{person_id}/life-events")
+def person_life_events(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    rows = db.scalars(select(PersonLifeEvent).where(PersonLifeEvent.owner_id == user.id, PersonLifeEvent.person_id == person_id).order_by(PersonLifeEvent.occurred_at.desc().nullslast())).all()
+    return [{"id": row.id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at, "date_precision": row.date_precision, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in rows]
 
 @app.patch("/api/people/{person_id}", response_model=PersonOut)
 def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -133,7 +147,10 @@ def memory_create(data: MemoryIn, db: Session = Depends(get_db), user: User = De
 def memory_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None, q: str = ""):
     stmt = select(Memory).where(Memory.owner_id == user.id)
     if person_id: stmt = stmt.where(Memory.person_id == person_id)
-    if q: stmt = stmt.where(or_(Memory.title.ilike(f"%{q}%"), Memory.content.ilike(f"%{q}%")))
+    if q:
+        alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
+        memory_ids = select(MemoryProject.memory_id).where(MemoryProject.owner_id == user.id, MemoryProject.project_id.in_(select(Project.id).where(Project.owner_id == user.id, or_(Project.name.ilike(f"%{q}%"), Project.description.ilike(f"%{q}%")))))
+        stmt = stmt.where(or_(Memory.title.ilike(f"%{q}%"), Memory.content.ilike(f"%{q}%"), Memory.person_id.in_(alias_ids), Memory.id.in_(memory_ids)))
     return db.scalars(stmt.order_by(Memory.created_at.desc())).all()
 
 @app.get("/api/search")
@@ -143,15 +160,20 @@ def memory_search(q: str = Query(min_length=1), db: Session = Depends(get_db), u
 @app.post("/api/conversations", response_model=ConversationOut, status_code=201)
 def conversation_create(data: ConversationIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     participant_ids = list(dict.fromkeys(data.participant_ids))
+    project_ids = list(dict.fromkeys(data.project_ids))
     if participant_ids:
         people = db.scalars(select(Person).where(Person.owner_id == user.id, Person.id.in_(participant_ids))).all()
         if len(people) != len(participant_ids): raise HTTPException(status_code=404, detail="Mindestens eine beteiligte Person wurde nicht gefunden")
+    if project_ids:
+        projects = db.scalars(select(Project).where(Project.owner_id == user.id, Project.id.in_(project_ids))).all()
+        if len(projects) != len(project_ids): raise HTTPException(status_code=404, detail="Mindestens ein verknüpftes Projekt wurde nicht gefunden")
     conversation = Conversation(owner_id=user.id, title=data.title, original_note=data.original_note, summary=data.summary, location=data.location, occurred_at=data.occurred_at)
     db.add(conversation); db.flush()
     db.add_all(ConversationParticipant(conversation_id=conversation.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
+    db.add_all(ConversationProject(conversation_id=conversation.id, project_id=project_id, owner_id=user.id) for project_id in project_ids)
     db.commit(); db.refresh(conversation)
     enqueue_entity_embedding("conversation", conversation.id, user.id)
-    return ConversationOut(id=conversation.id, title=conversation.title, original_note=conversation.original_note, summary=conversation.summary, location=conversation.location, occurred_at=conversation.occurred_at, created_at=conversation.created_at, participant_ids=participant_ids)
+    return ConversationOut(id=conversation.id, title=conversation.title, original_note=conversation.original_note, summary=conversation.summary, location=conversation.location, occurred_at=conversation.occurred_at, created_at=conversation.created_at, participant_ids=participant_ids, project_ids=project_ids)
 
 @app.get("/api/conversations", response_model=list[ConversationOut])
 def conversation_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None, q: str = ""):
@@ -159,7 +181,7 @@ def conversation_list(db: Session = Depends(get_db), user: User = Depends(curren
     if person_id: stmt = stmt.join(ConversationParticipant).where(ConversationParticipant.person_id == person_id, ConversationParticipant.owner_id == user.id)
     if q: stmt = stmt.where(or_(Conversation.title.ilike(f"%{q}%"), Conversation.original_note.ilike(f"%{q}%"), Conversation.summary.ilike(f"%{q}%")))
     rows = db.scalars(stmt.order_by(Conversation.occurred_at.desc().nullslast(), Conversation.created_at.desc())).all()
-    return [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all())) for row in rows]
+    return [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all()), project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all())) for row in rows]
 
 @app.post("/api/loans", response_model=LoanOut, status_code=201)
 def loan_create(data: LoanIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -225,12 +247,15 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     links = db.scalars(select(Relationship).where(Relationship.owner_id == user.id, or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))).all()
     loans = db.scalars(select(Loan).where(Loan.owner_id == user.id, Loan.returned_at.is_(None), or_(Loan.lender_person_id == person_id, Loan.borrower_person_id == person_id)).order_by(Loan.due_at.is_(None), Loan.due_at)).all()
     gifts = db.scalars(select(Gift).where(Gift.owner_id == user.id, Gift.person_id == person_id, Gift.status.in_(["idea", "planned"])).order_by(Gift.created_at.desc()).limit(10)).all()
+    life_events = db.scalars(select(PersonLifeEvent).where(PersonLifeEvent.owner_id == user.id, PersonLifeEvent.person_id == person_id, PersonLifeEvent.confirmed.is_(True)).order_by(PersonLifeEvent.occurred_at.desc().nullslast()).limit(20)).all()
     now = datetime.now(timezone.utc)
     upcoming_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id, Event.starts_at >= now).order_by(Event.starts_at).limit(10)).all()
     return {
         "person": PersonOut.model_validate(person).model_dump(mode="json"),
+        "former_names": [{"id": row.id, "name": row.name, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in db.scalars(select(PersonNameHistory).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.person_id == person_id, PersonNameHistory.confirmed.is_(True)).order_by(PersonNameHistory.valid_until.desc().nullslast())).all()],
+        "life_events": [{"id": row.id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at, "date_precision": row.date_precision, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in life_events],
         "memories": [MemoryOut.model_validate(memory).model_dump(mode="json") for memory in memories],
-        "conversations": [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=[person_id]).model_dump(mode="json") for row in conversations],
+        "conversations": [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=[person_id], project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all())).model_dump(mode="json") for row in conversations],
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
         "relationships": [{"id": row.id, "source_person_id": row.source_person_id, "target_person_id": row.target_person_id, "relationship_type": row.relationship_type, "inverse_relationship_type": row.inverse_relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_memory_id": row.source_memory_id} for row in links],
         "open_loans": [LoanOut.model_validate(loan).model_dump(mode="json") for loan in loans],
