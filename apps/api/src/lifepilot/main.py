@@ -16,6 +16,8 @@ from lifepilot.security import create_token, current_user, hash_password, verify
 from lifepilot.services import owned_person, relationship_create, search
 from lifepilot.planner import router as planner_router
 from lifepilot.capture_routes import router as capture_router
+from lifepilot.project_routes import router as project_router
+from lifepilot.approval_routes import router as approval_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,6 +31,8 @@ app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedä
 app.add_middleware(CORSMiddleware, allow_origins=[settings.web_origin], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
 app.include_router(planner_router)
 app.include_router(capture_router)
+app.include_router(project_router)
+app.include_router(approval_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -51,7 +55,7 @@ def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     scopes = ["memory:read"]
     if data.access == "read_write": scopes.append("memory:write")
-    return {"access_token": create_token(user.id, scopes)}
+    return {"access_token": create_token(user.id, scopes, token_use="mcp")}
 
 @app.get("/api/auth/me")
 def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username}

@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 from lifepilot.audit import ACTOR_KEY
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
+from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
 from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
-from lifepilot.security import resolve_bearer_scopes, resolve_bearer_user
+from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
 from lifepilot.services import owned_person, search
 from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_get, relationship_add, relationship_list
 
@@ -20,6 +20,8 @@ try:
         async def verify_token(self, token: str) -> AccessToken | None:
             with Session(engine) as db:
                 try:
+                    if resolve_bearer_token_use(token) != "mcp":
+                        return None
                     user = resolve_bearer_user(token, db)
                     return AccessToken(token=token, client_id=user.id, scopes=resolve_bearer_scopes(token), resource="http://localhost/mcp/")
                 except HTTPException:
@@ -35,6 +37,16 @@ try:
         session = Session(engine)
         session.info[ACTOR_KEY] = owner_id
         return session
+
+    def request_approval(db: Session, owner_id: str, operation: str, resource_id: str, resource_label: str) -> dict:
+        row = db.scalar(select(ApprovalRequest).where(ApprovalRequest.owner_id == owner_id, ApprovalRequest.operation == operation, ApprovalRequest.resource_id == resource_id, ApprovalRequest.status == "pending"))
+        if row is not None:
+            return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
+        row = ApprovalRequest(owner_id=owner_id, operation=operation, resource_id=resource_id, resource_label=resource_label)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
     @mcp.tool()
     def person_create_tool(first_name: str, last_name: str = "", birthday: str | None = None, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
@@ -114,14 +126,12 @@ try:
             return MemoryOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="memory_delete")
-    def memory_delete_mcp(memory_id: str, confirm: bool) -> dict:
+    def memory_delete_mcp(memory_id: str) -> dict:
         owner_id = mcp_user("memory:write")
-        if not confirm: raise ValueError("Löschen erfordert confirm=true")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
             if row is None: raise ValueError("Erinnerung nicht gefunden")
-            db.delete(row); db.commit()
-            return {"deleted": True, "memory_id": memory_id}
+            return request_approval(db, owner_id, "memory_delete", row.id, row.title)
 
     @mcp.tool(name="conversation_create")
     def conversation_create_mcp(title: str, original_note: str, participant_ids: list[str] | None = None, occurred_at: str | None = None, location: str = "", summary: str = "") -> dict:

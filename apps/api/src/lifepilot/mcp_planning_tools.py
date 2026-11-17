@@ -5,12 +5,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from mcp.server.fastmcp import FastMCP
 
-from lifepilot.main import person_delete, relationship_delete
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, Gift, Loan, Person, Reminder, Task, User
+from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, ConversationParticipant, Gift, Loan, Person, Project, Relationship, Reminder, Task, User
 from lifepilot.planner import event_update, reminder_create, reminder_update
-from lifepilot.schemas import ConversationOut, EventPatch, GiftOut, LoanOut, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
-from lifepilot.services import owned_person
-from lifepilot.mcp_tools import mcp_session, mcp_user
+from lifepilot.schemas import ConversationOut, EventPatch, GiftOut, LoanOut, ProjectIn, ProjectOut, ProjectPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
+from lifepilot.services import owned_person, project_create, project_get, project_list, project_update
+from lifepilot.mcp_tools import mcp_session, mcp_user, request_approval
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -18,6 +17,46 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def register_planning_tools(mcp: FastMCP) -> None:
+    @mcp.tool(name="project_create")
+    def project_create_mcp(name: str, description: str = "", status: Literal["active", "paused", "completed", "archived"] = "active") -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            row = project_create(db, db.get(User, owner_id), ProjectIn(name=name, description=description, status=status))
+            return ProjectOut.model_validate(row).model_dump(mode="json")
+
+    @mcp.tool(name="project_search")
+    def project_search_mcp(query: str = "", status: Literal["active", "paused", "completed", "archived"] | None = None) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return [ProjectOut.model_validate(row).model_dump(mode="json") for row in project_list(db, db.get(User, owner_id), query, status)]
+
+    @mcp.tool(name="project_get")
+    def project_get_mcp(project_id: str) -> dict:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return ProjectOut.model_validate(project_get(db, db.get(User, owner_id), project_id)).model_dump(mode="json")
+
+    @mcp.tool(name="project_update")
+    def project_update_mcp(project_id: str, name: str | None = None, description: str | None = None, status: Literal["active", "paused", "completed", "archived"] | None = None) -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            row = project_update(db, db.get(User, owner_id), project_id, ProjectPatch(name=name, description=description, status=status))
+            return ProjectOut.model_validate(row).model_dump(mode="json")
+
+    @mcp.tool(name="project_delete")
+    def project_delete_mcp(project_id: str) -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            row = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == owner_id))
+            if row is None: raise ValueError("Projekt nicht gefunden")
+            return request_approval(db, owner_id, "project_delete", row.id, row.name)
+
+    @mcp.tool(name="approval_search")
+    def approval_search_mcp() -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            rows = db.scalars(select(ApprovalRequest).where(ApprovalRequest.owner_id == owner_id, ApprovalRequest.status == "pending").order_by(ApprovalRequest.created_at)).all()
+            return [{"id": row.id, "operation": row.operation, "resource_id": row.resource_id, "resource_label": row.resource_label, "status": row.status, "created_at": row.created_at.isoformat()} for row in rows]
     @mcp.tool(name="task_update")
     def task_update_mcp(task_id: str, title: str | None = None, description: str | None = None, person_id: str | None = None, due_at: str | None = None, priority: int | None = None) -> dict:
         owner_id = mcp_user("memory:write")
@@ -81,20 +120,25 @@ def register_planning_tools(mcp: FastMCP) -> None:
             return ReminderOut.model_validate(reminder).model_dump(mode="json")
 
     @mcp.tool(name="person_delete")
-    def person_delete_mcp(person_id: str, confirm: bool) -> dict:
-        if not confirm: raise ValueError("Löschen erfordert confirm=true")
+    def person_delete_mcp(person_id: str) -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            person_delete(person_id, db, db.get(User, owner_id))
-            return {"deleted": True, "person_id": person_id}
+            person = db.scalar(select(Person).where(Person.id == person_id, Person.owner_id == owner_id))
+            if person is None: raise ValueError("Person nicht gefunden")
+            return request_approval(db, owner_id, "person_delete", person.id, f"{person.first_name} {person.last_name}".strip())
 
     @mcp.tool(name="relationship_delete")
-    def relationship_delete_mcp(relationship_id: str, confirm: bool) -> dict:
-        if not confirm: raise ValueError("Löschen erfordert confirm=true")
+    def relationship_delete_mcp(relationship_id: str) -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            relationship_delete(relationship_id, db, db.get(User, owner_id))
-            return {"deleted": True, "relationship_id": relationship_id}
+            relationship = db.scalar(select(Relationship).where(Relationship.id == relationship_id, Relationship.owner_id == owner_id))
+            if relationship is None: raise ValueError("Beziehung nicht gefunden")
+            source = db.scalar(select(Person).where(Person.id == relationship.source_person_id, Person.owner_id == owner_id))
+            target = db.scalar(select(Person).where(Person.id == relationship.target_person_id, Person.owner_id == owner_id))
+            source_name = f"{source.first_name} {source.last_name}".strip() if source else "Person"
+            target_name = f"{target.first_name} {target.last_name}".strip() if target else "Person"
+            label = f"{source_name} · {relationship.relationship_type} · {target_name}"
+            return request_approval(db, owner_id, "relationship_delete", relationship.id, label)
 
     @mcp.tool(name="loan_update")
     def loan_update_mcp(loan_id: str, item_name: str | None = None, due_at: str | None = None, condition_note: str | None = None) -> dict:

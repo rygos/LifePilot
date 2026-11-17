@@ -14,6 +14,8 @@ type Event = { id: string; title: string; starts_at: string; ends_at?: string | 
 type Reminder = { id: string; title: string; due_at: string; state: string };
 type CaptureSuggestion = { title: string; content: string; person_name: string | null; occurred_at: string | null };
 type Capture = { id: string; original_text: string; status: "pending" | "ready" | "unavailable" | "failed" | "reviewed"; suggestions: CaptureSuggestion[]; processing_error: string; created_at: string };
+type Project = { id: string; name: string; description: string; status: string };
+type Approval = { id: string; operation: string; resource_id: string; resource_label: string; status: string; created_at: string };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
@@ -29,6 +31,8 @@ export default function Home() {
   const [events, setEvents] = useState<Event[]>([]);
   const [notifications, setNotifications] = useState<Reminder[]>([]);
   const [captures, setCaptures] = useState<Capture[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Record<string, number[]>>({});
   const [captureBusy, setCaptureBusy] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -45,8 +49,8 @@ export default function Home() {
   }
   async function refresh() {
     try {
-      const [p, m, t, c, l, g, e, n, inbox] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications"), request<Capture[]>("/api/captures")]);
-      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n); setCaptures(inbox);
+      const [p, m, t, c, l, g, e, n, inbox, projectRows, approvalRows] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications"), request<Capture[]>("/api/captures"), request<Project[]>("/api/projects"), request<Approval[]>("/api/approvals")]);
+      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n); setCaptures(inbox); setProjects(projectRows); setApprovals(approvalRows);
     } catch (error) { setMessage(String(error)); }
   }
   useEffect(() => { const saved = localStorage.getItem("lifepilot-token"); if (saved) setToken(saved); }, []);
@@ -113,6 +117,20 @@ export default function Home() {
     catch (error) { setMessage(String(error)); }
     finally { setCaptureBusy(false); }
   }
+  async function createProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement);
+    try { await request("/api/projects", { method: "POST", body: JSON.stringify({ name: form.get("name"), description: form.get("description") || "" }) }); formElement.reset(); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function updateProject(event: FormEvent<HTMLFormElement>, projectId: string) {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await request("/api/projects/" + projectId, { method: "PATCH", body: JSON.stringify({ name: form.get("name"), description: form.get("description"), status: form.get("status") }) }); setMessage("Projekt aktualisiert"); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function decideApproval(id: string, decision: "approve" | "reject") {
+    try { await request("/api/approvals/" + id + "/" + decision, { method: "POST" }); setMessage(decision === "approve" ? "Freigabe ausgeführt" : "Freigabe abgelehnt"); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
   async function reviewCapture(item: Capture) {
     const accepted = selectedSuggestions[item.id] ?? item.suggestions.map((_, index) => index);
     try { await request(`/api/captures/${item.id}/review`, { method: "POST", body: JSON.stringify({ accepted_indices: accepted }) }); setMessage(`${accepted.length} Vorschläge als Erinnerungen übernommen`); await refresh(); }
@@ -169,6 +187,10 @@ export default function Home() {
       {message && <p className="notice" role="status">{message}<button className="quiet" onClick={() => setMessage("")}>×</button></p>}
       {notifications.length > 0 && <section className="card panel notification-panel"><div className="panel-head"><div><span className="eyebrow">JETZT FÄLLIG</span><h2>Erinnerungen</h2></div><span className="count">{notifications.length}</span></div>{notifications.map(n => <div className="list-item" key={n.id}><span>{n.title}<small>{new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(n.due_at))}</small></span><button className="quiet" onClick={() => void snoozeReminder(n.id)}>+1 Std.</button><button className="quiet" onClick={() => void finishReminder(n.id)}>Erledigt</button></div>)}</section>}
       <section className="capture card"><div><span className="eyebrow">SCHNELLERFASSUNG</span><h2>Ein Gedanke, gut aufgehoben.</h2></div><form onSubmit={capture}><textarea name="content" placeholder="Schreib einfach los. Ein Gespräch, eine Idee, etwas zum Erinnern …" required /><div className="row"><span className="muted">Dein Original bleibt erhalten.</span><button disabled={captureBusy}>{captureBusy ? "Wird gespeichert …" : <>Speichern <span aria-hidden="true">↗</span></>}</button></div></form></section>
+      <section className="grid domain-grid">
+        <section className="card panel"><div className="panel-head"><div><span className="eyebrow">VORHABEN</span><h2>Projekte</h2></div><span className="count">{projects.length}</span></div><form className="inline-form" onSubmit={createProject}><input name="name" placeholder="Projektname" required /><input name="description" placeholder="Beschreibung (optional)" /><button aria-label="Projekt speichern">+</button></form>{projects.slice(0, 5).map(project => <details className="project-item" key={project.id}><summary className="list-item"><span>{project.name}<small>{project.description || project.status}</small></span><span className="muted">{project.status}</span></summary><form className="event-edit-form" onSubmit={event => void updateProject(event, project.id)}><label>Name<input name="name" required defaultValue={project.name} /></label><label>Beschreibung<input name="description" defaultValue={project.description} /></label><label>Status<select name="status" defaultValue={project.status}><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="completed">Abgeschlossen</option><option value="archived">Archiviert</option></select></label><button>Änderungen speichern</button></form></details>)}</section>
+        <section className="card panel"><div className="panel-head"><div><span className="eyebrow">MCP-AKTIONEN</span><h2>Freigaben</h2></div><span className="count">{approvals.length}</span></div>{approvals.length === 0 ? <p className="empty">Keine ausstehenden kritischen Aktionen.</p> : approvals.map(approval => <div className="list-item" key={approval.id}><span>{({ person_delete: "Person löschen", relationship_delete: "Beziehung löschen", memory_delete: "Erinnerung löschen", project_delete: "Projekt löschen" } as Record<string, string>)[approval.operation] ?? approval.operation}<small>{approval.resource_label || approval.resource_id}</small></span><button onClick={() => void decideApproval(approval.id, "approve")}>Freigeben</button><button className="quiet" onClick={() => void decideApproval(approval.id, "reject")}>Ablehnen</button></div>)}</section>
+      </section>
       <section className="card panel inbox-panel"><div className="panel-head"><div><span className="eyebrow">PRÜFEN & ZUORDNEN</span><h2>Eingang</h2></div><span className="count">{captures.filter(item => item.status !== "reviewed").length}</span></div>{captures.filter(item => item.status !== "reviewed").length === 0 ? <p className="empty">Neue Eingaben und KI-Vorschläge erscheinen hier.</p> : captures.filter(item => item.status !== "reviewed").slice(0, 5).map(item => <article className="inbox-item" key={item.id}><p className="inbox-original">{item.original_text}</p>{item.status === "pending" && <p className="muted">KI-Verarbeitung läuft …</p>}{item.status === "ready" && item.suggestions.map((suggestion, index) => <label className="suggestion" key={`${item.id}-${index}`}><input type="checkbox" checked={(selectedSuggestions[item.id] ?? item.suggestions.map((_, suggestionIndex) => suggestionIndex)).includes(index)} onChange={event => setSelectedSuggestions(current => { const selected = current[item.id] ?? item.suggestions.map((_, suggestionIndex) => suggestionIndex); return { ...current, [item.id]: event.target.checked ? [...selected, index] : selected.filter(value => value !== index) }; })} /><span><strong>{suggestion.title}</strong><small>{suggestion.content}{suggestion.person_name ? ` · Person: ${suggestion.person_name}` : ""}{suggestion.occurred_at ? ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(suggestion.occurred_at))}` : ""}</small></span></label>)}{item.status === "ready" && item.suggestions.length === 0 && <p className="empty">Es wurden keine klaren Fakten vorgeschlagen.</p>}{item.processing_error && <p className="muted">{item.processing_error}</p>}<div className="inbox-actions">{item.status === "ready" && <button onClick={() => void reviewCapture(item)}>Auswahl übernehmen</button>}<button className="quiet" onClick={() => void discardCapture(item)}>Eingabe löschen</button></div></article>)}</section>
       <div className="search card"><span>⌕</span><form onSubmit={search}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Menschen, Erinnerungen und Aufgaben durchsuchen …" /></form><kbd>↵</kbd></div>
       <div className="grid"><section id="tasks" className="card panel"><div className="panel-head"><div><span className="eyebrow">IM BLICK</span><h2>Aufgaben</h2></div><span className="count">{tasks.length}</span></div><form className="task-form" onSubmit={createTask}><label>Aufgabe<input name="title" placeholder="Neue Aufgabe …" required /></label><label>Fällig am<input name="due_at" type="datetime-local" /></label><label>Alle (Tage)<input name="repeat_interval_days" type="number" min="1" max="365" placeholder="Ohne Wiederholung" /></label><label>Wiederholen bis<input name="repeat_until" type="datetime-local" /></label><button>Aufgabe speichern</button></form>{tasks.length ? tasks.map(t => <div className="list-item" key={t.id}><button className="check" onClick={() => void complete(t.id)} aria-label="Aufgabe abschließen" /><span>{t.title}<small>{t.due_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(t.due_at)) : "Ohne Fälligkeit"}{t.repeat_interval_days ? ` · alle ${t.repeat_interval_days} Tage` : ""}</small></span></div>) : <p className="empty">Alles im Blick. Neue Aufgaben kannst du oben ergänzen.</p>}</section>

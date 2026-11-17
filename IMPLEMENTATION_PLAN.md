@@ -35,7 +35,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Nächste Schritte
 
-1. Projekte und explizite Freigaben kritischer MCP-Operationen ergänzen; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
+1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
 2. Embeddings und hybride Suche implementieren, danach Briefings.
 3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
@@ -89,7 +89,11 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Änderungswerkzeuge für Aufgaben, Termine, Gespräche, Erinnerungen, Geschenke und Leihgaben sowie bestätigungspflichtige Personen- und Beziehungs-Löschungen ergänzt.
 - [x] Audit-Ereignisse für MCP-Schreibvorgänge werden innerhalb derselben Datenbanktransaktion gespeichert und benutzerspezifisch über `audit_search` und `GET /api/audit` abgerufen.
 - [x] Migration `0008_audit_events`; offizieller MCP-Client prüft Updates, Audit-Protokoll, Benutzertrennung und Scope-Verweigerung.
-- [ ] Projekte, vollständige CRUD-Abdeckung aller Ressourcen und explizite Freigabe kritischer Operationen stehen noch aus.
+- [x] Projekte mit benutzergebundener Liste, Detailansicht, Suche, Anlage und Bearbeitung in REST, UI und MCP; Projektlöschung über den MCP-Freigabefluss.
+- [x] Kritische MCP-Löschungen für Personen, Beziehungen, Erinnerungen und Projekte legen einen Freigabeantrag an. Ein MCP-Token kann nur anfragen und den Status lesen; ein separates Benutzer-Token bestätigt oder verwirft die Aktion in der Weboberfläche.
+- [x] Freigabeanträge speichern Operation, Ziel-ID, lesbare Zielbezeichnung und Entscheidungsstatus. Doppelte offene Anträge werden zusammengeführt; Entscheidung und Löschung erfolgen gemeinsam in einer Transaktion und werden auditiert. Fremde Anträge und Ressourcen sind per Benutzer-ID abgeschirmt.
+- [x] Migration 0010_projects_and_approvals; 18 Backend-Tests einschließlich offiziellem Streamable-HTTP-MCP-Client bestanden; Next.js-Produktionsbuild bestanden.
+- [ ] Vollständige CRUD-Abdeckung aller Ressourcen sowie End-to-End-, Backup/Restore- und Neustartprüfungen.
 
 ## Optionale KI-Schnellerfassung
 

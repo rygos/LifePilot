@@ -18,6 +18,32 @@ class MCPTokenRequest(Credentials):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class ProjectIn(BaseModel):
+    name: str
+    description: str = ""
+    status: str = Field(default="active", pattern="^(active|paused|completed|archived)$")
+
+class ProjectPatch(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    status: str | None = Field(default=None, pattern="^(active|paused|completed|archived)$")
+
+class ProjectOut(ProjectIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
+class ApprovalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    operation: str
+    resource_id: str
+    resource_label: str
+    status: str
+    created_at: datetime
+    decided_at: datetime | None
 class PersonIn(BaseModel):
     first_name: str
     last_name: str = ""

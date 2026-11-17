@@ -1,0 +1,54 @@
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from lifepilot.db import get_db
+from lifepilot.models import ApprovalRequest, AuditEvent, Memory, Person, Project, Relationship, User
+from lifepilot.schemas import ApprovalOut
+from lifepilot.security import current_user
+
+router = APIRouter(prefix="/api/approvals", tags=["approvals"])
+_RESOURCES = {"person_delete": Person, "relationship_delete": Relationship, "memory_delete": Memory, "project_delete": Project}
+
+
+@router.get("", response_model=list[ApprovalOut])
+def approval_list(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return db.scalars(select(ApprovalRequest).where(ApprovalRequest.owner_id == user.id, ApprovalRequest.status == "pending").order_by(ApprovalRequest.created_at)).all()
+
+
+@router.post("/{approval_id}/reject", response_model=ApprovalOut)
+def approval_reject(approval_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    request = _pending_request(db, approval_id, user)
+    request.status = "rejected"
+    request.decided_at = datetime.now(timezone.utc)
+    db.add(AuditEvent(owner_id=user.id, action="reject", resource_type="approval_requests", resource_id=request.id, source="web"))
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@router.post("/{approval_id}/approve", response_model=ApprovalOut)
+def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    request = _pending_request(db, approval_id, user)
+    model = _RESOURCES[request.operation]
+    resource = db.scalar(select(model).where(model.id == request.resource_id, model.owner_id == user.id))
+    if resource is None:
+        raise HTTPException(status_code=404, detail="Zugehöriger Eintrag wurde nicht gefunden")
+    db.delete(resource)
+    request.status = "executed"
+    request.decided_at = datetime.now(timezone.utc)
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type=model.__tablename__, resource_id=request.resource_id, source="web"))
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def _pending_request(db: Session, approval_id: str, user: User) -> ApprovalRequest:
+    request = db.scalar(select(ApprovalRequest).where(ApprovalRequest.id == approval_id, ApprovalRequest.owner_id == user.id))
+    if request is None:
+        raise HTTPException(status_code=404, detail="Freigabe nicht gefunden")
+    if request.status != "pending":
+        raise HTTPException(status_code=409, detail="Freigabe wurde bereits entschieden")
+    return request
