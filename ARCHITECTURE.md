@@ -14,4 +14,4 @@ Erinnerungen unterscheiden Erfassungszeit (`created_at`) von Ereigniszeit (`occu
 
 ## Betrieb
 
-Compose betreibt Web und API; die Datenbankdatei liegt im persistenten Volume. SQLite erleichtert Einzelbenutzerbetrieb; `DATABASE_URL` erlaubt PostgreSQL für den nächsten Ausbau. Redis und separater Worker sind noch nicht enthalten. Siehe Implementierungsplan für offene Schritte.
+Compose betreibt Web, API, PostgreSQL mit pgvector und den Scheduler-Worker. PostgreSQL liegt in einem persistenten Volume; SQLite bleibt über `DATABASE_URL` für lokale Entwicklung und Tests verfügbar. Das Vektor-Extension-Image ist vorbereitet; semantische Vektorspalten und Embedding-Suche folgen mit der KI-Pipeline. Redis ist noch nicht eingebunden.

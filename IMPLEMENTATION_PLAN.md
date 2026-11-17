@@ -14,7 +14,9 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Erweiterung: 4 Backend-Tests bestanden, Migration `0002_phase1_domains` auf Test- und Compose-Datenbank aktiv, Web-Build und Compose-API-Aufrufe für Gespräche/Leihgaben/Geschenke geprüft.
 - [x] Gespräche mit Teilnehmern und Ereigniszeit, Leihgaben mit Rückgabe und Geschenke mit Anlass/Quelle (REST, UI und Migration).
 - [x] Termine mit Teilnehmern/Quellen, persistente Erinnerungen und unabhängiger Scheduler-Worker.
-- [ ] PostgreSQL/pgvector und Redis; Scheduler nutzt derzeit dieselbe persistente Datenbank.
+- [x] PostgreSQL 16 mit pgvector-Extension-Image, persistentem Compose-Volume, Healthcheck und SQLAlchemy-Treiber ergänzen; Alembic-Migration aktiviert pgvector nur unter PostgreSQL. PostgreSQL- und SQLite-Migrationen wurden erfolgreich ausgeführt.
+- [x] Verbindung aus dem API-Container zum PostgreSQL-Dienst mit Passwortvariable und SQLAlchemy geprüft (`SELECT 1`); vorhandene Installationen mit SQLite-URL laufen weiter auf SQLite.
+- [ ] Redis für die Hintergrundverarbeitung anbinden und den vorhandenen Scheduler/Worker für die nächsten Aufgaben ausbauen.
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
 - [ ] Ruhezeiten, Wiederholungsregeln, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
@@ -32,7 +34,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Nächste Schritte
 
-1. PostgreSQL mit pgvector, Redis und getrenntem Scheduler/Worker ergänzen.
+1. Redis für die Hintergrundverarbeitung ergänzen; PostgreSQL und den getrennten Scheduler/Worker gibt es bereits.
 2. Regeln für Ruhezeiten, Wiederholungen und Ereignisänderungen erweitern.
 3. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
 4. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.

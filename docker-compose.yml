@@ -1,10 +1,25 @@
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lifepilot}
+      POSTGRES_USER: ${POSTGRES_USER:-lifepilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY:?Set SECRET_KEY in .env}}
+    volumes:
+      - lifepilot-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   api:
     build: ./apps/api
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/lifepilot.db}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY}}
       MCP_PORT: "8002"
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
@@ -19,6 +34,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
   web:
     build:
       context: ./apps/web
@@ -37,7 +55,8 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.scheduler"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/lifepilot.db}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY}}
     depends_on:
       api:
         condition: service_healthy
@@ -45,3 +64,4 @@ services:
       - lifepilot-data:/app/data
 volumes:
   lifepilot-data:
+  lifepilot-postgres:
