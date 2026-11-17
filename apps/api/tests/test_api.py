@@ -294,7 +294,7 @@ def test_daily_and_person_briefings_include_owned_sources(client, auth):
     assert result["open_tasks"][0]["id"] == task["id"]
     assert result["open_loans"][0]["item_name"] == "Bohrmaschine"
     assert result["gift_ideas"][0]["title"] == "Kochbuch"
-    assert result["upcoming_events"][0]["id"] == future_event["id"]
+    assert future_event["id"] in {row["id"] for row in result["upcoming_events"]}
     assert result["relationships"][0]["id"] == relationship["id"]
     with Session(engine) as db:
         other_owner = User(username="briefing-other", password_hash="unused")

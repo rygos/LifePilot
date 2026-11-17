@@ -14,7 +14,7 @@ from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
 from lifepilot.security import current_user
 from lifepilot.revisions import record_conversation_revision, record_task_revision
 from lifepilot.services import relationship_create
@@ -211,6 +211,17 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                         db.add(EventParticipant(event_id=event.id, person_id=person.id, owner_id=user.id))
                     db.add(Reminder(owner_id=user.id, title=event.title, due_at=event.starts_at, event_id=event.id))
                     accepted.append(AcceptedMemory(id=event.id, title=event.title, kind=suggestion.kind, resource_id=event.id, resource_type="event"))
+                case "loan":
+                    if person is None:
+                        raise HTTPException(status_code=422, detail="Leihgabe benötigt eine eindeutig zugeordnete Person als Verleiher")
+                    memory = Memory(owner_id=user.id, title=f"Leihgabe: {suggestion.title}", content=row.original_text, person_id=person.id, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                    db.add(memory)
+                    db.flush()
+                    loan = Loan(owner_id=user.id, item_name=suggestion.title, lender_person_id=person.id, borrower_person_id=None, lent_at=suggestion.occurred_at or row.created_at, due_at=suggestion.due_at, condition_note=suggestion.content, source_memory_id=memory.id)
+                    db.add(loan)
+                    db.flush()
+                    memory_rows.append(memory)
+                    accepted.append(AcceptedMemory(id=loan.id, title=loan.item_name, kind=suggestion.kind, resource_id=loan.id, resource_type="loan"))
                 case "project_link":
                     if project is None:
                         raise HTTPException(status_code=422, detail="Projekt muss zuerst eindeutig zugeordnet werden")

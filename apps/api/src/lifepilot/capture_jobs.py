@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from redis import Redis
 from rq import Queue
@@ -9,7 +11,7 @@ from lifepilot.capture_ai import ProviderError, extract_facts
 from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Capture, Person, PersonNameHistory, Project
+from lifepilot.models import Capture, Person, PersonNameHistory, Project, User
 
 CAPTURE_QUEUE_NAME = "lifepilot"
 
@@ -36,8 +38,11 @@ def process_capture_job(capture_id: str, owner_id: str) -> str:
         capture = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == owner_id))
         if capture is None:
             return "missing"
+        owner = db.get(User, owner_id)
+        captured_at = capture.created_at or datetime.now(timezone.utc)
+        captured_at = capture_time_in_timezone(captured_at, owner.timezone_name if owner else "UTC")
         try:
-            suggestions = extract_facts(capture.original_text, capture.created_at)
+            suggestions = extract_facts(capture.original_text, captured_at)
         except ProviderError as error:
             capture.status = "failed"
             capture.processing_error = str(error)
@@ -49,6 +54,12 @@ def process_capture_job(capture_id: str, owner_id: str) -> str:
                 _save_suggestions(capture, suggestions, db)
         db.commit()
         return capture.status
+
+
+def capture_time_in_timezone(captured_at: datetime, timezone_name: str) -> datetime:
+    if captured_at.tzinfo is None:
+        captured_at = captured_at.replace(tzinfo=timezone.utc)
+    return captured_at.astimezone(ZoneInfo(timezone_name))
 
 
 def _save_suggestions(capture: Capture, suggestions: list[CaptureSuggestion], db: Session) -> None:
