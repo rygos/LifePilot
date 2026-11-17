@@ -1,6 +1,6 @@
 # LifePilot
 
-LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Der ausführbare Kern bietet Benutzerkonten, Personen, gerichtete Beziehungen, Erinnerungen/Notizen, Aufgaben, Gespräche, Termine, persistente In-App-Erinnerungen, offene Leihgaben, Geschenkideen, strukturierte Suche, REST und einen authentifizierten MCP-Endpunkt.
+LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Der ausführbare Kern bietet Benutzerkonten, Personen, gerichtete Beziehungen zwischen Kontakten und zum Nutzerprofil, Erinnerungen/Notizen, Aufgaben, Gespräche, Termine, persistente In-App-Erinnerungen, offene Leihgaben, Geschenkideen, strukturierte Suche, REST und einen authentifizierten MCP-Endpunkt.
 
 ## Schnellstart mit Compose
 
@@ -50,9 +50,11 @@ LLM_MODEL=<modellname>
 LLM_TIMEOUT_SECONDS=15
 ```
 
-Danach `docker compose up -d --build api worker` ausführen. Der Endpunkt muss aus dem Worker-Container erreichbar sein. Ein fehlender API-Schlüssel ist für lokale Server erlaubt. Das Modell schlägt strukturierte Änderungen vor; sie werden erst nach Bestätigung über den Eingang oder `memory_review` in die Datenbank übernommen. Mit `memory_review` kann ein MCP-Client einen Vorschlag vor dem Speichern auch korrigiert übergeben. Bei MCP liefert `memory_capture` zunächst die Capture-ID und den Verarbeitungsstatus; anschließend werden Vorschläge geprüft und mit `memory_review` bestätigt.
+Danach `docker compose up -d --build api worker` ausführen. Der Endpunkt muss aus dem Worker-Container erreichbar sein. Ein fehlender API-Schlüssel ist für lokale Server erlaubt. Das Modell schlägt strukturierte Änderungen vor; sie werden erst nach Bestätigung über den Eingang oder `memory_review` in die Datenbank übernommen. Mit `memory_review` kann ein MCP-Client einen Vorschlag vor dem Speichern auch korrigiert übergeben. Der vollständige MCP-Ablauf lautet `memory_capture` → `memory_capture_status` (bis `ready`, Vorschläge prüfen) → `memory_review`; `memory_capture_list` zeigt offene und frühere Erfassungen.
 
 Semantische Suche wird unabhängig konfiguriert. Das Modell muss 768 Dimensionen zurückgeben; OpenAI-kompatible Anbieter erhalten zusätzlich `dimensions: 768`. Ein lokaler Modellserver kann beispielsweise so aussehen:
+
+Änderungen an Aufgaben und Gesprächen werden als benutzergebundene, unveränderliche Revision gespeichert. Die Historie ist über `GET /api/tasks/{id}/history`, `GET /api/conversations/{id}/history` sowie die MCP-Werkzeuge `task_history` und `conversation_history` abrufbar. Die Revisionen enthalten Felder, Beziehungs-IDs, Zeitstempel und den auslösenden Kanal. Capture kann außerdem eine ausdrücklich erwähnte Beziehung zum Nutzerprofil, etwa eine Kollegin, vorschlagen; nach Bestätigung erscheint sie im Personenprofil und im Personenbriefing. Sie lässt sich dort auch manuell ohne KI anlegen; der REST-Endpunkt ist `POST /api/people/{id}/owner-relationships`.
 
 ```dotenv
 EMBEDDING_BASE_URL=http://<modell-host>:1234/v1

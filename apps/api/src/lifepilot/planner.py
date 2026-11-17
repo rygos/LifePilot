@@ -8,6 +8,7 @@ from lifepilot.db import get_db
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.models import Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
+from lifepilot.revisions import history, record_task_revision
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
 from lifepilot.security import current_user
 from lifepilot.services import is_quiet_hours, owned_person
@@ -33,6 +34,8 @@ def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depend
         raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
     task = Task(owner_id=user.id, **data.model_dump())
     db.add(task)
+    db.flush()
+    record_task_revision(db, task, "created", "rest")
     db.commit()
     db.refresh(task)
     enqueue_entity_embedding("task", task.id, user.id)
@@ -47,6 +50,27 @@ def task_list(db: Session = Depends(get_db), user: User = Depends(current_user),
     return list(db.scalars(stmt.order_by(Task.due_at.is_(None), Task.due_at)).all())
 
 
+@router.patch("/api/tasks/{task_id}", response_model=TaskOut)
+def task_update(task_id: str, data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
+    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+    owned_person(db, data.person_id, user)
+    if data.project_id and db.scalar(select(Project.id).where(Project.id == data.project_id, Project.owner_id == user.id)) is None:
+        raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
+    for field, value in data.model_dump().items():
+        setattr(task, field, value)
+    record_task_revision(db, task, "updated", "rest")
+    reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id, Reminder.state == "scheduled"))
+    if reminder is not None and task.due_at is not None:
+        reminder.title = task.title
+        reminder.due_at = task.due_at
+    db.commit()
+    db.refresh(task)
+    enqueue_entity_embedding("task", task.id, user.id)
+    return task
+
+
 @router.patch("/api/tasks/{task_id}/complete", response_model=TaskOut)
 def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
     task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
@@ -55,6 +79,7 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
     if task.status == "done":
         return task
     task.status = "done"
+    record_task_revision(db, task, "updated", "rest")
     next_task: Task | None = None
     reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id, Reminder.state == "scheduled"))
     if reminder is not None:
@@ -72,6 +97,11 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
     if next_task is not None:
         enqueue_entity_embedding("task", next_task.id, user.id)
     return task
+
+
+@router.get("/api/tasks/{task_id}/history")
+def task_history(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return history(db, user.id, "task", task_id)
 
 
 @router.post("/api/events", response_model=EventOut, status_code=201)

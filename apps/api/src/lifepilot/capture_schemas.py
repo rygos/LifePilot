@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 
-CaptureKind = Literal["fact", "conversation", "relationship", "former_name", "life_event", "task", "event", "project_link"]
+CaptureKind = Literal["fact", "conversation", "relationship", "owner_relationship", "former_name", "life_event", "task", "event", "project_link"]
 DatePrecision = Literal["exact", "day", "month", "year", "approximate", "unknown"]
 
 

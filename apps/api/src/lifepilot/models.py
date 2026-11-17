@@ -141,6 +141,18 @@ class Relationship(Base):
     confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class UserPersonRelationship(Base):
+    __tablename__ = "user_person_relationships"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(100))
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -223,6 +235,19 @@ class AuditEvent(Base):
     resource_type: Mapped[str] = mapped_column(String(80))
     resource_id: Mapped[str] = mapped_column(String(120))
     source: Mapped[str] = mapped_column(String(20), default="mcp")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+class ResourceRevision(Base):
+    __tablename__ = "resource_revisions"
+    __table_args__ = (UniqueConstraint("owner_id", "resource_type", "resource_id", "revision"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_type: Mapped[str] = mapped_column(String(40), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(20))
+    source: Mapped[str] = mapped_column(String(20), default="application")
+    snapshot_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 class Capture(Base):

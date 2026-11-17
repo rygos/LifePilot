@@ -6,13 +6,13 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select, or_
+from sqlalchemy import delete, select, or_
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
+from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import owned_person, relationship_create, search
 from lifepilot.planner import router as planner_router
@@ -22,6 +22,7 @@ from lifepilot.approval_routes import router as approval_router
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.search_routes import router as search_router
+from lifepilot.revisions import history, record_conversation_revision
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -114,6 +115,33 @@ def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db),
 def person_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user); db.delete(person); db.commit()
 
+@app.post("/api/people/{person_id}/owner-relationships", response_model=UserPersonRelationshipOut, status_code=201)
+def owner_relationship_add(person_id: str, data: UserPersonRelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    relationship_type = data.relationship_type.strip()
+    if not relationship_type:
+        raise HTTPException(status_code=422, detail="Bitte eine Beziehung angeben")
+    if data.valid_until is None:
+        row = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == user.id, UserPersonRelationship.person_id == person_id, UserPersonRelationship.relationship_type == relationship_type, UserPersonRelationship.valid_until.is_(None)))
+        if row is not None:
+            return row
+    row = UserPersonRelationship(owner_id=user.id, person_id=person_id, relationship_type=relationship_type, valid_from=data.valid_from, valid_until=data.valid_until, confirmed=True)
+    db.add(row)
+    db.flush()
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="user_person_relationships", resource_id=row.id, source="web"))
+    db.commit()
+    db.refresh(row)
+    return row
+
+@app.delete("/api/owner-relationships/{relationship_id}", status_code=204)
+def owner_relationship_delete(relationship_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.id == relationship_id, UserPersonRelationship.owner_id == user.id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Beziehung nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="user_person_relationships", resource_id=row.id, source="web"))
+    db.delete(row)
+    db.commit()
+
 @app.get("/api/relationships")
 def relationship_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None):
     stmt = select(Relationship).where(Relationship.owner_id == user.id)
@@ -171,6 +199,7 @@ def conversation_create(data: ConversationIn, db: Session = Depends(get_db), use
     db.add(conversation); db.flush()
     db.add_all(ConversationParticipant(conversation_id=conversation.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
     db.add_all(ConversationProject(conversation_id=conversation.id, project_id=project_id, owner_id=user.id) for project_id in project_ids)
+    record_conversation_revision(db, conversation, "created", "rest")
     db.commit(); db.refresh(conversation)
     enqueue_entity_embedding("conversation", conversation.id, user.id)
     return ConversationOut(id=conversation.id, title=conversation.title, original_note=conversation.original_note, summary=conversation.summary, location=conversation.location, occurred_at=conversation.occurred_at, created_at=conversation.created_at, participant_ids=participant_ids, project_ids=project_ids)
@@ -182,6 +211,40 @@ def conversation_list(db: Session = Depends(get_db), user: User = Depends(curren
     if q: stmt = stmt.where(or_(Conversation.title.ilike(f"%{q}%"), Conversation.original_note.ilike(f"%{q}%"), Conversation.summary.ilike(f"%{q}%")))
     rows = db.scalars(stmt.order_by(Conversation.occurred_at.desc().nullslast(), Conversation.created_at.desc())).all()
     return [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all()), project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all())) for row in rows]
+
+@app.get("/api/conversations/{conversation_id}/history")
+def conversation_history(conversation_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return history(db, user.id, "conversation", conversation_id)
+
+@app.patch("/api/conversations/{conversation_id}", response_model=ConversationOut)
+def conversation_update(conversation_id: str, data: ConversationPatch, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.owner_id == user.id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Gespräch nicht gefunden")
+    changes = data.model_dump(exclude_unset=True)
+    participant_ids = changes.pop("participant_ids", None)
+    project_ids = changes.pop("project_ids", None)
+    if participant_ids is not None:
+        ids = set(participant_ids)
+        valid = set(db.scalars(select(Person.id).where(Person.owner_id == user.id, Person.id.in_(ids))).all()) if ids else set()
+        if ids != valid:
+            raise HTTPException(status_code=404, detail="Mindestens eine beteiligte Person wurde nicht gefunden")
+        db.execute(delete(ConversationParticipant).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id))
+        db.add_all(ConversationParticipant(conversation_id=row.id, person_id=person_id, owner_id=user.id) for person_id in ids)
+    if project_ids is not None:
+        ids = set(project_ids)
+        valid = set(db.scalars(select(Project.id).where(Project.owner_id == user.id, Project.id.in_(ids))).all()) if ids else set()
+        if ids != valid:
+            raise HTTPException(status_code=404, detail="Mindestens ein verknüpftes Projekt wurde nicht gefunden")
+        db.execute(delete(ConversationProject).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id))
+        db.add_all(ConversationProject(conversation_id=row.id, project_id=project_id, owner_id=user.id) for project_id in ids)
+    for key, value in changes.items():
+        setattr(row, key, value)
+    record_conversation_revision(db, row, "updated", "rest")
+    db.commit()
+    db.refresh(row)
+    enqueue_entity_embedding("conversation", row.id, user.id)
+    return ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all()), project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all()))
 
 @app.post("/api/loans", response_model=LoanOut, status_code=201)
 def loan_create(data: LoanIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -248,10 +311,12 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     loans = db.scalars(select(Loan).where(Loan.owner_id == user.id, Loan.returned_at.is_(None), or_(Loan.lender_person_id == person_id, Loan.borrower_person_id == person_id)).order_by(Loan.due_at.is_(None), Loan.due_at)).all()
     gifts = db.scalars(select(Gift).where(Gift.owner_id == user.id, Gift.person_id == person_id, Gift.status.in_(["idea", "planned"])).order_by(Gift.created_at.desc()).limit(10)).all()
     life_events = db.scalars(select(PersonLifeEvent).where(PersonLifeEvent.owner_id == user.id, PersonLifeEvent.person_id == person_id, PersonLifeEvent.confirmed.is_(True)).order_by(PersonLifeEvent.occurred_at.desc().nullslast()).limit(20)).all()
+    owner_relationships = db.scalars(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == user.id, UserPersonRelationship.person_id == person_id, UserPersonRelationship.confirmed.is_(True)).order_by(UserPersonRelationship.valid_from.desc().nullslast())).all()
     now = datetime.now(timezone.utc)
     upcoming_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id, Event.starts_at >= now).order_by(Event.starts_at).limit(10)).all()
     return {
         "person": PersonOut.model_validate(person).model_dump(mode="json"),
+        "owner_relationships": [{"id": row.id, "relationship_type": row.relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "source_capture_id": row.source_capture_id, "confirmed": row.confirmed} for row in owner_relationships],
         "former_names": [{"id": row.id, "name": row.name, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in db.scalars(select(PersonNameHistory).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.person_id == person_id, PersonNameHistory.confirmed.is_(True)).order_by(PersonNameHistory.valid_until.desc().nullslast())).all()],
         "life_events": [{"id": row.id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at, "date_precision": row.date_precision, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in life_events],
         "memories": [MemoryOut.model_validate(memory).model_dump(mode="json") for memory in memories],

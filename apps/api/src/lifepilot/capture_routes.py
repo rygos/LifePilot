@@ -14,8 +14,9 @@ from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
 from lifepilot.security import current_user
+from lifepilot.revisions import record_conversation_revision, record_task_revision
 from lifepilot.services import relationship_create
 
 router = APIRouter(prefix="/api/captures", tags=["Eingang"])
@@ -150,6 +151,7 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                         db.add(ConversationParticipant(conversation_id=conversation.id, person_id=person.id, owner_id=user.id))
                     if project:
                         db.add(ConversationProject(conversation_id=conversation.id, project_id=project.id, owner_id=user.id))
+                    record_conversation_revision(db, conversation, "created", "capture")
                     accepted.append(AcceptedMemory(id=conversation.id, title=conversation.title, kind=suggestion.kind, resource_id=conversation.id, resource_type="conversation"))
                 case "former_name":
                     if person is None:
@@ -182,10 +184,20 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                     relationship = relationship_create(db, user, person.id, related.id, suggestion.relationship_type or "Beziehung zu", memory.id, True, suggestion.inverse_relationship_type, commit=False)
                     memory_rows.append(memory)
                     accepted.append(AcceptedMemory(id=relationship.id, title=suggestion.title, kind=suggestion.kind, resource_id=relationship.id, resource_type="relationship"))
+                case "owner_relationship":
+                    if person is None or not suggestion.relationship_type:
+                        raise HTTPException(status_code=422, detail="Beziehung zum Nutzer benötigt eine Person und einen Beziehungstyp")
+                    owner_relation = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == user.id, UserPersonRelationship.person_id == person.id, UserPersonRelationship.relationship_type == suggestion.relationship_type, UserPersonRelationship.valid_until.is_(None)))
+                    if owner_relation is None:
+                        owner_relation = UserPersonRelationship(owner_id=user.id, person_id=person.id, relationship_type=suggestion.relationship_type, valid_from=suggestion.occurred_at, source_capture_id=row.id, confirmed=True)
+                        db.add(owner_relation)
+                        db.flush()
+                    accepted.append(AcceptedMemory(id=owner_relation.id, title=suggestion.title, kind=suggestion.kind, resource_id=owner_relation.id, resource_type="owner_relationship"))
                 case "task":
                     task = Task(owner_id=user.id, title=suggestion.title, description=suggestion.content, person_id=person.id if person else None, project_id=project.id if project else None, due_at=suggestion.due_at)
                     db.add(task)
                     db.flush()
+                    record_task_revision(db, task, "created", "capture")
                     if task.due_at:
                         db.add(Reminder(owner_id=user.id, title=task.title, due_at=task.due_at, task_id=task.id))
                     accepted.append(AcceptedMemory(id=task.id, title=task.title, kind=suggestion.kind, resource_id=task.id, resource_type="task"))

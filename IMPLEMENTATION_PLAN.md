@@ -26,7 +26,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 
 ## Initiales Datenmodell
 
-Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repository-Zugriff wird auf diesen Besitzer eingeschränkt. `Person` enthält Identitäts- und Kontaktdaten. `Relationship` verbindet gerichtete Quell- und Zielpersonen, speichert Typ, Gültigkeitszeitraum, Quelle und Bestätigungsstatus. `Memory` speichert Originaltext, optionale Zusammenfassung, Ereigniszeit und Erfassungszeit getrennt. `Task` enthält Status, Priorität, Fälligkeit und optional eine Person. Benutzerpasswörter werden ausschließlich als Argon2-Hash persistiert. Fremdschlüssel, eindeutige IDs und Datenbanktransaktionen schützen die Integrität. Spätere Fakten- und Graphobjekte können dieselben Quellen- und Zeitfelder verwenden.
+Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repository-Zugriff wird auf diesen Besitzer eingeschränkt. `Person` enthält Identitäts- und Kontaktdaten. `Relationship` verbindet gerichtete Quell- und Zielpersonen; `UserPersonRelationship` verbindet eine Person mit dem angemeldeten Nutzer, jeweils mit Gültigkeitszeitraum, Quelle und Bestätigungsstatus. `Memory` speichert Originaltext, optionale Zusammenfassung, Ereigniszeit und Erfassungszeit getrennt. `Task` enthält Status, Priorität, Fälligkeit und optional eine Person. `ResourceRevision` hält benutzergebundene, unveränderliche JSON-Snapshots für Aufgaben und Gespräche mit Revision, Aktion, Quelle und Erstellungszeit fest. Benutzerpasswörter werden ausschließlich als Argon2-Hash persistiert. Fremdschlüssel, eindeutige IDs und Datenbanktransaktionen schützen die Integrität.
 
 ## Architekturentscheidungen
 
@@ -149,9 +149,15 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Person-/Projektauflösung erfolgt nur innerhalb des Besitzers. Ein eindeutiger Name oder Projektcode wird verknüpft; mehrdeutige Treffer werden als Kandidaten angezeigt und müssen gewählt werden.
 - [x] Review übernimmt vorgeschlagene Gespräche samt Originaltext, Teilnehmern und Projekten sowie bestätigte Namenshistorie, Biografie, gerichtete Beziehungen, Aufgaben mit Fälligkeitserinnerung, Termine und projektbezogene Fakten transaktional.
 - [x] Webeingang kann Beziehungen mit zweiter Person auflösen; MCP bietet `memory_capture` und `memory_review` mit Zuordnungen und Bestätigungen.
+- [x] MCP kann Capture-Status und Vorschläge benutzergebunden mit `memory_capture_status` abrufen und Erfassungen mit `memory_capture_list` auflisten.
+- [x] Aufgaben und Gespräche haben eine unveränderliche Versionshistorie; Erstellung und Änderungen über REST, MCP und geprüfte KI-Erfassung werden revisionsgebunden gespeichert. REST-History-Endpunkte und MCP-History-Tools sind besitzergeprüft.
+- [x] Beziehungen einer Person zum LifePilot-Nutzer sind ein eigenes, quellgebundenes Graphobjekt; Capture kann explizite Rollen wie „meine Arbeitskollegin“ vorschlagen und nach Review speichern. Personenbriefing, Suche und MCP-Personenkontext zeigen die Rolle.
+- [x] Nutzerbeziehungen lassen sich im Personenprofil auch ohne KI manuell anlegen und entfernen; REST prüft den Datenbesitzer, verhindert aktive Duplikate und protokolliert Änderungen.
 - [x] Eine ausdrücklich bestätigte, unbekannte Person kann direkt im Capture-Review angelegt und mit Gespräch oder Beziehung verknüpft werden; ohne Auswahl/Bestätigung entsteht kein Personendatensatz.
 - [x] MCP `memory_review` akzeptiert strukturierte, vom Nutzer korrigierte Vorschläge; Änderungen erfolgen weiter gegen die unveränderte Originalerfassung.
 - [x] Migration `0013_capture_knowledge` ergänzt Namenshistorie, Lebensereignisse, Projektverknüpfungen und Projektzuordnung von Aufgaben; SQLite-Migration bis Head erfolgreich.
 - [x] Tests für Gespräch/Projekt/Person, keine erfundene Aufgabe, frühere Namen mit Quelle, ungenaues Hochzeitsdatum, projektbezogene Aufgabe/Erinnerung, inverse Beziehung/Quelle, relative Zeit und MCP-Erfassung.
+- [x] Migration `0015_user_person_relationships`; Integrationstest prüft explizite Nutzerbeziehung, Quellverknüpfung, Profilkontext und Suche.
+- [x] REST- und Frontendtest für manuelle Nutzerbeziehungen einschließlich Anzeige im Profil, Datumsvalidierung, Duplikatverhalten und fremden Benutzerzugriff.
+- [x] Migration `0014_resource_revisions`, REST-Updatepfade für Aufgaben/Gespräche, MCP-History-Werkzeuge sowie owner-scoped Historienabruf; Integrationstest deckt Snapshotinhalt, fortlaufende Revision und Fremdbenutzerzugriff ab.
 - [ ] Mit einem tatsächlich konfigurierten LM Studio/Ollama-Modell die natürliche Sprache der Kristin-Abeler-Beispielnotiz ausführen und Extraktionsqualität manuell bewerten; Modellendpunkt ist in dieser Laufzeit nicht konfiguriert.
-- [ ] Noch offen: Aufgaben-/Gesprächskorrekturen als versionierte Änderungshistorie; Original-Capture bleibt erhalten, aber nicht jeder Fachdatensatz hat bereits vollständige Revisionseinträge.

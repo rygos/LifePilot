@@ -113,6 +113,27 @@ class RelationshipIn(BaseModel):
     source_memory_id: str | None = None
     confirmed: bool = True
 
+class UserPersonRelationshipIn(BaseModel):
+    relationship_type: str = Field(min_length=1, max_length=100)
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_period(self) -> Self:
+        if self.valid_from and self.valid_until and as_utc(self.valid_until) < as_utc(self.valid_from):
+            raise ValueError("Das Ende der Beziehung darf nicht vor ihrem Beginn liegen")
+        return self
+
+class UserPersonRelationshipOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    person_id: str
+    relationship_type: str
+    valid_from: datetime | None
+    valid_until: datetime | None
+    source_capture_id: str | None
+    confirmed: bool
+
 class ProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     username: str
@@ -178,6 +199,22 @@ class ConversationIn(BaseModel):
     occurred_at: datetime | None = None
     location: str = ""
     summary: str = ""
+
+class ConversationPatch(BaseModel):
+    title: str | None = None
+    original_note: str | None = None
+    summary: str | None = None
+    location: str | None = None
+    occurred_at: datetime | None = None
+    participant_ids: list[str] | None = None
+    project_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def required_fields_cannot_be_cleared(self) -> Self:
+        required_fields = {"title", "original_note", "summary", "location"}
+        if any(getattr(self, field) is None for field in required_fields & self.model_fields_set):
+            raise ValueError("Pflichtfelder eines Gesprächs dürfen nicht geleert werden")
+        return self
 
 class ConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

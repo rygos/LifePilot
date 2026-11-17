@@ -2,6 +2,8 @@ import os
 import pytest
 from lifepilot.db import engine
 from lifepilot.models import Gift, Loan, Memory, Person, Task, User
+from lifepilot.security import hash_password
+from sqlalchemy.orm import Session
 
 def test_auth_people_memories_tasks_search_and_persistence(client, auth):
     assert client.get("/api/people").status_code == 401
@@ -46,6 +48,30 @@ def test_relationships_and_profile_fields_are_readable_and_editable(client, auth
     assert client.delete(f"/api/relationships/{relation.json()['id']}", headers=auth).status_code == 204
     assert client.get(f"/api/relationships?person_id={lea['id']}", headers=auth).json() == []
 
+def test_owner_relationships_can_be_managed_without_ai_and_stay_private(client, auth):
+    person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "OwnerRelation"}).json()
+    created = client.post(f"/api/people/{person['id']}/owner-relationships", headers=auth, json={"relationship_type": "Arbeitskollegin", "valid_from": "2026-01-01T00:00:00Z"})
+    assert created.status_code == 201
+    assert created.json()["relationship_type"] == "Arbeitskollegin"
+    briefing = client.get(f"/api/briefing/person/{person['id']}", headers=auth)
+    assert briefing.json()["owner_relationships"][0]["id"] == created.json()["id"]
+    assert briefing.json()["owner_relationships"][0]["valid_from"].startswith("2026-01-01")
+    duplicate = client.post(f"/api/people/{person['id']}/owner-relationships", headers=auth, json={"relationship_type": "Arbeitskollegin"})
+    assert duplicate.status_code == 201 and duplicate.json()["id"] == created.json()["id"]
+    assert duplicate.json()["valid_from"].startswith("2026-01-01")
+    assert client.post(f"/api/people/{person['id']}/owner-relationships", headers=auth, json={"relationship_type": "Kollegin", "valid_from": "2026-02-01T00:00:00Z", "valid_until": "2026-01-01T00:00:00Z"}).status_code == 422
+
+    other_user = User(username="owner-relationship-other", password_hash=hash_password("relationship-password"))
+    with Session(engine) as db:
+        db.add(other_user)
+        db.commit()
+    other_token = client.post("/api/auth/login", json={"username": "owner-relationship-other", "password": "relationship-password"}).json()["access_token"]
+    other_auth = {"Authorization": f"Bearer {other_token}"}
+    assert client.post(f"/api/people/{person['id']}/owner-relationships", headers=other_auth, json={"relationship_type": "Kollegin"}).status_code == 404
+    assert client.delete(f"/api/owner-relationships/{created.json()['id']}", headers=other_auth).status_code == 404
+    assert client.delete(f"/api/owner-relationships/{created.json()['id']}", headers=auth).status_code == 204
+    assert client.get(f"/api/briefing/person/{person['id']}", headers=auth).json()["owner_relationships"] == []
+
 def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()
     lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
@@ -66,6 +92,29 @@ def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     assert client.get(f"/api/gifts?person_id={martin['id']}", headers=auth).json()[0]["id"] == gift.json()["id"]
     assert client.get("/api/search?q=Bohrmaschine", headers=auth).json()["loans"][0]["id"] == loan.json()["id"]
     assert client.get("/api/conversations", headers={"Authorization": "Bearer invalid"}).status_code == 401
+
+def test_task_and_conversation_edits_keep_owner_scoped_revision_history(client, auth):
+    person = client.post("/api/people", headers=auth, json={"first_name": "Maya", "last_name": "Revisionstest"}).json()
+    task = client.post("/api/tasks", headers=auth, json={"title": "Projekt 6012", "person_id": person["id"]}).json()
+    changed_task = client.patch(f"/api/tasks/{task['id']}", headers=auth, json={"title": "OAS Umzüge", "person_id": person["id"], "priority": 1})
+    assert changed_task.status_code == 200 and changed_task.json()["title"] == "OAS Umzüge"
+    task_history = client.get(f"/api/tasks/{task['id']}/history", headers=auth)
+    assert [row["revision"] for row in task_history.json()] == [2, 1]
+    assert task_history.json()[0]["snapshot"]["fields"]["title"] == "OAS Umzüge"
+
+    conversation = client.post("/api/conversations", headers=auth, json={"title": "Erstnotiz", "original_note": "Wir sprachen über das Projekt.", "participant_ids": [person["id"]]}).json()
+    changed_conversation = client.patch(f"/api/conversations/{conversation['id']}", headers=auth, json={"title": "Projektbesprechung", "summary": "Projekt 6012"})
+    assert changed_conversation.status_code == 200 and changed_conversation.json()["title"] == "Projektbesprechung"
+    conversation_history = client.get(f"/api/conversations/{conversation['id']}/history", headers=auth)
+    assert [row["revision"] for row in conversation_history.json()] == [2, 1]
+    assert conversation_history.json()[0]["snapshot"]["fields"]["participant_ids"] == [person["id"]]
+
+    other_user = User(username="revision-private-user", password_hash=hash_password("revision-password"))
+    with Session(engine) as db:
+        db.add(other_user)
+        db.commit()
+    other_token = client.post("/api/auth/login", json={"username": "revision-private-user", "password": "revision-password"}).json()["access_token"]
+    assert client.get(f"/api/tasks/{task['id']}/history", headers={"Authorization": f"Bearer {other_token}"}).status_code == 404
 
 def test_events_scheduler_notifications_and_reminder_actions(client, auth):
     from datetime import datetime, timedelta, timezone

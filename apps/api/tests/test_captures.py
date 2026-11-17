@@ -11,7 +11,7 @@ from lifepilot.capture_jobs import process_capture_job
 from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Memory, MemoryProject, Person, PersonNameHistory, Project, Relationship, Reminder, Task, User
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Memory, MemoryProject, Person, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
 from lifepilot.security import create_token
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -153,6 +153,29 @@ def test_review_links_verified_conversation_to_person_and_project_without_invent
         assert db.scalar(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == conversation.id)) == person["id"]
         assert db.scalar(select(ConversationProject.project_id).where(ConversationProject.conversation_id == conversation.id)) == project["id"]
         assert db.scalar(select(Task.id).where(Task.owner_id == owner_id, Task.title == "Gespräch über Projekt 6012")) is None
+
+
+def test_capture_saves_explicit_relationship_to_owner_and_surfaces_it_in_context(client, auth) -> None:
+    person = client.post("/api/people", headers=auth, json={"first_name": "Maya", "last_name": "Kollegin"}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    suggestion = CaptureSuggestion(kind="owner_relationship", title="Maya ist meine Arbeitskollegin", content="Maya arbeitet mit mir.", person_name="Maya Kollegin", relationship_type="Arbeitskollegin", confirmation_required=True)
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Meine Arbeitskollegin Maya Kollegin hat mit mir gesprochen."}).json()
+    with Session(engine) as db:
+        stored_capture = db.get(Capture, capture["id"])
+        assert stored_capture is not None
+        stored_capture.status = "ready"
+        stored_capture.suggestions_json = json.dumps([suggestion.model_dump(mode="json")], ensure_ascii=False)
+        db.commit()
+
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": person["id"]}, "confirmations": [0]})
+    assert accepted.status_code == 201 and accepted.json()[0]["resource_type"] == "owner_relationship"
+    context = client.get(f"/api/briefing/person/{person['id']}", headers=auth).json()
+    assert context["owner_relationships"][0]["relationship_type"] == "Arbeitskollegin"
+    assert context["owner_relationships"][0]["source_capture_id"] == capture["id"]
+    assert person["id"] in {item["id"] for item in client.get("/api/search?q=Arbeitskollegin", headers=auth).json()["people"]}
+    with Session(engine) as db:
+        edge = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == person["id"]))
+        assert edge is not None and edge.source_capture_id == capture["id"]
 
 
 def test_review_stores_former_name_with_original_source_after_explicit_confirmation(client, auth, monkeypatch) -> None:

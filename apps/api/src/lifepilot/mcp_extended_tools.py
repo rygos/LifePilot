@@ -3,7 +3,7 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import select
 
-from lifepilot.capture_routes import capture_create, capture_review
+from lifepilot.capture_routes import capture_create, capture_output, capture_review
 from lifepilot.capture_schemas import CaptureIn, CaptureReviewIn, CaptureSuggestion
 from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.embedding_jobs import enqueue_memory_embedding
@@ -23,6 +23,7 @@ from lifepilot.models import (
     Reminder,
     Task,
     User,
+    UserPersonRelationship,
 )
 from lifepilot.schemas import MemoryOut, ProfileUpdate, ReminderOut
 from lifepilot.services import owned_person
@@ -47,6 +48,24 @@ def register_extended_tools(mcp: FastMCP) -> None:
         with mcp_session(owner_id) as db:
             result = capture_create(CaptureIn(original_text=original_text), db, db.get(User, owner_id))
             return result.model_dump(mode="json")
+
+    @mcp.tool(name="memory_capture_status")
+    def memory_capture_status_mcp(capture_id: str) -> dict:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            row = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == owner_id))
+            if row is None:
+                raise ValueError("Eingabe nicht gefunden")
+            return capture_output(row).model_dump(mode="json")
+
+    @mcp.tool(name="memory_capture_list")
+    def memory_capture_list_mcp(limit: int = 20) -> list[dict]:
+        if limit < 1 or limit > 100:
+            raise ValueError("Die Anzahl muss zwischen 1 und 100 liegen")
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            rows = db.scalars(select(Capture).where(Capture.owner_id == owner_id).order_by(Capture.created_at.desc()).limit(limit)).all()
+            return [capture_output(row).model_dump(mode="json") for row in rows]
 
     @mcp.tool(name="profile_get")
     def profile_get_mcp() -> dict:
@@ -298,6 +317,14 @@ def register_extended_tools(mcp: FastMCP) -> None:
                 if relation.source_person_id == relation.target_person_id:
                     delete_entity_embedding(db, "relationship", relation.id, owner_id)
                     db.delete(relation)
+
+            owner_relations = db.scalars(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == source.id)).all()
+            for relation in owner_relations:
+                duplicate = db.scalar(select(UserPersonRelationship.id).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == target.id, UserPersonRelationship.relationship_type == relation.relationship_type, UserPersonRelationship.valid_until.is_(None)))
+                if duplicate is not None:
+                    db.delete(relation)
+                else:
+                    relation.person_id = target.id
 
             db.add(AuditEvent(owner_id=owner_id, action="merge", resource_type="people", resource_id=source.id, source="mcp"))
             source_name = f"{source.first_name} {source.last_name}".strip()

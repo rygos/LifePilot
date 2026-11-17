@@ -11,7 +11,7 @@ from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.embeddings import EmbeddingProviderError, embed_text, embedding_provider_configured
 from lifepilot.entity_embedding_jobs import EntityMatches, semantic_entity_matches
 from lifepilot.entity_types import EntityType
-from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User
+from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User, UserPersonRelationship
 from lifepilot.schemas import ProjectIn, ProjectPatch, RelationshipOut
 
 class SearchInfo(TypedDict):
@@ -50,7 +50,8 @@ def owned_person(db: Session, person_id: str | None, owner: User):
 def search(db: Session, owner: User, query: str) -> SearchResults:
     term = f"%{query.strip()}%"
     alias_person_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == owner.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(term))
-    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.address.ilike(term), Person.website.ilike(term), Person.job_title.ilike(term), Person.organization.ilike(term), Person.notes.ilike(term), Person.id.in_(alias_person_ids)))).all()
+    owner_relation_ids = select(UserPersonRelationship.person_id).where(UserPersonRelationship.owner_id == owner.id, UserPersonRelationship.confirmed.is_(True), UserPersonRelationship.relationship_type.ilike(term))
+    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.address.ilike(term), Person.website.ilike(term), Person.job_title.ilike(term), Person.organization.ilike(term), Person.notes.ilike(term), Person.id.in_(alias_person_ids), Person.id.in_(owner_relation_ids)))).all()
     project_ids = select(Project.id).where(Project.owner_id == owner.id, or_(Project.name.ilike(term), Project.description.ilike(term)))
     memory_ids = select(MemoryProject.memory_id).where(MemoryProject.owner_id == owner.id, MemoryProject.project_id.in_(project_ids))
     lexical_memories = list(db.scalars(select(Memory).where(Memory.owner_id == owner.id, or_(Memory.title.ilike(term), Memory.content.ilike(term), Memory.id.in_(memory_ids))).order_by(Memory.created_at.desc())).all())

@@ -11,6 +11,7 @@ from lifepilot.planner import event_update, reminder_create, reminder_update
 from lifepilot.schemas import ConversationOut, EventPatch, GiftOut, LoanOut, ProjectIn, ProjectOut, ProjectPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
 from lifepilot.services import owned_person, project_create, project_get, project_list, project_update
 from lifepilot.mcp_tools import mcp_session, mcp_user, request_approval
+from lifepilot.revisions import history, record_conversation_revision, record_task_revision
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -69,6 +70,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
             candidate = TaskIn(title=title or row.title, description=description if description is not None else row.description, person_id=person_id if person_id is not None else row.person_id, project_id=project_id if project_id is not None else row.project_id, due_at=_parse_datetime(due_at) if due_at is not None else row.due_at, priority=priority if priority is not None else row.priority, repeat_interval_days=row.repeat_interval_days, repeat_until=row.repeat_until)
             for field in ("title", "description", "person_id", "project_id", "due_at", "priority", "repeat_interval_days", "repeat_until"):
                 setattr(row, field, getattr(candidate, field))
+            record_task_revision(db, row, "updated", "mcp")
             db.commit(); db.refresh(row)
             enqueue_entity_embedding("task", row.id, owner_id)
             return TaskOut.model_validate(row).model_dump(mode="json")
@@ -90,6 +92,18 @@ def register_planning_tools(mcp: FastMCP) -> None:
             project_ids = list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == owner_id)).all())
             return ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=participants, project_ids=project_ids).model_dump(mode="json")
 
+    @mcp.tool(name="task_history")
+    def task_history_mcp(task_id: str) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return history(db, owner_id, "task", task_id)
+
+    @mcp.tool(name="conversation_history")
+    def conversation_history_mcp(conversation_id: str) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return history(db, owner_id, "conversation", conversation_id)
+
     @mcp.tool(name="conversation_update")
     def conversation_update_mcp(conversation_id: str, title: str | None = None, original_note: str | None = None, summary: str | None = None, location: str | None = None, occurred_at: str | None = None, participant_ids: list[str] | None = None, project_ids: list[str] | None = None) -> dict:
         owner_id = mcp_user("memory:write")
@@ -110,6 +124,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
                 if ids != valid: raise ValueError("Mindestens ein verknüpftes Projekt wurde nicht gefunden")
                 db.execute(delete(ConversationProject).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == owner_id))
                 db.add_all(ConversationProject(conversation_id=row.id, project_id=project_id, owner_id=owner_id) for project_id in ids)
+            record_conversation_revision(db, row, "updated", "mcp")
             db.commit(); db.refresh(row)
             enqueue_entity_embedding("conversation", row.id, owner_id)
             participants = list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == owner_id)).all())

@@ -74,6 +74,11 @@ test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async (
   await expect(page.locator(".person-profile")).toContainText(`${childName} ist Tochter von`);
   await expect(page.locator(".person-profile")).toContainText(`${parentName} ist Vater von`);
 
+  await page.getByRole("button", { name: new RegExp(parentName) }).click();
+  await page.locator(".owner-relationship-form input[name=relationship_type]").fill("Arbeitskollegin");
+  await page.locator(".owner-relationship-form").getByRole("button", { name: "Beziehung speichern" }).click();
+  await expect(page.locator(".person-profile")).toContainText(`Du kennst ${parentName} als Arbeitskollegin`);
+
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
   await page.context().setOffline(true);
   await page.reload();
