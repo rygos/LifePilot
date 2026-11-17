@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 
 from lifepilot.db import engine
 from lifepilot.main import mcp
-from lifepilot.models import Person, User
+from lifepilot.models import Capture, Person, User
 from lifepilot.security import create_token, resolve_bearer_scopes
 
 
 def test_mcp_tools_are_registered() -> None:
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "memory_get", "memory_update", "memory_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "task_create", "task_search", "task_update", "task_complete", "event_create", "event_update", "upcoming_events", "reminder_create", "reminder_update", "loan_create", "loan_search", "loan_return", "loan_update", "gift_create", "gift_search", "gift_update", "person_context", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
+    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_delete", "task_create", "task_search", "task_update", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
 
 
 def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
@@ -27,6 +27,7 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
     readonly_token = readonly.json()["access_token"]
     assert resolve_bearer_scopes(readonly_token) == ["memory:read"]
     assert client.get("/api/approvals", headers={"Authorization": f"Bearer {token}"}).status_code == 403
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
     with Session(engine) as db:
         other = User(username="mcp-private-user", password_hash="unused")
         db.add(other); db.flush()
@@ -34,8 +35,14 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
         private_person = Person(owner_id=other.id, first_name="Geheim")
         db.add(private_person); db.commit()
         foreign_person_id = private_person.id
+        ready_capture = Capture(owner_id=owner_id, original_text="Geprüfte KI-Vorschläge")
+        ready_capture.status = "ready"
+        ready_capture.suggestions_json = json.dumps([{"title": "Geprüfte Notiz", "content": "Nur nach Bestätigung", "person_name": None, "occurred_at": None}])
+        db.add(ready_capture); db.commit()
+        ready_capture_id = ready_capture.id
 
     pending_approval: dict[str, str] = {}
+    resource_approvals: list[str] = []
     deleted_person: dict[str, str] = {}
 
     async def connect_and_check() -> None:
@@ -64,8 +71,21 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         assert not project_search.isError and project_id in str(project_search.content)
                         project_get = await session.call_tool("project_get", {"project_id": project_id})
                         assert not project_get.isError and "Nur für den Benutzer" in str(project_get.content)
+                        profile = await session.call_tool("profile_update", {"nickname": "MCP-Profil"})
+                        assert not profile.isError and "MCP-Profil" in str(profile.content)
+                        note = await session.call_tool("note_create", {"title": "MCP Notiz", "content": "Notizinhalt", "person_id": person_id})
+                        note_id = json.loads(note.content[0].text)["id"]
+                        edited_note = await session.call_tool("note_update", {"note_id": note_id, "content": "Geänderter Notizinhalt"})
+                        assert not edited_note.isError and "Geänderter Notizinhalt" in str(edited_note.content)
+                        found_note = await session.call_tool("note_search", {"query": "Geänderter Notizinhalt"})
+                        assert not found_note.isError and note_id in str(found_note.content)
+                        reviewed = await session.call_tool("memory_review", {"capture_id": ready_capture_id, "accepted_indices": [0]})
+                        assert not reviewed.isError and "Geprüfte Notiz" in str(reviewed.content)
                         relation = await session.call_tool("relationship_create", {"source_person_id": person_id, "target_person_id": child_id, "relationship_type": "Vater von"})
                         assert not relation.isError and "Tochter von" in str(relation.content)
+                        relation_id = json.loads(relation.content[0].text)["id"]
+                        updated_relation = await session.call_tool("relationship_update", {"relationship_id": relation_id, "relationship_type": "Elternteil von", "inverse_relationship_type": "Kind von"})
+                        assert not updated_relation.isError and "Elternteil von" in str(updated_relation.content)
                         context = await session.call_tool("person_context", {"person_id": person_id})
                         assert not context.isError and "MCP-Kind" in str(context.content)
                         forbidden = await session.call_tool("person_get", {"person_id": foreign_person_id})
@@ -78,6 +98,8 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         event_id = json.loads(event_result.content[0].text)["id"]
                         updated_event = await session.call_tool("event_update", {"event_id": event_id, "location": "Vereinsheim"})
                         assert not updated_event.isError and "Vereinsheim" in str(updated_event.content)
+                        found_events = await session.call_tool("event_search", {"from_at": "2026-11-01T00:00:00Z", "to_at": "2027-01-01T00:00:00Z"})
+                        assert not found_events.isError and event_id in str(found_events.content)
                         reminder_result = await session.call_tool("reminder_create", {"due_at": "2026-12-01T12:00:00Z", "event_id": event_id})
                         reminder_id = json.loads(reminder_result.content[0].text)["id"]
                         muted = await session.call_tool("reminder_update", {"reminder_id": reminder_id, "state": "muted"})
@@ -86,6 +108,10 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         conversation_id = json.loads(conversation_result.content[0].text)["id"]
                         changed_conversation = await session.call_tool("conversation_update", {"conversation_id": conversation_id, "summary": "Zusammenfassung"})
                         assert not changed_conversation.isError and "Zusammenfassung" in str(changed_conversation.content)
+                        loan_result = await session.call_tool("loan_create", {"item_name": "MCP Bohrmaschine", "borrower_person_id": person_id})
+                        loan_id = json.loads(loan_result.content[0].text)["id"]
+                        gift_result = await session.call_tool("gift_create", {"person_id": person_id, "title": "MCP Buch"})
+                        gift_id = json.loads(gift_result.content[0].text)["id"]
                         audit = await session.call_tool("audit_search", {"limit": 100})
                         audit_rows = audit.structuredContent["result"]
                         assert not audit.isError and any(row["resource_type"] == "tasks" and row["action"] == "update" for row in audit_rows)
@@ -96,6 +122,31 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         assert json.loads(duplicate.content[0].text)["approval_id"] == pending_approval["id"]
                         approval_rows = await session.call_tool("approval_search", {})
                         assert not approval_rows.isError and pending_approval["id"] in str(approval_rows.content)
+                        for tool_name, resource_key, resource_id in (
+                            ("note_delete", "note_id", note_id),
+                            ("conversation_delete", "conversation_id", conversation_id),
+                            ("task_delete", "task_id", task_id),
+                            ("event_delete", "event_id", event_id),
+                            ("reminder_delete", "reminder_id", reminder_id),
+                            ("loan_delete", "loan_id", loan_id),
+                            ("gift_delete", "gift_id", gift_id),
+                            ("project_delete", "project_id", project_id),
+                        ):
+                            requested_delete = await session.call_tool(tool_name, {resource_key: resource_id})
+                            assert not requested_delete.isError, tool_name
+                            resource_approvals.append(json.loads(requested_delete.content[0].text)["approval_id"])
+                        listed_reminders = await session.call_tool("reminder_search", {"state": "muted"})
+                        assert not listed_reminders.isError and reminder_id in str(listed_reminders.content)
+                        merge_source = await session.call_tool("person_create_tool", {"first_name": "Zusammenführen"})
+                        merge_source_id = json.loads(merge_source.content[0].text)["id"]
+                        merge_note = await session.call_tool("note_create", {"title": "Wird übernommen", "content": "Erinnerung bleibt", "person_id": merge_source_id})
+                        merge_note_id = json.loads(merge_note.content[0].text)["id"]
+                        not_confirmed = await session.call_tool("person_merge", {"source_person_id": merge_source_id, "target_person_id": person_id})
+                        assert not_confirmed.isError
+                        merged = await session.call_tool("person_merge", {"source_person_id": merge_source_id, "target_person_id": person_id, "confirm": True})
+                        assert not merged.isError and person_id in str(merged.content)
+                        merged_note = await session.call_tool("note_get", {"note_id": merge_note_id})
+                        assert not merged_note.isError and person_id in str(merged_note.content)
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost:8002", headers={"Authorization": f"Bearer {readonly_token}"}) as http:
                 async with streamable_http_client("http://localhost:8002/mcp", http_client=http) as (read, write, _):
                     async with ClientSession(read, write) as session:
@@ -116,3 +167,6 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
     assert client.get(f"/api/people/{deleted_person['id']}", headers=auth).status_code == 404
     audit_rows = client.get("/api/audit", headers=auth).json()
     assert any(row["action"] == "delete" and row["resource_type"] == "people" and row["resource_id"] == deleted_person["id"] and row["source"] == "web" for row in audit_rows)
+    for approval_id in resource_approvals:
+        decided_resource = client.post(f"/api/approvals/{approval_id}/approve", headers=auth)
+        assert decided_resource.status_code == 200 and decided_resource.json()["status"] == "executed"

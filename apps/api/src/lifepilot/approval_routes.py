@@ -6,12 +6,23 @@ from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
 from lifepilot.entity_embedding_jobs import delete_entity_embedding
-from lifepilot.models import ApprovalRequest, AuditEvent, Memory, Person, Project, Relationship, User
+from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, Event, Gift, Loan, Memory, Person, Project, Relationship, Reminder, Task, User
 from lifepilot.schemas import ApprovalOut
 from lifepilot.security import current_user
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
-_RESOURCES = {"person_delete": Person, "relationship_delete": Relationship, "memory_delete": Memory, "project_delete": Project}
+_RESOURCES = {
+    "person_delete": Person,
+    "relationship_delete": Relationship,
+    "memory_delete": Memory,
+    "project_delete": Project,
+    "conversation_delete": Conversation,
+    "task_delete": Task,
+    "event_delete": Event,
+    "reminder_delete": Reminder,
+    "loan_delete": Loan,
+    "gift_delete": Gift,
+}
 
 
 @router.get("", response_model=list[ApprovalOut])
@@ -41,6 +52,10 @@ def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User
         delete_entity_embedding(db, "relationship", request.resource_id, user.id)
     if request.operation == "project_delete":
         delete_entity_embedding(db, "project", request.resource_id, user.id)
+    if request.operation == "conversation_delete":
+        delete_entity_embedding(db, "conversation", request.resource_id, user.id)
+    if request.operation == "task_delete":
+        delete_entity_embedding(db, "task", request.resource_id, user.id)
     db.delete(resource)
     request.status = "executed"
     request.decided_at = datetime.now(timezone.utc)

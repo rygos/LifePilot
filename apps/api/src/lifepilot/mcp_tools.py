@@ -50,16 +50,16 @@ try:
         db.refresh(row)
         return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
     @mcp.tool()
-    def person_create_tool(first_name: str, last_name: str = "", birthday: str | None = None, notes: str = "") -> dict:
+    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, birthday=birthday, notes=notes); db.add(row); db.commit(); db.refresh(row)
+            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, notes=notes); db.add(row); db.commit(); db.refresh(row)
             return PersonOut.model_validate(row).model_dump(mode="json")
     @mcp.tool()
     def person_search_tool(query: str) -> list[dict]:
         owner_id = mcp_user(); term = f"%{query}%"
         with mcp_session(owner_id) as db:
-            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.notes.ilike(term)))).all()
+            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.notes.ilike(term)))).all()
             return [PersonOut.model_validate(r).model_dump(mode="json") for r in rows]
     @mcp.tool()
     def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
@@ -256,4 +256,6 @@ except ImportError:
 
 if "mcp" in globals():
     from lifepilot.mcp_planning_tools import register_planning_tools
+    from lifepilot.mcp_extended_tools import register_extended_tools
     register_planning_tools(mcp)
+    register_extended_tools(mcp)
