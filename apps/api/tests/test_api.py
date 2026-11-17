@@ -93,6 +93,36 @@ def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     assert client.get("/api/search?q=Bohrmaschine", headers=auth).json()["loans"][0]["id"] == loan.json()["id"]
     assert client.get("/api/conversations", headers={"Authorization": "Bearer invalid"}).status_code == 401
 
+def test_event_multiple_participants_and_web_deletes_are_owner_scoped(client, auth):
+    first = client.post("/api/people", headers=auth, json={"first_name": "GUI", "last_name": "Teilnehmer Eins"}).json()
+    second = client.post("/api/people", headers=auth, json={"first_name": "GUI", "last_name": "Teilnehmer Zwei"}).json()
+    event = client.post("/api/events", headers=auth, json={"title": "Termin mit mehreren", "starts_at": "2027-04-01T12:00:00Z", "participant_ids": [first["id"], second["id"]]})
+    assert event.status_code == 201
+    assert set(event.json()["participant_ids"]) == {first["id"], second["id"]}
+
+    other_username = "gui-delete-private"
+    other_user = User(username=other_username, password_hash=hash_password("gui-delete-password"))
+    with Session(engine) as db:
+        db.add(other_user)
+        db.commit()
+    other_token = client.post("/api/auth/login", json={"username": other_username, "password": "gui-delete-password"}).json()["access_token"]
+    other_auth = {"Authorization": f"Bearer {other_token}"}
+    assert client.delete(f"/api/events/{event.json()['id']}", headers=other_auth).status_code == 404
+    assert client.delete(f"/api/events/{event.json()['id']}", headers=auth).status_code == 204
+    assert all(row["id"] != event.json()["id"] for row in client.get("/api/events", headers=auth).json())
+
+    memory = client.post("/api/memories", headers=auth, json={"title": "Zu löschen", "content": "Erinnerung", "person_id": first["id"]}).json()
+    conversation = client.post("/api/conversations", headers=auth, json={"title": "Zu löschen", "original_note": "Gespräch", "participant_ids": [first["id"]]}).json()
+    task = client.post("/api/tasks", headers=auth, json={"title": "Zu löschen"}).json()
+    loan = client.post("/api/loans", headers=auth, json={"item_name": "Zu löschen", "borrower_person_id": first["id"]}).json()
+    gift = client.post("/api/gifts", headers=auth, json={"person_id": first["id"], "title": "Zu löschen"}).json()
+    for resource, resource_id in (("memories", memory["id"]), ("conversations", conversation["id"]), ("tasks", task["id"]), ("loans", loan["id"]), ("gifts", gift["id"])):
+        assert client.delete(f"/api/{resource}/{resource_id}", headers=other_auth).status_code == 404
+        assert client.delete(f"/api/{resource}/{resource_id}", headers=auth).status_code == 204
+
+    assert client.delete(f"/api/people/{first['id']}", headers=other_auth).status_code == 404
+    assert client.delete(f"/api/people/{first['id']}", headers=auth).status_code == 204
+
 def test_task_and_conversation_edits_keep_owner_scoped_revision_history(client, auth):
     person = client.post("/api/people", headers=auth, json={"first_name": "Maya", "last_name": "Revisionstest"}).json()
     task = client.post("/api/tasks", headers=auth, json={"title": "Projekt 6012", "person_id": person["id"]}).json()

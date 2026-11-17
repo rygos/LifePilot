@@ -171,3 +171,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Die Erfassungszeit wird für relative Angaben in die Zeitzone des Besitzers konvertiert; „heute“ bleibt auch rund um Mitternacht korrekt.
 - [x] Echtes Qwen-3.5-9B-Capture zum Beispieltext über REST und den offiziellen MCP-Client: jeweils Status `ready`, 10 Familienkanten, kein Selbstbezug, keine doppelten Fakten, ein Gespräch am 18.11.2026 und eine Leihgabe ohne Rückgabefrist. UI-Review zeigt Zuordnungs- und Neuanlagekontrollen für beide Beziehungspartner sowie die Leihgabe.
 - [x] Review-Integration prüft persistierte Beziehungskanten und Quellverknüpfungen, Gespräch statt Kalendereintrag sowie offenen Leihdatensatz; Backend-Suite: 40 bestanden, 2 übersprungen. Next.js-Produktionsbuild erfolgreich.
+
+## GUI-Aufteilung nach MonicaHQs Kontaktansicht
+
+- [x] Navigation in eigenständige Routen für Übersicht, Menschen, Einzelprofil, Gedächtnis, Planung, Gegenstände, Eingang und Einstellungen aufgeteilt; LifePilot-Palette beibehalten.
+- [x] Menschenliste um lokale Suche ergänzt; Profile haben eine eigene Route und eine bestätigte Löschaktion.
+- [x] UI-Löschaktionen mit Bestätigung für Erinnerungen, Gespräche, Aufgaben, Termine, Leihgaben und Geschenkideen ergänzt; API-Löschpfade prüfen den Datenbesitzer und protokollieren die Aktion.
+- [x] Terminformulare unterstützen mehrere Teilnehmende beim Erstellen und Bearbeiten.
+- [x] Next.js-Produktionsbuild und API-Tests (41 bestanden, 2 übersprungen) erfolgreich.
+- [x] Playwright-E2E gegen die laufenden Container: Navigation, Capture-Eingang, Personenbeziehungen, Mehrfachteilnehmende am Termin, bestätigtes Löschen und Offline-Shell bestanden (1 Test).
+- [x] Draft-Guard und `git diff --check` erfolgreich. Manueller CUA-Visual-QA war in der Sitzung nicht verfügbar.

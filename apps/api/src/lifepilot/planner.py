@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
+from lifepilot.models import AuditEvent, Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
 from lifepilot.revisions import history, record_task_revision
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
@@ -75,6 +75,16 @@ def task_update(task_id: str, data: TaskIn, db: Session = Depends(get_db), user:
     db.refresh(task)
     enqueue_entity_embedding("task", task.id, user.id)
     return task
+
+
+@router.delete("/api/tasks/{task_id}", status_code=204)
+def task_delete(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)) -> None:
+    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="tasks", resource_id=task.id, source="web"))
+    db.delete(task)
+    db.commit()
 
 
 @router.patch("/api/tasks/{task_id}/complete", response_model=TaskOut)
@@ -184,6 +194,16 @@ def event_update(event_id: str, data: EventPatch, db: Session = Depends(get_db),
     db.commit()
     db.refresh(event)
     return event_output(db, event, user.id)
+
+
+@router.delete("/api/events/{event_id}", status_code=204)
+def event_delete(event_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)) -> None:
+    event = db.scalar(select(Event).where(Event.id == event_id, Event.owner_id == user.id))
+    if event is None:
+        raise HTTPException(status_code=404, detail="Termin nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="events", resource_id=event.id, source="web"))
+    db.delete(event)
+    db.commit()
 
 
 @router.post("/api/reminders", response_model=ReminderOut, status_code=201)

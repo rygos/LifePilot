@@ -113,7 +113,9 @@ def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db),
 
 @app.delete("/api/people/{person_id}", status_code=204)
 def person_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    person = owned_person(db, person_id, user); db.delete(person); db.commit()
+    person = owned_person(db, person_id, user)
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people", resource_id=person.id, source="web"))
+    db.delete(person); db.commit()
 
 @app.post("/api/people/{person_id}/owner-relationships", response_model=UserPersonRelationshipOut, status_code=201)
 def owner_relationship_add(person_id: str, data: UserPersonRelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -162,6 +164,13 @@ def relationship_delete(relationship_id: str, db: Session = Depends(get_db), use
     row = db.scalar(select(Relationship).where(Relationship.id == relationship_id, Relationship.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Beziehung nicht gefunden")
     delete_entity_embedding(db, "relationship", row.id, user.id)
+    db.delete(row); db.commit()
+
+@app.delete("/api/memories/{memory_id}", status_code=204)
+def memory_delete(memory_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == user.id))
+    if row is None: raise HTTPException(status_code=404, detail="Erinnerung nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="memories", resource_id=row.id, source="web"))
     db.delete(row); db.commit()
 
 @app.post("/api/memories", response_model=MemoryOut, status_code=201)
@@ -246,6 +255,14 @@ def conversation_update(conversation_id: str, data: ConversationPatch, db: Sessi
     enqueue_entity_embedding("conversation", row.id, user.id)
     return ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all()), project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all()))
 
+@app.delete("/api/conversations/{conversation_id}", status_code=204)
+def conversation_delete(conversation_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.owner_id == user.id))
+    if row is None: raise HTTPException(status_code=404, detail="Gespräch nicht gefunden")
+    delete_entity_embedding(db, "conversation", row.id, user.id)
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="conversations", resource_id=row.id, source="web"))
+    db.delete(row); db.commit()
+
 @app.post("/api/loans", response_model=LoanOut, status_code=201)
 def loan_create(data: LoanIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owned_person(db, data.lender_person_id, user); owned_person(db, data.borrower_person_id, user)
@@ -268,6 +285,13 @@ def loan_return(loan_id: str, db: Session = Depends(get_db), user: User = Depend
     if loan.returned_at is None: loan.returned_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(loan); return loan
 
+@app.delete("/api/loans/{loan_id}", status_code=204)
+def loan_delete(loan_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Loan).where(Loan.id == loan_id, Loan.owner_id == user.id))
+    if row is None: raise HTTPException(status_code=404, detail="Leihgabe nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="loans", resource_id=row.id, source="web"))
+    db.delete(row); db.commit()
+
 @app.post("/api/gifts", response_model=GiftOut, status_code=201)
 def gift_create(data: GiftIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owned_person(db, data.person_id, user)
@@ -279,6 +303,13 @@ def gift_list(db: Session = Depends(get_db), user: User = Depends(current_user),
     stmt = select(Gift).where(Gift.owner_id == user.id)
     if person_id: stmt = stmt.where(Gift.person_id == person_id)
     return db.scalars(stmt.order_by(Gift.created_at.desc())).all()
+
+@app.delete("/api/gifts/{gift_id}", status_code=204)
+def gift_delete(gift_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Gift).where(Gift.id == gift_id, Gift.owner_id == user.id))
+    if row is None: raise HTTPException(status_code=404, detail="Geschenkidee nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="gifts", resource_id=row.id, source="web"))
+    db.delete(row); db.commit()
 
 @app.get("/api/briefing/daily")
 def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):

@@ -17,7 +17,7 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel("Benutzername").fill(username);
   await page.getByLabel("Passwort").fill(password);
   await page.getByRole("button", { name: "Anmelden" }).click();
-  await expect(page.locator("#people")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Übersicht" })).toBeVisible();
 }
 
 async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
@@ -58,8 +58,10 @@ test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async (
 
   await page.locator(".capture textarea[name=content]").fill(captureText);
   await page.locator(".capture").getByRole("button", { name: "Speichern" }).click();
+  await page.goto("/inbox");
   await expect(page.locator(".inbox-panel")).toContainText(captureText);
 
+  await page.goto("/people");
   await page.locator("#people input[name=first_name]").fill(parentName);
   await page.getByRole("button", { name: "Person hinzufügen" }).click();
   await expect(page.getByRole("button", { name: new RegExp(parentName) })).toBeVisible();
@@ -68,20 +70,37 @@ test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async (
   await expect(page.getByRole("button", { name: new RegExp(childName) })).toBeVisible();
 
   await page.getByRole("button", { name: new RegExp(childName) }).click();
+  await expect(page).toHaveURL(/\/people\/.+/);
   await page.locator(".relationship-form select[name=target_id]").selectOption({ label: parentName });
   await page.locator(".relationship-form select[name=relationship_type]").selectOption({ label: "Diese Person ist Tochter von / andere ist Vater" });
   await page.getByRole("button", { name: "Beziehung hinzufügen" }).click();
   await expect(page.locator(".person-profile")).toContainText(`${childName} ist Tochter von`);
   await expect(page.locator(".person-profile")).toContainText(`${parentName} ist Vater von`);
 
+  await page.goto("/people");
   await page.getByRole("button", { name: new RegExp(parentName) }).click();
+  await expect(page).toHaveURL(/\/people\/.+/);
   await page.locator(".owner-relationship-form input[name=relationship_type]").fill("Arbeitskollegin");
   await page.locator(".owner-relationship-form").getByRole("button", { name: "Beziehung speichern" }).click();
   await expect(page.locator(".person-profile")).toContainText(`Du kennst ${parentName} als Arbeitskollegin`);
 
+  await page.goto("/planning");
+  const eventForm = page.locator(".events-panel .event-form");
+  await eventForm.locator("input[name=title]").fill(`E2E-Termin-${suffix}`);
+  await eventForm.locator("input[name=starts_at]").fill("2027-04-01T14:30");
+  await eventForm.locator("select[name=participant_ids]").selectOption([{ label: parentName }, { label: childName }]);
+  await eventForm.getByRole("button", { name: "Termin speichern" }).click();
+  const eventRow = page.locator(".event-item").filter({ hasText: `E2E-Termin-${suffix}` });
+  await expect(eventRow).toContainText(parentName);
+  await expect(eventRow).toContainText(childName);
+  page.once("dialog", dialog => dialog.accept());
+  await eventRow.getByRole("button", { name: "Löschen" }).click();
+  await expect(eventRow).toHaveCount(0);
+
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
+  await page.goto("/");
   await page.context().setOffline(true);
   await page.reload();
-  await expect(page.locator("#people")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Übersicht" })).toBeVisible();
   await page.context().setOffline(false);
 });
