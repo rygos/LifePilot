@@ -72,6 +72,12 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] SQLite-Backup mit der laufenden Compose-Datenbank erstellt, in ein neues Staging-Verzeichnis restauriert und Tabelleninhalte abgeglichen.
 - [ ] PostgreSQL-Backup/Restore in eine neue Staging-Datenbank validieren, sobald der Compose-Stack PostgreSQL als Primärdatenbank verwendet.
 
+## Datenschutz und Compose-Neustarts
+
+- [x] REST-Integrationstests prüfen Besitzertrennung für Sammlungen, hybride Suche, Profil-/Projektbriefings sowie fremde IDs bei Lese- und Schreibzugriffen.
+- [x] Compose-Dienste (PostgreSQL, Redis, Worker, Scheduler, API und Web) neu gestartet; API-/Web-Erreichbarkeit und stabiler Fingerprint der SQLite-Benutzer-, Personen- und Beziehungsdaten danach geprüft.
+- [ ] PostgreSQL-Staging-Restore und dauerhaft automatisierter Compose-/Browser-E2E-Lauf bleiben offen.
+
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
 - [x] Browser-Smoke-Test für Menschen, Profile und Beziehungsansicht durchgeführt; vollständige Light/Dark- und Mobil/Desktop-Matrix bleibt ausstehend.
