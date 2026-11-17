@@ -1,0 +1,175 @@
+from contextlib import asynccontextmanager
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select, or_
+from sqlalchemy.orm import Session
+from lifepilot.config import settings
+from lifepilot.db import Base, engine, get_db
+from lifepilot.models import Memory, Person, Relationship, Task, User
+from lifepilot.schemas import Credentials, MemoryIn, MemoryOut, PersonIn, PersonOut, RelationshipIn, TaskIn, TaskOut, Token
+from lifepilot.security import create_token, current_user, hash_password, verify_password
+from lifepilot.security import resolve_bearer_user
+from lifepilot.services import owned_person, relationship_create, search
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    with Session(engine) as db:
+        if db.scalar(select(User).where(User.username == settings.life_pilot_bootstrap_username)) is None:
+            db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password))); db.commit()
+    yield
+
+app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
+
+@app.get("/health")
+def health(): return {"status": "ok"}
+
+@app.post("/api/auth/token", response_model=Token)
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.username == form.username))
+    if user is None or not verify_password(form.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    return {"access_token": create_token(user.id)}
+
+@app.post("/api/auth/login", response_model=Token)
+def login_json(data: Credentials, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.username == data.username))
+    if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    return {"access_token": create_token(user.id)}
+
+@app.get("/api/auth/me")
+def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username}
+
+@app.get("/api/people", response_model=list[PersonOut])
+def people_list(db: Session = Depends(get_db), user: User = Depends(current_user), q: str = ""):
+    stmt = select(Person).where(Person.owner_id == user.id)
+    if q: stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%")))
+    return db.scalars(stmt.order_by(Person.first_name, Person.last_name)).all()
+
+@app.post("/api/people", response_model=PersonOut, status_code=201)
+def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = Person(owner_id=user.id, **data.model_dump()); db.add(person); db.commit(); db.refresh(person); return person
+
+@app.get("/api/people/{person_id}", response_model=PersonOut)
+def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return owned_person(db, person_id, user)
+
+@app.patch("/api/people/{person_id}", response_model=PersonOut)
+def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    for key, value in data.model_dump().items(): setattr(person, key, value)
+    db.commit(); db.refresh(person); return person
+
+@app.delete("/api/people/{person_id}", status_code=204)
+def person_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user); db.delete(person); db.commit()
+
+@app.get("/api/relationships")
+def relationship_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None):
+    stmt = select(Relationship).where(Relationship.owner_id == user.id)
+    if person_id: stmt = stmt.where(or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))
+    return db.scalars(stmt).all()
+
+@app.post("/api/relationships", status_code=201)
+def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return relationship_create(db, user, data.source_person_id, data.target_person_id, data.relationship_type, data.source_memory_id, data.confirmed)
+
+@app.post("/api/memories", response_model=MemoryOut, status_code=201)
+def memory_create(data: MemoryIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, data.person_id, user)
+    memory = Memory(owner_id=user.id, **data.model_dump()); db.add(memory); db.commit(); db.refresh(memory); return memory
+
+@app.get("/api/memories", response_model=list[MemoryOut])
+def memory_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None, q: str = ""):
+    stmt = select(Memory).where(Memory.owner_id == user.id)
+    if person_id: stmt = stmt.where(Memory.person_id == person_id)
+    if q: stmt = stmt.where(or_(Memory.title.ilike(f"%{q}%"), Memory.content.ilike(f"%{q}%")))
+    return db.scalars(stmt.order_by(Memory.created_at.desc())).all()
+
+@app.post("/api/tasks", response_model=TaskOut, status_code=201)
+def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, data.person_id, user)
+    task = Task(owner_id=user.id, **data.model_dump()); db.add(task); db.commit(); db.refresh(task); return task
+
+@app.get("/api/tasks", response_model=list[TaskOut])
+def task_list(db: Session = Depends(get_db), user: User = Depends(current_user), status: str | None = None):
+    stmt = select(Task).where(Task.owner_id == user.id)
+    if status: stmt = stmt.where(Task.status == status)
+    return db.scalars(stmt.order_by(Task.due_at.is_(None), Task.due_at)).all()
+
+@app.patch("/api/tasks/{task_id}/complete", response_model=TaskOut)
+def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    if task is None: raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+    task.status = "done"; db.commit(); db.refresh(task); return task
+
+@app.get("/api/search")
+def memory_search(q: str = Query(min_length=1), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return search(db, user, q)
+
+@app.get("/api/briefing/daily")
+def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.status == "open").order_by(Task.due_at).limit(10)).all()
+    return {"open_tasks": [TaskOut.model_validate(t).model_dump(mode="json") for t in tasks]}
+
+@app.get("/api/briefing/person/{person_id}")
+def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    memories = db.scalars(select(Memory).where(Memory.owner_id == user.id, Memory.person_id == person_id).order_by(Memory.created_at.desc()).limit(10)).all()
+    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.person_id == person_id, Task.status == "open")).all()
+    links = db.scalars(select(Relationship).where(Relationship.owner_id == user.id, or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))).all()
+    return {"person": PersonOut.model_validate(person), "memories": [MemoryOut.model_validate(m) for m in memories], "open_tasks": [TaskOut.model_validate(t) for t in tasks], "relationships": links}
+
+try:
+    from mcp.server.fastmcp import FastMCP
+    from mcp.server.auth.provider import AccessToken, TokenVerifier
+    from mcp.server.auth.middleware.auth_context import get_access_token
+    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+    class LifePilotTokenVerifier(TokenVerifier):
+        async def verify_token(self, token: str) -> AccessToken | None:
+            with Session(engine) as db:
+                try:
+                    user = resolve_bearer_user(token, db)
+                    return AccessToken(token=token, client_id=user.id, scopes=["memory:read", "memory:write"], resource="http://localhost/mcp/")
+                except HTTPException:
+                    return None
+    mcp = FastMCP("LifePilot", token_verifier=LifePilotTokenVerifier(), auth=AuthSettings(issuer_url="http://localhost", resource_server_url="http://localhost/mcp/", required_scopes=["memory:read"], client_registration_options=ClientRegistrationOptions(enabled=False), revocation_options=RevocationOptions(enabled=False), validate_token_resource=False), stateless_http=True, json_response=True, streamable_http_path="/mcp")
+    def mcp_user():
+        token = get_access_token()
+        if token is None: raise ValueError("Bearer token erforderlich")
+        return token.client_id
+    @mcp.tool()
+    def person_create_tool(first_name: str, last_name: str = "", birthday: str | None = None, notes: str = "") -> dict:
+        owner_id = mcp_user()
+        with Session(engine) as db:
+            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, birthday=birthday, notes=notes); db.add(row); db.commit(); db.refresh(row)
+            return PersonOut.model_validate(row).model_dump(mode="json")
+    @mcp.tool()
+    def person_search_tool(query: str) -> list[dict]:
+        owner_id = mcp_user(); term = f"%{query}%"
+        with Session(engine) as db:
+            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.notes.ilike(term)))).all()
+            return [PersonOut.model_validate(r).model_dump(mode="json") for r in rows]
+    @mcp.tool()
+    def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
+        owner_id = mcp_user()
+        with Session(engine) as db:
+            user = db.get(User, owner_id); owned_person(db, person_id, user)
+            row = Memory(owner_id=owner_id, person_id=person_id, title=title, content=content); db.add(row); db.commit(); db.refresh(row)
+            return MemoryOut.model_validate(row).model_dump(mode="json")
+    @mcp.tool()
+    def memory_search_tool(query: str) -> dict:
+        owner_id = mcp_user()
+        with Session(engine) as db:
+            user = db.get(User, owner_id); result = search(db, user, query)
+            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]]}
+except ImportError:
+    pass
+
+def run_mcp():
+    import uvicorn
+    if "mcp" not in globals(): raise RuntimeError("MCP SDK is unavailable")
+    uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=settings.mcp_port)
