@@ -14,4 +14,4 @@ Erinnerungen unterscheiden Erfassungszeit (`created_at`) von Ereigniszeit (`occu
 
 ## Betrieb
 
-Compose betreibt Web, API, PostgreSQL mit pgvector und den Scheduler-Worker. PostgreSQL liegt in einem persistenten Volume; SQLite bleibt über `DATABASE_URL` für lokale Entwicklung und Tests verfügbar. Das Vektor-Extension-Image ist vorbereitet; semantische Vektorspalten und Embedding-Suche folgen mit der KI-Pipeline. Redis ist noch nicht eingebunden.
+Compose betreibt Web, API, PostgreSQL mit pgvector, Redis und den Scheduler-Worker. PostgreSQL liegt in einem persistenten Volume; SQLite bleibt über `DATABASE_URL` für lokale Entwicklung und Tests verfügbar. Der Worker nutzt eine zeitlich begrenzte Redis-Sperre, damit bei mehreren Worker-Instanzen nur ein Scheduler-Zyklus gleichzeitig läuft. Erinnerungen und deren Zustand bleiben in PostgreSQL; fällt Redis aus, protokolliert der Worker den Fehler und versucht es beim nächsten Zyklus erneut. Redis speichert in dieser Stufe keine Nutzdaten und ist lokal nur an Loopback gebunden. Das Vektor-Extension-Image ist vorbereitet; semantische Vektorspalten und Embedding-Suche folgen mit der KI-Pipeline.

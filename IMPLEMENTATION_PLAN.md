@@ -16,7 +16,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Termine mit Teilnehmern/Quellen, persistente Erinnerungen und unabhängiger Scheduler-Worker.
 - [x] PostgreSQL 16 mit pgvector-Extension-Image, persistentem Compose-Volume, Healthcheck und SQLAlchemy-Treiber ergänzen; Alembic-Migration aktiviert pgvector nur unter PostgreSQL. PostgreSQL- und SQLite-Migrationen wurden erfolgreich ausgeführt.
 - [x] Verbindung aus dem API-Container zum PostgreSQL-Dienst mit Passwortvariable und SQLAlchemy geprüft (`SELECT 1`); vorhandene Installationen mit SQLite-URL laufen weiter auf SQLite.
-- [ ] Redis für die Hintergrundverarbeitung anbinden und den vorhandenen Scheduler/Worker für die nächsten Aufgaben ausbauen.
+- [x] Redis 7 per Compose mit Healthcheck ergänzen; Scheduler-Zyklen über eine zeitlich begrenzte Sperre koordinieren, während Erinnerungsdaten in PostgreSQL bleiben.
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
 - [ ] Ruhezeiten, Wiederholungsregeln, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
@@ -34,7 +34,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Nächste Schritte
 
-1. Redis für die Hintergrundverarbeitung ergänzen; PostgreSQL und den getrennten Scheduler/Worker gibt es bereits.
+1. Redis-Jobqueue für KI-Verarbeitung und weitere Hintergrundaufgaben ergänzen; Redis koordiniert derzeit nur Scheduler-Zyklen.
 2. Regeln für Ruhezeiten, Wiederholungen und Ereignisänderungen erweitern.
 3. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
 4. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
@@ -45,6 +45,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
 - [x] Browser-Smoke-Test für Menschen, Profile und Beziehungsansicht durchgeführt; vollständige Light/Dark- und Mobil/Desktop-Matrix bleibt ausstehend.
+- [x] Redis-Sperre verhindert parallele Scheduler-Zyklen; Redis-Integrationstest mit zwei Clients und ein Worker-Container-Roundtrip gegen eine temporäre SQLite-Datenbank geprüft.
 
 ## Personenprofile und Beziehungen
 

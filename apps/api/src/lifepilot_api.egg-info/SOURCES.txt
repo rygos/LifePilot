@@ -4,6 +4,7 @@ src/lifepilot/config.py
 src/lifepilot/db.py
 src/lifepilot/main.py
 src/lifepilot/models.py
+src/lifepilot/scheduler.py
 src/lifepilot/schemas.py
 src/lifepilot/security.py
 src/lifepilot/services.py
@@ -13,3 +14,4 @@ src/lifepilot_api.egg-info/dependency_links.txt
 src/lifepilot_api.egg-info/requires.txt
 src/lifepilot_api.egg-info/top_level.txt
 tests/test_api.py
+tests/test_scheduler_lock.py
