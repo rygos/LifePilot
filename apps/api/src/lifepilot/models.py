@@ -49,6 +49,7 @@ class Memory(Base):
     title: Mapped[str] = mapped_column(String(240))
     content: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(40), default="manual")
+    source_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True, index=True)
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -163,3 +164,14 @@ class AuditEvent(Base):
     resource_id: Mapped[str] = mapped_column(String(120))
     source: Mapped[str] = mapped_column(String(20), default="mcp")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+class Capture(Base):
+    __tablename__ = "captures"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    original_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    suggestions_json: Mapped[str] = mapped_column(Text, default="[]")
+    processing_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

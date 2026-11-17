@@ -22,9 +22,20 @@ MCP nutzt Streamable HTTP und Bearer-Token. Für getrennte Berechtigungen stellt
 
 Für den lokalen Testbetrieb waren die Standardports 8000 und 3000 bereits belegt; dort wurde daher `API_PORT=8001` und `WEB_PORT=3001` verwendet. Das beeinflusst die `.env.example` nicht.
 
-## KI-Konfiguration
+## KI-Konfiguration und Eingang
 
-In diesem Stand gibt es keinen aktiven LLM-Provider. `LLM_BASE_URL` und `LLM_MODEL` sind für die kommende OpenAI-kompatible Adapterstufe reserviert. Daten bleiben bei nicht konfigurierter oder nicht erreichbarer KI vollständig klassisch verwaltbar.
+Die Schnellerfassung speichert den Originaltext zuerst unverändert in `/api/captures`. Ist ein OpenAI-kompatibler Chat-Completions-Endpunkt konfiguriert, verarbeitet der RQ-Worker ihn im Hintergrund. Vorschläge erscheinen im Eingang und werden erst nach manueller Auswahl als Erinnerungen übernommen; die übernommenen Fakten behalten eine Verknüpfung zur Quelle. Ohne Modell, bei einem Providerfehler oder einer nicht verfügbaren Queue bleibt die Eingabe erhalten und kann klassisch weiterverwendet werden.
+
+Für LM Studio, Ollama im OpenAI-kompatiblen Modus oder einen anderen kompatiblen Endpunkt diese Werte in `.env` setzen:
+
+```dotenv
+LLM_BASE_URL=http://<modell-host>:1234/v1
+LLM_API_KEY=
+LLM_MODEL=<modellname>
+LLM_TIMEOUT_SECONDS=15
+```
+
+Danach `docker compose up -d --build api` ausführen. Der Endpunkt muss aus dem API-Container erreichbar sein. Ein fehlender API-Schlüssel ist für lokale Server erlaubt. Die KI verarbeitet nur die jeweilige Eingabe; Personen, Beziehungen und Aufgaben werden durch sie nicht direkt angelegt.
 
 ## Betrieb und Daten
 
@@ -32,7 +43,7 @@ Migrationen laufen beim API-Start via Alembic. Compose verwendet PostgreSQL 16 m
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, KI und semantische Suche, Projektwerkzeuge und Freigabeabläufe für kritische MCP-Operationen sowie automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, Embeddings und semantische Suche, Projektwerkzeuge und Freigabeabläufe für kritische MCP-Operationen sowie automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
 
 ## Termine und Erinnerungen
 

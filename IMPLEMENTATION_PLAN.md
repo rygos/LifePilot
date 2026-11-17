@@ -17,7 +17,8 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] PostgreSQL 16 mit pgvector-Extension-Image, persistentem Compose-Volume, Healthcheck und SQLAlchemy-Treiber ergänzen; Alembic-Migration aktiviert pgvector nur unter PostgreSQL. PostgreSQL- und SQLite-Migrationen wurden erfolgreich ausgeführt.
 - [x] Verbindung aus dem API-Container zum PostgreSQL-Dienst mit Passwortvariable und SQLAlchemy geprüft (`SELECT 1`); vorhandene Installationen mit SQLite-URL laufen weiter auf SQLite.
 - [x] Redis 7 per Compose mit Healthcheck und persistentem AOF-Volume; Scheduler-Zyklen koordinieren und Hintergrundjobs über RQ mit begrenzten Wiederholungen verarbeiten.
-- [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
+- [x] Optionale LLM-Extraktion mit expliziter Prüfung, Quellenbezug und OpenAI-kompatibler API.
+- [ ] Embeddings, semantische Suche und hybride Suche.
 - [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
@@ -30,12 +31,12 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - FastAPI, Pydantic, SQLAlchemy 2 und Alembic bilden API, Validierung, Persistenz und Migrationen.
 - SQLite ermöglicht sofortige lokale Nutzung und Tests; `DATABASE_URL` schaltet auf PostgreSQL um. Für semantische Suche wird PostgreSQL mit pgvector ergänzt.
 - Ein Next.js-Frontend und FastAPI-Backend laufen getrennt in Compose. Der API-Service enthält zunächst den MCP-Transport, damit Autorisierung dieselbe Anwendungskonfiguration nutzt.
-- KI ist in dieser Ausbaustufe nicht aktiv: ungeprüfte Fakten können daher nicht als bestätigte Erinnerungen gespeichert werden.
+- Die optionale KI verarbeitet neue Schnellerfassungen zu prüfbaren Vorschlägen. Fakten werden erst nach ausdrücklicher Review-Aktion übernommen.
 
 ## Nächste Schritte
 
 1. Projekte und explizite Freigaben kritischer MCP-Operationen ergänzen; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
-2. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
+2. Embeddings und hybride Suche implementieren, danach Briefings.
 3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
@@ -77,7 +78,8 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Scheduler stellt Erinnerungsplanungen in eine RQ-Queue; ein separater Worker verarbeitet sie mit begrenztem Retry-Backoff.
 - [x] Ausführungssperre verhindert überlappende Planungsläufe; Datenbankoperation bleibt idempotent.
 - [x] RQ-Integrationstest prüft Jobstatus, Retry-Konfiguration und erstellte Erinnerung mit echtem Redis.
-- [ ] KI-Extraktion und weitere Hintergrundprozesse an dieselbe Job-Infrastruktur anschließen.
+- [x] KI-Extraktion läuft als Redis/RQ-Hintergrundjob; der Eingang aktualisiert den Status selbstständig.
+- [ ] Weitere Hintergrundprozesse an dieselbe Job-Infrastruktur anschließen.
 
 ## MCP-Toolkatalog und Zugriff
 
@@ -88,3 +90,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Audit-Ereignisse für MCP-Schreibvorgänge werden innerhalb derselben Datenbanktransaktion gespeichert und benutzerspezifisch über `audit_search` und `GET /api/audit` abgerufen.
 - [x] Migration `0008_audit_events`; offizieller MCP-Client prüft Updates, Audit-Protokoll, Benutzertrennung und Scope-Verweigerung.
 - [ ] Projekte, vollständige CRUD-Abdeckung aller Ressourcen und explizite Freigabe kritischer Operationen stehen noch aus.
+
+## Optionale KI-Schnellerfassung
+
+- [x] Originaleingaben werden vor jeder KI-Verarbeitung mandantenbezogen gespeichert und bleiben bei fehlender oder nicht erreichbarer KI erhalten.
+- [x] Konfigurierbarer OpenAI-kompatibler Extraktor mit strukturierter, validierter Ausgabe und Begrenzung für Provider-Timeouts.
+- [x] Modellaufrufe laufen in Redis/RQ außerhalb des HTTP-Requests; bei nicht verfügbarer Queue bleibt der Originaltext erhalten und der Fehler sichtbar.
+- [x] Vorschläge bleiben bis zur Auswahl unbestätigt; ausgewählte Erinnerungen speichern ihre Quell-Eingabe und Ereigniszeit.
+- [x] Eingang in der Weboberfläche zeigt Originaltext, Vorschläge und Fehlerstatus; Vorschläge können einzeln ausgewählt und übernommen werden.
+- [x] Migration `0009_reviewable_captures` und Backend-Tests für Persistenz ohne Provider, Review-Auswahl, Quellverknüpfung, Fehlerbehandlung und Benutzertrennung.
+- [ ] Embeddings und hybride Suche bleiben offen.

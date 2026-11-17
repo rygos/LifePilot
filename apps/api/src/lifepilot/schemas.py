@@ -43,6 +43,7 @@ class MemoryOut(MemoryIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     created_at: datetime
+    source_capture_id: str | None = None
 class TaskIn(BaseModel):
     title: str
     description: str = ""

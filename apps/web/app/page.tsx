@@ -12,6 +12,8 @@ type Loan = { id: string; item_name: string; lender_person_id?: string | null; b
 type Gift = { id: string; person_id: string; title: string; occasion: string; status: string };
 type Event = { id: string; title: string; starts_at: string; ends_at?: string | null; description?: string; location: string; participant_ids: string[] };
 type Reminder = { id: string; title: string; due_at: string; state: string };
+type CaptureSuggestion = { title: string; content: string; person_name: string | null; occurred_at: string | null };
+type Capture = { id: string; original_text: string; status: "pending" | "ready" | "unavailable" | "failed" | "reviewed"; suggestions: CaptureSuggestion[]; processing_error: string; created_at: string };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
@@ -26,6 +28,9 @@ export default function Home() {
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [notifications, setNotifications] = useState<Reminder[]>([]);
+  const [captures, setCaptures] = useState<Capture[]>([]);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Record<string, number[]>>({});
+  const [captureBusy, setCaptureBusy] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -40,13 +45,18 @@ export default function Home() {
   }
   async function refresh() {
     try {
-      const [p, m, t, c, l, g, e, n] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications")]);
-      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n);
+      const [p, m, t, c, l, g, e, n, inbox] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications"), request<Capture[]>("/api/captures")]);
+      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n); setCaptures(inbox);
     } catch (error) { setMessage(String(error)); }
   }
   useEffect(() => { const saved = localStorage.getItem("lifepilot-token"); if (saved) setToken(saved); }, []);
   useEffect(() => { if (token) { localStorage.setItem("lifepilot-token", token); void refresh(); } }, [token]);
   useEffect(() => { if (token) void request<Profile>("/api/profile").then(setProfile).catch(error => setMessage(String(error))); }, [token]);
+  useEffect(() => {
+    if (!token || !captures.some(item => item.status === "pending")) return;
+    const timer = window.setInterval(() => { void request<Capture[]>("/api/captures").then(setCaptures).catch(error => setMessage(String(error))); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [captures, token]);
 
   async function selectPerson(person: Person) {
     setSelectedPerson(person);
@@ -98,7 +108,18 @@ export default function Home() {
   async function capture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); const content = String(form.get("content") ?? "").trim();
     if (!content) return;
-    try { await request("/api/memories", { method: "POST", body: JSON.stringify({ title: content.slice(0, 80), content, occurred_at: new Date().toISOString() }) }); formElement.reset(); setMessage("Erinnerung gespeichert"); await refresh(); }
+    setCaptureBusy(true);
+    try { const saved = await request<Capture>("/api/captures", { method: "POST", body: JSON.stringify({ original_text: content }) }); formElement.reset(); setMessage(saved.status === "pending" ? "Originaltext gespeichert. Die KI erstellt Vorschläge im Hintergrund." : saved.status === "ready" ? "Eingabe gespeichert. Bitte prüfe die Vorschläge im Eingang." : saved.processing_error || "Originaltext gespeichert."); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+    finally { setCaptureBusy(false); }
+  }
+  async function reviewCapture(item: Capture) {
+    const accepted = selectedSuggestions[item.id] ?? item.suggestions.map((_, index) => index);
+    try { await request(`/api/captures/${item.id}/review`, { method: "POST", body: JSON.stringify({ accepted_indices: accepted }) }); setMessage(`${accepted.length} Vorschläge als Erinnerungen übernommen`); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function discardCapture(item: Capture) {
+    try { await request(`/api/captures/${item.id}`, { method: "DELETE" }); setMessage("Eingabe gelöscht"); await refresh(); }
     catch (error) { setMessage(String(error)); }
   }
   async function createTask(event: FormEvent<HTMLFormElement>) {
@@ -147,7 +168,8 @@ export default function Home() {
       {showProfile && profile && <section className="card panel profile-panel"><div className="panel-head"><div><span className="eyebrow">PERSÖNLICHER BEREICH</span><h2>Mein Profil</h2></div><button className="quiet" onClick={() => setShowProfile(false)}>Schließen</button></div><form className="person-form" onSubmit={saveProfile}><label>Vollständiger Name<input name="full_name" defaultValue={profile.full_name} /></label><label>Spitzname<input name="nickname" defaultValue={profile.nickname ?? ""} /></label><label>Geburtstag<input name="birthday" type="date" defaultValue={profile.birthday ?? ""} /></label><label>E-Mail<input name="email" type="email" defaultValue={profile.email ?? ""} /></label><label>Telefon<input name="phone" type="tel" defaultValue={profile.phone ?? ""} /></label><label>Adresse<textarea name="address" defaultValue={profile.address} /></label><label>Zeitzone<input name="timezone_name" defaultValue={profile.timezone_name} required /></label><label>Ruhezeit von<input name="quiet_hours_start" type="time" defaultValue={profile.quiet_hours_start ?? ""} /></label><label>Ruhezeit bis<input name="quiet_hours_end" type="time" defaultValue={profile.quiet_hours_end ?? ""} /></label><p className="form-hint">Während der Ruhezeit werden In-App-Benachrichtigungen ausgeblendet. Beide Zeiten leer lassen, um die Ruhezeit auszuschalten.</p><button>Profil speichern</button></form></section>}
       {message && <p className="notice" role="status">{message}<button className="quiet" onClick={() => setMessage("")}>×</button></p>}
       {notifications.length > 0 && <section className="card panel notification-panel"><div className="panel-head"><div><span className="eyebrow">JETZT FÄLLIG</span><h2>Erinnerungen</h2></div><span className="count">{notifications.length}</span></div>{notifications.map(n => <div className="list-item" key={n.id}><span>{n.title}<small>{new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(n.due_at))}</small></span><button className="quiet" onClick={() => void snoozeReminder(n.id)}>+1 Std.</button><button className="quiet" onClick={() => void finishReminder(n.id)}>Erledigt</button></div>)}</section>}
-      <section className="capture card"><div><span className="eyebrow">SCHNELLERFASSUNG</span><h2>Ein Gedanke, gut aufgehoben.</h2></div><form onSubmit={capture}><textarea name="content" placeholder="Schreib einfach los. Ein Gespräch, eine Idee, etwas zum Erinnern …" required /><div className="row"><span className="muted">Deine Notiz bleibt privat.</span><button>Speichern <span aria-hidden="true">↗</span></button></div></form></section>
+      <section className="capture card"><div><span className="eyebrow">SCHNELLERFASSUNG</span><h2>Ein Gedanke, gut aufgehoben.</h2></div><form onSubmit={capture}><textarea name="content" placeholder="Schreib einfach los. Ein Gespräch, eine Idee, etwas zum Erinnern …" required /><div className="row"><span className="muted">Dein Original bleibt erhalten.</span><button disabled={captureBusy}>{captureBusy ? "Wird gespeichert …" : <>Speichern <span aria-hidden="true">↗</span></>}</button></div></form></section>
+      <section className="card panel inbox-panel"><div className="panel-head"><div><span className="eyebrow">PRÜFEN & ZUORDNEN</span><h2>Eingang</h2></div><span className="count">{captures.filter(item => item.status !== "reviewed").length}</span></div>{captures.filter(item => item.status !== "reviewed").length === 0 ? <p className="empty">Neue Eingaben und KI-Vorschläge erscheinen hier.</p> : captures.filter(item => item.status !== "reviewed").slice(0, 5).map(item => <article className="inbox-item" key={item.id}><p className="inbox-original">{item.original_text}</p>{item.status === "pending" && <p className="muted">KI-Verarbeitung läuft …</p>}{item.status === "ready" && item.suggestions.map((suggestion, index) => <label className="suggestion" key={`${item.id}-${index}`}><input type="checkbox" checked={(selectedSuggestions[item.id] ?? item.suggestions.map((_, suggestionIndex) => suggestionIndex)).includes(index)} onChange={event => setSelectedSuggestions(current => { const selected = current[item.id] ?? item.suggestions.map((_, suggestionIndex) => suggestionIndex); return { ...current, [item.id]: event.target.checked ? [...selected, index] : selected.filter(value => value !== index) }; })} /><span><strong>{suggestion.title}</strong><small>{suggestion.content}{suggestion.person_name ? ` · Person: ${suggestion.person_name}` : ""}{suggestion.occurred_at ? ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(suggestion.occurred_at))}` : ""}</small></span></label>)}{item.status === "ready" && item.suggestions.length === 0 && <p className="empty">Es wurden keine klaren Fakten vorgeschlagen.</p>}{item.processing_error && <p className="muted">{item.processing_error}</p>}<div className="inbox-actions">{item.status === "ready" && <button onClick={() => void reviewCapture(item)}>Auswahl übernehmen</button>}<button className="quiet" onClick={() => void discardCapture(item)}>Eingabe löschen</button></div></article>)}</section>
       <div className="search card"><span>⌕</span><form onSubmit={search}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Menschen, Erinnerungen und Aufgaben durchsuchen …" /></form><kbd>↵</kbd></div>
       <div className="grid"><section id="tasks" className="card panel"><div className="panel-head"><div><span className="eyebrow">IM BLICK</span><h2>Aufgaben</h2></div><span className="count">{tasks.length}</span></div><form className="task-form" onSubmit={createTask}><label>Aufgabe<input name="title" placeholder="Neue Aufgabe …" required /></label><label>Fällig am<input name="due_at" type="datetime-local" /></label><label>Alle (Tage)<input name="repeat_interval_days" type="number" min="1" max="365" placeholder="Ohne Wiederholung" /></label><label>Wiederholen bis<input name="repeat_until" type="datetime-local" /></label><button>Aufgabe speichern</button></form>{tasks.length ? tasks.map(t => <div className="list-item" key={t.id}><button className="check" onClick={() => void complete(t.id)} aria-label="Aufgabe abschließen" /><span>{t.title}<small>{t.due_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(t.due_at)) : "Ohne Fälligkeit"}{t.repeat_interval_days ? ` · alle ${t.repeat_interval_days} Tage` : ""}</small></span></div>) : <p className="empty">Alles im Blick. Neue Aufgaben kannst du oben ergänzen.</p>}</section>
       <section id="people" className="card panel"><div className="panel-head"><div><span className="eyebrow">DEIN UMFELD</span><h2>Menschen</h2></div><span className="count">{people.length}</span></div><form className="person-form" onSubmit={createPerson}><label>Vorname<input name="first_name" required /></label><label>Nachname<input name="last_name" /></label><label>Spitzname<input name="nickname" /></label><label>Geburtstag<input name="birthday" type="date" /></label><label>E-Mail<input name="email" type="email" /></label><label>Telefon<input name="phone" type="tel" /></label><button>Person hinzufügen</button></form>{people.map(p => <button className="list-item person person-button" key={p.id} onClick={() => void selectPerson(p)}><span className="avatar small">{p.first_name[0]}</span><span>{p.first_name} {p.last_name}{p.nickname ? ` (${p.nickname})` : ""}<small>{p.birthday ? `Geburtstag: ${p.birthday}` : p.email || p.phone || p.notes || "Profil öffnen"}</small></span></button>)}</section></div>

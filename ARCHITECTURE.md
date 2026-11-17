@@ -6,7 +6,7 @@
 
 ## Daten- und Sicherheitsgrenzen
 
-Jede fachliche Zeile trägt einen Besitzer. Services filtern jede Abfrage anhand des authentifizierten Benutzers. Passwörter werden mit Argon2 gehasht; signierte kurzlebige Bearer-Tokens authentifizieren API und MCP. Fremdschlüssel verhindern Beziehungen zu nicht vorhandenen Personen. KI-Ausgaben werden in der späteren Architektur zunächst als Vorschläge behandelt und benötigen Bestätigung.
+Jede fachliche Zeile trägt einen Besitzer. Services filtern jede Abfrage anhand des authentifizierten Benutzers. Passwörter werden mit Argon2 gehasht; signierte kurzlebige Bearer-Tokens authentifizieren API und MCP. Fremdschlüssel verhindern Beziehungen zu nicht vorhandenen Personen. Optionale KI-Ausgaben aus Schnellerfassungen werden als Vorschläge behandelt und benötigen Bestätigung.
 
 ## Temporale und Quellenfelder
 

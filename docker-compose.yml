@@ -33,10 +33,15 @@ services:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}}
       PGPASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY}}
+      REDIS_URL: redis://redis:6379/0
       MCP_PORT: "8002"
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
       LIFE_PILOT_BOOTSTRAP_PASSWORD: ${LIFE_PILOT_BOOTSTRAP_PASSWORD:?Set bootstrap password in .env}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-15}
     volumes:
       - lifepilot-data:/app/data
     ports:

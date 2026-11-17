@@ -15,6 +15,7 @@ from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, Even
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import owned_person, relationship_create, search
 from lifepilot.planner import router as planner_router
+from lifepilot.capture_routes import router as capture_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.web_origin], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
 app.include_router(planner_router)
+app.include_router(capture_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}

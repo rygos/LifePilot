@@ -1,0 +1,13 @@
+.inbox-panel{--muted:#646862}
+@media(prefers-color-scheme:dark){.inbox-panel{--muted:#a5aaa1}}
+.inbox-panel{margin-bottom:16px}
+.inbox-item{padding:13px 2px;border-top:1px solid #f0efec}
+.inbox-original{white-space:pre-wrap;line-height:1.6;margin:0 0 10px}
+.suggestion{display:flex;align-items:flex-start;gap:9px;padding:9px 0;cursor:pointer}
+.suggestion input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--green);flex:none}
+.suggestion strong,.suggestion small{display:block}
+.suggestion small{color:var(--muted);line-height:1.5;margin-top:4px}
+.inbox-actions{display:flex;align-items:center;gap:8px;margin-top:9px}
+.inbox-actions button{min-height:40px}
+.inbox-actions .quiet{margin-left:0}
+.capture button:disabled{opacity:.65;cursor:wait}
