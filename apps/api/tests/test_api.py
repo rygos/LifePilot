@@ -59,11 +59,14 @@ def test_relationship_validation_and_cross_user_isolation(client, auth):
 def test_relationships_and_profile_fields_are_readable_and_editable(client, auth):
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin", "nickname": "Marty", "address": "Hauptstraße 4", "website": "https://example.org", "job_title": "Gärtner", "organization": "Verein"}).json()
     lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
-    relation = client.post("/api/relationships", headers=auth, json={"source_person_id": martin["id"], "target_person_id": lea["id"], "relationship_type": "Vater von"})
+    relation = client.post("/api/relationships", headers=auth, json={"source_person_id": martin["id"], "target_person_id": lea["id"], "relationship_type": "Vater von", "inverse_relationship_type": "Tochter von"})
     assert relation.status_code == 201
     visible = client.get(f"/api/relationships?person_id={lea['id']}", headers=auth).json()
     assert visible[0]["source_person_name"] == "Martin"
     assert visible[0]["target_person_name"] == "Lea"
+    assert visible[0]["inverse_relationship_type"] == "Tochter von"
+    duplicate = client.post("/api/relationships", headers=auth, json={"source_person_id": lea["id"], "target_person_id": martin["id"], "relationship_type": "Tochter von", "inverse_relationship_type": "Vater von"})
+    assert duplicate.status_code == 409
     assert client.get(f"/api/people/{martin['id']}", headers=auth).json()["address"] == "Hauptstraße 4"
     profile = client.patch("/api/profile", headers=auth, json={"full_name": "Alex Beispiel", "nickname": "Alex", "address": "Parkweg 1", "email": "alex@example.org"})
     assert profile.status_code == 200

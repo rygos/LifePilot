@@ -86,11 +86,11 @@ def relationship_list(db: Session = Depends(get_db), user: User = Depends(curren
     rows = db.scalars(stmt.order_by(Relationship.created_at.desc())).all()
     ids = {r.source_person_id for r in rows} | {r.target_person_id for r in rows}
     people_by_id = {p.id: p for p in db.scalars(select(Person).where(Person.owner_id == user.id, Person.id.in_(ids))).all()} if ids else {}
-    return [RelationshipOut(id=r.id, source_person_id=r.source_person_id, source_person_name=f"{people_by_id[r.source_person_id].first_name} {people_by_id[r.source_person_id].last_name}".strip(), target_person_id=r.target_person_id, target_person_name=f"{people_by_id[r.target_person_id].first_name} {people_by_id[r.target_person_id].last_name}".strip(), relationship_type=r.relationship_type, confirmed=r.confirmed, source_memory_id=r.source_memory_id) for r in rows]
+    return [RelationshipOut(id=r.id, source_person_id=r.source_person_id, source_person_name=f"{people_by_id[r.source_person_id].first_name} {people_by_id[r.source_person_id].last_name}".strip(), target_person_id=r.target_person_id, target_person_name=f"{people_by_id[r.target_person_id].first_name} {people_by_id[r.target_person_id].last_name}".strip(), relationship_type=r.relationship_type, inverse_relationship_type=r.inverse_relationship_type, confirmed=r.confirmed, source_memory_id=r.source_memory_id) for r in rows]
 
 @app.post("/api/relationships", status_code=201)
 def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return relationship_create(db, user, data.source_person_id, data.target_person_id, data.relationship_type, data.source_memory_id, data.confirmed)
+    return relationship_create(db, user, data.source_person_id, data.target_person_id, data.relationship_type, data.source_memory_id, data.confirmed, data.inverse_relationship_type)
 
 @app.delete("/api/relationships/{relationship_id}", status_code=204)
 def relationship_delete(relationship_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):

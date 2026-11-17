@@ -46,6 +46,7 @@ class RelationshipIn(BaseModel):
     source_person_id: str
     target_person_id: str
     relationship_type: str
+    inverse_relationship_type: str | None = None
     source_memory_id: str | None = None
     confirmed: bool = True
 
@@ -74,6 +75,7 @@ class RelationshipOut(BaseModel):
     target_person_id: str
     target_person_name: str
     relationship_type: str
+    inverse_relationship_type: str
     confirmed: bool
     source_memory_id: str | None
 
