@@ -234,15 +234,14 @@ try:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
             data = person_briefing(person_id, db, db.get(User, owner_id))
-            relationships = relationship_list(db, db.get(User, owner_id), person_id)
-            return {"person": data["person"].model_dump(mode="json"), "memories": [row.model_dump(mode="json") for row in data["memories"]], "open_tasks": [row.model_dump(mode="json") for row in data["open_tasks"]], "relationships": [row.model_dump(mode="json") for row in relationships]}
+            data["relationships"] = [row.model_dump(mode="json") for row in relationship_list(db, db.get(User, owner_id), person_id)]
+            return data
 
     @mcp.tool(name="daily_briefing")
     def daily_briefing_mcp() -> dict:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
-            result = daily_briefing(db, db.get(User, owner_id))
-            return {"open_tasks": [row for row in result["open_tasks"]]}
+            return daily_briefing(db, db.get(User, owner_id))
 
     @mcp.tool(name="open_commitments")
     def open_commitments_mcp() -> dict:

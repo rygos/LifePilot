@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -10,8 +11,8 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, Gift, Loan, Memory, Person, Relationship, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, Event, EventParticipant, Gift, Loan, Memory, Person, Relationship, Reminder, Task, User
+from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import owned_person, relationship_create, search
 from lifepilot.planner import router as planner_router
@@ -196,8 +197,20 @@ def gift_list(db: Session = Depends(get_db), user: User = Depends(current_user),
 
 @app.get("/api/briefing/daily")
 def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.status == "open").order_by(Task.due_at).limit(10)).all()
-    return {"open_tasks": [TaskOut.model_validate(t).model_dump(mode="json") for t in tasks]}
+    local_now = datetime.now(timezone.utc).astimezone(ZoneInfo(user.timezone_name))
+    start = datetime.combine(local_now.date(), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
+    end = datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
+    horizon = datetime.combine(local_now.date() + timedelta(days=7), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
+    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.status == "open", or_(Task.due_at.is_(None), Task.due_at < horizon)).order_by(Task.due_at.is_(None), Task.due_at).limit(20)).all()
+    events = db.scalars(select(Event).where(Event.owner_id == user.id, Event.starts_at >= start, Event.starts_at < end).order_by(Event.starts_at).limit(20)).all()
+    reminders = db.scalars(select(Reminder).where(Reminder.owner_id == user.id, Reminder.state == "scheduled", Reminder.due_at < horizon).order_by(Reminder.due_at).limit(20)).all()
+    return {
+        "date": local_now.date().isoformat(),
+        "timezone": user.timezone_name,
+        "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
+        "today_events": [EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in events],
+        "upcoming_reminders": [{"id": reminder.id, "title": reminder.title, "due_at": reminder.due_at, "state": reminder.state, "source_type": "task" if reminder.task_id else "event" if reminder.event_id else "reminder", "source_id": reminder.task_id or reminder.event_id or reminder.id} for reminder in reminders],
+    }
 
 @app.get("/api/audit", response_model=list[AuditEventView])
 def audit_list(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = Query(default=50, ge=1, le=200)) -> list[AuditEvent]:
@@ -206,10 +219,24 @@ def audit_list(db: Session = Depends(get_db), user: User = Depends(current_user)
 @app.get("/api/briefing/person/{person_id}")
 def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
-    memories = db.scalars(select(Memory).where(Memory.owner_id == user.id, Memory.person_id == person_id).order_by(Memory.created_at.desc()).limit(10)).all()
-    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.person_id == person_id, Task.status == "open")).all()
+    memories = db.scalars(select(Memory).where(Memory.owner_id == user.id, Memory.person_id == person_id).order_by(Memory.occurred_at.desc().nullslast(), Memory.created_at.desc()).limit(10)).all()
+    conversations = db.scalars(select(Conversation).join(ConversationParticipant, ConversationParticipant.conversation_id == Conversation.id).where(Conversation.owner_id == user.id, ConversationParticipant.owner_id == user.id, ConversationParticipant.person_id == person_id).order_by(Conversation.occurred_at.desc().nullslast(), Conversation.created_at.desc()).limit(10)).all()
+    tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.person_id == person_id, Task.status == "open").order_by(Task.due_at.is_(None), Task.due_at)).all()
     links = db.scalars(select(Relationship).where(Relationship.owner_id == user.id, or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))).all()
-    return {"person": PersonOut.model_validate(person), "memories": [MemoryOut.model_validate(m) for m in memories], "open_tasks": [TaskOut.model_validate(t) for t in tasks], "relationships": links}
+    loans = db.scalars(select(Loan).where(Loan.owner_id == user.id, Loan.returned_at.is_(None), or_(Loan.lender_person_id == person_id, Loan.borrower_person_id == person_id)).order_by(Loan.due_at.is_(None), Loan.due_at)).all()
+    gifts = db.scalars(select(Gift).where(Gift.owner_id == user.id, Gift.person_id == person_id, Gift.status.in_(["idea", "planned"])).order_by(Gift.created_at.desc()).limit(10)).all()
+    now = datetime.now(timezone.utc)
+    upcoming_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id, Event.starts_at >= now).order_by(Event.starts_at).limit(10)).all()
+    return {
+        "person": PersonOut.model_validate(person).model_dump(mode="json"),
+        "memories": [MemoryOut.model_validate(memory).model_dump(mode="json") for memory in memories],
+        "conversations": [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=[person_id]).model_dump(mode="json") for row in conversations],
+        "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
+        "relationships": [{"id": row.id, "source_person_id": row.source_person_id, "target_person_id": row.target_person_id, "relationship_type": row.relationship_type, "inverse_relationship_type": row.inverse_relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_memory_id": row.source_memory_id} for row in links],
+        "open_loans": [LoanOut.model_validate(loan).model_dump(mode="json") for loan in loans],
+        "gift_ideas": [GiftOut.model_validate(gift).model_dump(mode="json") for gift in gifts],
+        "upcoming_events": [EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in upcoming_events],
+    }
 
 try:
     from lifepilot.mcp_tools import mcp

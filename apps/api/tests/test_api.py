@@ -198,3 +198,58 @@ def test_rq_worker_processes_scheduler_job_with_retries(client, auth):
     finally:
         queue.delete(delete_jobs=True)
         redis_client.close()
+
+
+def test_daily_and_person_briefings_include_owned_sources(client, auth):
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy.orm import Session
+
+    from lifepilot.db import engine
+    from lifepilot.models import User
+
+    profile = client.patch("/api/profile", headers=auth, json={"timezone_name": "Europe/Berlin"})
+    assert profile.status_code == 200
+    now = datetime.now(timezone.utc)
+    local_today = now.astimezone(ZoneInfo("Europe/Berlin")).date()
+    event_time = datetime.combine(local_today, datetime.min.time(), ZoneInfo("Europe/Berlin")).replace(hour=16).astimezone(timezone.utc)
+    martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()
+    memory = client.post("/api/memories", headers=auth, json={"title": "Kaffee", "content": "Martin bevorzugt Hafermilch.", "person_id": martin["id"], "occurred_at": (now - timedelta(days=1)).isoformat()}).json()
+    conversation = client.post("/api/conversations", headers=auth, json={"title": "Vereinstreffen", "original_note": "Martin berichtet vom Umzug.", "participant_ids": [martin["id"]], "occurred_at": (now - timedelta(days=2)).isoformat()}).json()
+    task = client.post("/api/tasks", headers=auth, json={"title": "Martin zurückrufen", "person_id": martin["id"], "due_at": (now + timedelta(days=1)).isoformat()}).json()
+    client.post("/api/loans", headers=auth, json={"item_name": "Bohrmaschine", "borrower_person_id": martin["id"]})
+    client.post("/api/gifts", headers=auth, json={"person_id": martin["id"], "title": "Kochbuch", "occasion": "Geburtstag"})
+    reminder_response = client.post("/api/reminders", headers=auth, json={"title": "Martin antworten", "due_at": (now + timedelta(days=2)).isoformat(), "task_id": task["id"]})
+    assert reminder_response.status_code == 201, reminder_response.text
+    reminder = reminder_response.json()
+    lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
+    relationship = client.post("/api/relationships", headers=auth, json={"source_person_id": martin["id"], "target_person_id": lea["id"], "relationship_type": "Vater von", "inverse_relationship_type": "Tochter von"}).json()
+    event = client.post("/api/events", headers=auth, json={"title": "Mittagessen", "starts_at": event_time.isoformat(), "participant_ids": [martin["id"]]}).json()
+
+    daily = client.get("/api/briefing/daily", headers=auth)
+    assert daily.status_code == 200
+    assert daily.json()["date"] == local_today.isoformat()
+    assert event["id"] in {row["id"] for row in daily.json()["today_events"]}
+    assert task["id"] in {row["id"] for row in daily.json()["open_tasks"]}
+    assert reminder["id"] in {row["id"] for row in daily.json()["upcoming_reminders"]}
+
+    context = client.get(f"/api/briefing/person/{martin['id']}", headers=auth)
+    assert context.status_code == 200
+    result = context.json()
+    assert result["person"]["id"] == martin["id"]
+    assert result["memories"][0]["id"] == memory["id"]
+    assert result["conversations"][0]["id"] == conversation["id"]
+    assert result["open_tasks"][0]["id"] == task["id"]
+    assert result["open_loans"][0]["item_name"] == "Bohrmaschine"
+    assert result["gift_ideas"][0]["title"] == "Kochbuch"
+    assert result["upcoming_events"][0]["id"] == event["id"]
+    assert result["relationships"][0]["id"] == relationship["id"]
+    with Session(engine) as db:
+        other_owner = User(username="briefing-other", password_hash="unused")
+        db.add(other_owner)
+        db.commit()
+        from lifepilot.security import create_token
+
+        other_auth = {"Authorization": f"Bearer {create_token(other_owner.id)}"}
+    assert client.get(f"/api/briefing/person/{martin['id']}", headers=other_auth).status_code == 404

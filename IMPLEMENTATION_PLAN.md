@@ -20,7 +20,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Optionale LLM-Extraktion mit expliziter Prüfung, Quellenbezug und OpenAI-kompatibler API.
 - [x] OpenAI-kompatible Embeddings für Erinnerungen, asynchrone RQ-Indizierung, HNSW/pgvector und hybride PostgreSQL-Suche; klassische Suche bleibt ohne Provider funktionsfähig.
 - [x] Semantische Suche für Gespräche, Aufgaben, Beziehungen und Projekte einschließlich Volltext-Fallback.
-- [ ] Personen- und Tagesbriefings aus belegten Quellen.
+- [x] Personen- und Tagesbriefings aus belegten Quellen.
 - [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
@@ -39,7 +39,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
 2. [x] Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern.
-3. Personen- und Tagesbriefings aus belegten Quellen ausbauen.
+3. [x] Personen- und Tagesbriefings mit Quelldatensätzen, Zeitzonenbezug und MCP-Ausgabe ergänzen.
 4. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
@@ -55,6 +55,14 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Create- und Update-Pfade in REST, MCP und Projekt-/Beziehungsservices reihen semantische Neuindizierung ein. Die Reindex-Aktion nimmt jetzt alle fünf indizierten Ressourcentypen auf.
 - [x] Hybride Suche rankt alle fünf indizierten Typen per Reciprocal Rank Fusion; PostgreSQL-Volltextsuche deckt zusätzliche Felder der vier neuen Typen ab, Beziehungen liefern beide Personennamen.
 - [x] Backend-Tests prüfen semantische Treffer über alle vier zusätzlichen Typen, Besitzertrennung und das Entfernen eines Beziehungsindexes beim Löschen.
+
+## Personen- und Tagesbriefings
+
+- [x] Tagesbriefing liefert Datum und Zeitzone des Benutzers, offene Aufgaben, heutige Termine sowie anstehende und überfällige Wiedervorlagen mit verknüpften Quell-IDs.
+- [x] Personenbriefing bündelt Gespräche, Erinnerungen, offene Aufgaben, Leihgaben, Geschenkideen, anstehende Termine und Beziehungen aus benutzergebundenen Daten.
+- [x] Dashboard zeigt das Tagesbriefing; Personenprofile zeigen Kontext mit Datum und Kurzkennung der Originalquelle.
+- [x] MCP-Werkzeuge `daily_briefing` und `person_context` geben die erweiterten Briefings zurück.
+- [x] Backend-Tests decken Zeitzonen-/Tageszuordnung, Quellen und MCP-Antworten ab; Next.js-Produktionsbuild erfolgreich.
 
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
