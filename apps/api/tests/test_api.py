@@ -196,3 +196,39 @@ def test_event_reschedule_updates_existing_reminder(client, auth):
         stored = db.get(Event, event.json()["id"])
         assert stored is not None and stored.ends_at is not None
         assert stored.ends_at.replace(tzinfo=timezone.utc) - stored.starts_at.replace(tzinfo=timezone.utc) == timedelta(hours=2)
+
+@pytest.mark.skipif(not os.getenv("REDIS_URL"), reason="REDIS_URL ist für den RQ-Integrationstest nicht gesetzt")
+def test_rq_worker_processes_scheduler_job_with_retries(client, auth):
+    from uuid import uuid4
+    from redis import Redis
+    from redis.exceptions import RedisError
+    from rq import Queue, Worker
+    from rq.job import Job
+    from lifepilot.scheduler import enqueue_schedule_job
+
+    redis_url = os.environ["REDIS_URL"]
+    redis_client = Redis.from_url(redis_url)
+    try:
+        redis_client.ping()
+    except RedisError as error:
+        pytest.skip(f"Redis ist für den RQ-Integrationstest nicht erreichbar: {error}")
+
+    task_response = client.post("/api/tasks", headers=auth, json={"title": "RQ-Worker-Prüfung", "due_at": "2026-11-20T09:00:00Z"})
+    assert task_response.status_code == 201, task_response.text
+    task = task_response.json()
+    queue_name = f"lifepilot-test-{uuid4().hex}"
+    queue = Queue(queue_name, connection=redis_client)
+    try:
+        job = enqueue_schedule_job(redis_client, queue_name=queue_name)
+        assert job.retries_left == 3
+        assert job.retry_intervals == [15, 60, 180]
+
+        assert Worker([queue], connection=redis_client).work(burst=True, with_scheduler=True)
+        finished = Job.fetch(job.id, connection=redis_client)
+        assert finished.get_status(refresh=True) == "finished"
+        assert finished.return_value() >= 1
+        reminders = client.get("/api/reminders", headers=auth).json()
+        assert any(reminder["task_id"] == task["id"] for reminder in reminders)
+    finally:
+        queue.delete(delete_jobs=True)
+        redis_client.close()

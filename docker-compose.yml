@@ -16,7 +16,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - lifepilot-redis:/data
     ports:
       - "127.0.0.1:${REDIS_PORT:-16379}:6379"
     healthcheck:
@@ -61,7 +63,7 @@ services:
         condition: service_healthy
     ports:
       - "${WEB_PORT:-3000}:3000"
-  worker:
+  scheduler:
     build: ./apps/api
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.scheduler"]
@@ -76,6 +78,22 @@ services:
         condition: service_healthy
     volumes:
       - lifepilot-data:/app/data
+  worker:
+    build: ./apps/api
+    restart: unless-stopped
+    command: ["python", "-m", "lifepilot.jobs"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY}}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - lifepilot-data:/app/data
 volumes:
   lifepilot-data:
   lifepilot-postgres:
+  lifepilot-redis:
