@@ -6,6 +6,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/lifepilot.db}
       MCP_PORT: "8002"
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
       LIFE_PILOT_BOOTSTRAP_PASSWORD: ${LIFE_PILOT_BOOTSTRAP_PASSWORD:?Set bootstrap password in .env}
     volumes:
@@ -19,7 +20,10 @@ services:
       timeout: 5s
       retries: 3
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}

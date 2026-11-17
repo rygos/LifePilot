@@ -12,7 +12,7 @@ os.environ["LIFE_PILOT_BOOTSTRAP_PASSWORD"] = "test-password"
 from fastapi.testclient import TestClient
 from lifepilot.main import app
 from lifepilot.db import Base, engine
-from lifepilot.models import User
+from lifepilot.models import Conversation, ConversationParticipant, Gift, Loan, Memory, Person, User
 from lifepilot.security import hash_password
 
 @pytest.fixture(scope="module")
@@ -61,5 +61,24 @@ def test_mcp_tools_are_registered():
     assert mcp is not None
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
     assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool"} <= names
-    names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool"} <= names
+
+def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
+    martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()
+    lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
+    note = client.post("/api/memories", headers=auth, json={"title": "Wunsch", "content": "Anna mag Bücher", "person_id": martin["id"]}).json()
+    conversation = client.post("/api/conversations", headers=auth, json={"title": "Treffen im Verein", "original_note": "Martin erzählte von Lea.", "participant_ids": [martin["id"], lea["id"]], "occurred_at": "2026-11-16T18:00:00Z", "location": "Vereinsheim"})
+    assert conversation.status_code == 201
+    assert conversation.json()["original_note"] == "Martin erzählte von Lea."
+    assert set(client.get(f"/api/conversations?person_id={lea['id']}", headers=auth).json()[0]["participant_ids"]) == {martin["id"], lea["id"]}
+    assert client.get("/api/search?q=Vereinsheim", headers=auth).json()["conversations"][0]["id"] == conversation.json()["id"]
+    assert client.post("/api/conversations", headers=auth, json={"title": "Fremd", "original_note": "x", "participant_ids": ["foreign-id"]}).status_code == 404
+    loan = client.post("/api/loans", headers=auth, json={"item_name": "Bohrmaschine", "lender_person_id": martin["id"], "borrower_person_id": lea["id"], "source_memory_id": note["id"]})
+    assert loan.status_code == 201
+    assert len(client.get("/api/loans", headers=auth).json()) == 1
+    assert client.patch(f"/api/loans/{loan.json()['id']}/return", headers=auth).json()["returned_at"] is not None
+    assert client.get("/api/loans", headers=auth).json() == []
+    gift = client.post("/api/gifts", headers=auth, json={"person_id": martin["id"], "title": "Roman", "occasion": "Geburtstag", "budget": 25, "source_memory_id": note["id"]})
+    assert gift.status_code == 201
+    assert client.get(f"/api/gifts?person_id={martin['id']}", headers=auth).json()[0]["id"] == gift.json()["id"]
+    assert client.get("/api/search?q=Bohrmaschine", headers=auth).json()["loans"][0]["id"] == loan.json()["id"]
+    assert client.get("/api/conversations", headers={"Authorization": "Bearer invalid"}).status_code == 401

@@ -8,5 +8,6 @@ class Settings(BaseSettings):
     life_pilot_bootstrap_password: str = "change-this-password"
     mcp_api_key: str = ""
     mcp_port: int = 8002
+    web_origin: str = "http://localhost:3000"
 
 settings = Settings()

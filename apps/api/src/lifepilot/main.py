@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -8,8 +9,8 @@ from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
-from lifepilot.models import Memory, Person, Relationship, Task, User
-from lifepilot.schemas import Credentials, MemoryIn, MemoryOut, PersonIn, PersonOut, RelationshipIn, TaskIn, TaskOut, Token
+from lifepilot.models import Conversation, ConversationParticipant, Gift, Loan, Memory, Person, Relationship, Task, User
+from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, GiftIn, GiftOut, LoanIn, LoanOut, MemoryIn, MemoryOut, PersonIn, PersonOut, RelationshipIn, TaskIn, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.security import resolve_bearer_user
 from lifepilot.services import owned_person, relationship_create, search
@@ -23,7 +24,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=[settings.web_origin], allow_methods=["*"], allow_headers=["Authorization", "Content-Type"])
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -109,6 +110,60 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
 @app.get("/api/search")
 def memory_search(q: str = Query(min_length=1), db: Session = Depends(get_db), user: User = Depends(current_user)):
     return search(db, user, q)
+
+@app.post("/api/conversations", response_model=ConversationOut, status_code=201)
+def conversation_create(data: ConversationIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    participant_ids = list(dict.fromkeys(data.participant_ids))
+    if participant_ids:
+        people = db.scalars(select(Person).where(Person.owner_id == user.id, Person.id.in_(participant_ids))).all()
+        if len(people) != len(participant_ids): raise HTTPException(status_code=404, detail="Mindestens eine beteiligte Person wurde nicht gefunden")
+    conversation = Conversation(owner_id=user.id, title=data.title, original_note=data.original_note, summary=data.summary, location=data.location, occurred_at=data.occurred_at)
+    db.add(conversation); db.flush()
+    db.add_all(ConversationParticipant(conversation_id=conversation.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
+    db.commit(); db.refresh(conversation)
+    return ConversationOut(id=conversation.id, title=conversation.title, original_note=conversation.original_note, summary=conversation.summary, location=conversation.location, occurred_at=conversation.occurred_at, created_at=conversation.created_at, participant_ids=participant_ids)
+
+@app.get("/api/conversations", response_model=list[ConversationOut])
+def conversation_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None, q: str = ""):
+    stmt = select(Conversation).where(Conversation.owner_id == user.id)
+    if person_id: stmt = stmt.join(ConversationParticipant).where(ConversationParticipant.person_id == person_id, ConversationParticipant.owner_id == user.id)
+    if q: stmt = stmt.where(or_(Conversation.title.ilike(f"%{q}%"), Conversation.original_note.ilike(f"%{q}%"), Conversation.summary.ilike(f"%{q}%")))
+    rows = db.scalars(stmt.order_by(Conversation.occurred_at.desc().nullslast(), Conversation.created_at.desc())).all()
+    return [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all())) for row in rows]
+
+@app.post("/api/loans", response_model=LoanOut, status_code=201)
+def loan_create(data: LoanIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, data.lender_person_id, user); owned_person(db, data.borrower_person_id, user)
+    if data.lender_person_id is None and data.borrower_person_id is None: raise HTTPException(status_code=422, detail="Verleiher oder Entleiher muss angegeben sein")
+    if data.source_memory_id and db.scalar(select(Memory.id).where(Memory.id == data.source_memory_id, Memory.owner_id == user.id)) is None: raise HTTPException(status_code=404, detail="Quellerinnerung nicht gefunden")
+    loan = Loan(owner_id=user.id, **data.model_dump(exclude={"lent_at"}), lent_at=data.lent_at or datetime.now(timezone.utc))
+    db.add(loan); db.commit(); db.refresh(loan); return loan
+
+@app.get("/api/loans", response_model=list[LoanOut])
+def loan_list(db: Session = Depends(get_db), user: User = Depends(current_user), open_only: bool = True, person_id: str | None = None):
+    stmt = select(Loan).where(Loan.owner_id == user.id)
+    if open_only: stmt = stmt.where(Loan.returned_at.is_(None))
+    if person_id: stmt = stmt.where(or_(Loan.lender_person_id == person_id, Loan.borrower_person_id == person_id))
+    return db.scalars(stmt.order_by(Loan.due_at.is_(None), Loan.due_at)).all()
+
+@app.patch("/api/loans/{loan_id}/return", response_model=LoanOut)
+def loan_return(loan_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    loan = db.scalar(select(Loan).where(Loan.id == loan_id, Loan.owner_id == user.id))
+    if loan is None: raise HTTPException(status_code=404, detail="Leihgabe nicht gefunden")
+    if loan.returned_at is None: loan.returned_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(loan); return loan
+
+@app.post("/api/gifts", response_model=GiftOut, status_code=201)
+def gift_create(data: GiftIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, data.person_id, user)
+    if data.source_memory_id and db.scalar(select(Memory.id).where(Memory.id == data.source_memory_id, Memory.owner_id == user.id)) is None: raise HTTPException(status_code=404, detail="Quellerinnerung nicht gefunden")
+    gift = Gift(owner_id=user.id, **data.model_dump()); db.add(gift); db.commit(); db.refresh(gift); return gift
+
+@app.get("/api/gifts", response_model=list[GiftOut])
+def gift_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None):
+    stmt = select(Gift).where(Gift.owner_id == user.id)
+    if person_id: stmt = stmt.where(Gift.person_id == person_id)
+    return db.scalars(stmt.order_by(Gift.created_at.desc())).all()
 
 @app.get("/api/briefing/daily")
 def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):

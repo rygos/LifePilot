@@ -1,6 +1,6 @@
 # LifePilot
 
-LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Dieser erste ausführbare Stand bietet Benutzerkonten, Personen, gerichtete Beziehungen, Erinnerungen/Notizen, Aufgaben, Suche, REST und einen authentifizierten MCP-Endpunkt.
+LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Der ausführbare Kern bietet Benutzerkonten, Personen, gerichtete Beziehungen, Erinnerungen/Notizen, Aufgaben, Gespräche, offene Leihgaben, Geschenkideen, strukturierte Suche, REST und einen authentifizierten MCP-Endpunkt.
 
 ## Schnellstart mit Compose
 
@@ -30,4 +30,4 @@ Migrationen laufen beim API-Start via Alembic. Updates: `docker compose pull && 
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. PostgreSQL/pgvector-Betrieb, Redis-Worker, Gespräche, Ereignisse, Leihgaben, Geschenke, echte Terminplanung, Hintergrundbenachrichtigungen, Datei-Uploads, KI, vollständige MCP-Operationen und automatisierte End-to-End-Tests. Dies ist ein benutzbarer Kern, noch keine Umsetzung des Gesamtumfangs.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. PostgreSQL/pgvector-Betrieb, Redis-Worker, Termine, regelbasierte Hintergrundbenachrichtigungen, Datei-Uploads, KI, vollständige MCP-Operationen und automatisierte End-to-End-Tests. Dies ist ein benutzbarer Kern, noch keine Umsetzung des Gesamtumfangs.

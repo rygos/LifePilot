@@ -11,7 +11,9 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] MCP-Server mit Streamable HTTP und authentifizierten, typisierten Werkzeugen (4 Kernwerkzeuge erfolgreich mit offiziellem Client geprüft).
 - [x] Compose-Datei, Konfigurationsbeispiel, Betriebs- und Architekturhinweise.
 - [x] Backend-Tests (3 bestanden), Next.js-Produktionsbuild, SQLite-Migration und Compose-Health/API-/MCP-Szenarien ausgeführt.
-- [ ] PostgreSQL/Redis/Worker-Betrieb und umfassendere Phase-1-Domänen (Gespräche, Ereignisse, Leihgaben, Geschenke, Termine).
+- [x] Erweiterung: 4 Backend-Tests bestanden, Migration `0002_phase1_domains` auf Test- und Compose-Datenbank aktiv, Web-Build und Compose-API-Aufrufe für Gespräche/Leihgaben/Geschenke geprüft.
+- [x] Gespräche mit Teilnehmern und Ereigniszeit, Leihgaben mit Rückgabe und Geschenke mit Anlass/Quelle (REST, UI und Migration).
+- [ ] PostgreSQL/Redis/Worker-Betrieb sowie Termine und eigenständige Ereignisse.
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
 - [ ] Regelbasierte Scheduler, Benachrichtigungen, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
@@ -30,7 +32,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Nächste Schritte
 
 1. PostgreSQL mit pgvector, Redis und getrenntem Scheduler/Worker ergänzen.
-2. Gesprächs-, Termin-, Geschenk- und Leihgabenmodelle mit Quellenhistorie und dazugehörigen UI-Flows ergänzen.
+2. Ereignis- und Terminmodelle sowie Quellenhistorie und Änderungsversionen ergänzen.
 3. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
 4. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
 5. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.

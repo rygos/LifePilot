@@ -5,6 +5,9 @@ import { FormEvent, useEffect, useState } from "react";
 type Person = { id: string; first_name: string; last_name: string; birthday?: string | null; notes: string };
 type Memory = { id: string; title: string; content: string; created_at: string };
 type Task = { id: string; title: string; status: string; due_at?: string | null };
+type Conversation = { id: string; title: string; original_note: string; occurred_at?: string | null; location: string; participant_ids: string[] };
+type Loan = { id: string; item_name: string; lender_person_id?: string | null; borrower_person_id?: string | null; due_at?: string | null };
+type Gift = { id: string; person_id: string; title: string; occasion: string; status: string };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
@@ -14,6 +17,9 @@ export default function Home() {
   const [people, setPeople] = useState<Person[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [gifts, setGifts] = useState<Gift[]>([]);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
 
@@ -24,8 +30,8 @@ export default function Home() {
   }
   async function refresh() {
     try {
-      const [p, m, t] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open")]);
-      setPeople(p); setMemories(m); setTasks(t);
+      const [p, m, t, c, l, g] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts")]);
+      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g);
     } catch (error) { setMessage(String(error)); }
   }
   useEffect(() => { const saved = localStorage.getItem("lifepilot-token"); if (saved) setToken(saved); }, []);
@@ -52,6 +58,22 @@ export default function Home() {
     try { await request("/api/tasks", { method: "POST", body: JSON.stringify({ title: form.get("title") }) }); event.currentTarget.reset(); await refresh(); }
     catch (error) { setMessage(String(error)); }
   }
+  async function createConversation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const participant = String(form.get("person_id") ?? "");
+    try { await request("/api/conversations", { method: "POST", body: JSON.stringify({ title: form.get("title"), original_note: form.get("original_note"), participant_ids: participant ? [participant] : [], occurred_at: form.get("occurred_at") || null, location: form.get("location") || "" }) }); event.currentTarget.reset(); setMessage("Gespräch gespeichert"); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function createLoan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await request("/api/loans", { method: "POST", body: JSON.stringify({ item_name: form.get("item_name"), borrower_person_id: form.get("person_id") || null }) }); event.currentTarget.reset(); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function createGift(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await request("/api/gifts", { method: "POST", body: JSON.stringify({ person_id: form.get("person_id"), title: form.get("title"), occasion: form.get("occasion") || "" }) }); event.currentTarget.reset(); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function returnLoan(id: string) { try { await request(`/api/loans/${id}/return`, { method: "PATCH" }); await refresh(); } catch (error) { setMessage(String(error)); } }
   async function complete(id: string) { try { await request(`/api/tasks/${id}/complete`, { method: "PATCH" }); await refresh(); } catch (error) { setMessage(String(error)); } }
   async function search(event: FormEvent) { event.preventDefault(); try { const result = await request<{ people: Person[]; memories: Memory[]; tasks: Task[] }>(`/api/search?q=${encodeURIComponent(query)}`); setPeople(result.people); setMemories(result.memories); setTasks(result.tasks); } catch (error) { setMessage(String(error)); } }
 
@@ -65,6 +87,8 @@ export default function Home() {
       <div className="grid"><section id="tasks" className="card panel"><div className="panel-head"><div><span className="eyebrow">IM BLICK</span><h2>Aufgaben</h2></div><span className="count">{tasks.length}</span></div><form className="inline-form" onSubmit={createTask}><input name="title" placeholder="Neue Aufgabe …" required /><button aria-label="Aufgabe hinzufügen">+</button></form>{tasks.length ? tasks.map(t => <div className="list-item" key={t.id}><button className="check" onClick={() => void complete(t.id)} aria-label="Aufgabe abschließen" /><span>{t.title}</span></div>) : <p className="empty">Alles im Blick. Neue Aufgaben kannst du oben ergänzen.</p>}</section>
       <section id="people" className="card panel"><div className="panel-head"><div><span className="eyebrow">DEIN UMFELD</span><h2>Menschen</h2></div><span className="count">{people.length}</span></div><form className="person-form" onSubmit={createPerson}><input name="first_name" placeholder="Vorname" required /><input name="last_name" placeholder="Nachname" /><input name="birthday" type="date" aria-label="Geburtstag" /><input name="notes" placeholder="Notiz (optional)" /><button>Person hinzufügen</button></form>{people.map(p => <div className="list-item person" key={p.id}><div className="avatar small">{p.first_name[0]}</div><span>{p.first_name} {p.last_name}<small>{p.birthday ? `Geburtstag: ${p.birthday}` : p.notes}</small></span></div>)}</section></div>
       <section id="memories" className="card panel memory-panel"><div className="panel-head"><div><span className="eyebrow">ZULETZT GESPEICHERT</span><h2>Erinnerungen</h2></div><span className="count">{memories.length}</span></div>{memories.length ? memories.slice(0, 6).map(m => <article className="memory" key={m.id}><span className="memory-dot" /><div><h3>{m.title}</h3><p>{m.content}</p><time>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(m.created_at))}</time></div></article>) : <p className="empty">Hier erscheinen deine gespeicherten Gedanken und Begegnungen.</p>}</section>
+      <div className="grid domain-grid"><section className="card panel"><div className="panel-head"><div><span className="eyebrow">EPISODISCHES GEDÄCHTNIS</span><h2>Gespräche</h2></div><span className="count">{conversations.length}</span></div><form className="person-form" onSubmit={createConversation}><input name="title" placeholder="Titel" required /><select name="person_id" defaultValue=""><option value="">Person (optional)</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><input name="occurred_at" type="datetime-local" aria-label="Zeitpunkt" /><input name="location" placeholder="Ort (optional)" /><textarea name="original_note" placeholder="Gesprächsnotiz im Original …" required /><button>Gespräch speichern</button></form>{conversations.slice(0, 4).map(c => <article className="memory" key={c.id}><span className="memory-dot" /><div><h3>{c.title}</h3><p>{c.original_note}</p><time>{c.occurred_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(c.occurred_at)) : "Zeitpunkt offen"}{c.location ? ` · ${c.location}` : ""}</time></div></article>)}</section>
+      <section className="card panel"><div className="panel-head"><div><span className="eyebrow">IM UMLAUF</span><h2>Leihgaben</h2></div><span className="count">{loans.length}</span></div><form className="inline-form" onSubmit={createLoan}><input name="item_name" placeholder="Gegenstand" required /><select name="person_id" defaultValue="" required><option value="">Entleiher …</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><button aria-label="Leihgabe speichern">+</button></form>{loans.map(l => <div className="list-item" key={l.id}><span>{l.item_name}<small>{people.find(p => p.id === l.borrower_person_id)?.first_name ?? "Unbekannt"}</small></span><button className="quiet" onClick={() => void returnLoan(l.id)}>Zurück</button></div>)}<div className="panel-head gift-heading"><div><span className="eyebrow">VORMERKEN</span><h2>Geschenkideen</h2></div><span className="count">{gifts.length}</span></div><form className="inline-form" onSubmit={createGift}><select name="person_id" defaultValue="" required><option value="">Für wen?</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><input name="title" placeholder="Geschenkidee" required /><input name="occasion" placeholder="Anlass" /><button aria-label="Geschenkidee speichern">+</button></form>{gifts.slice(0, 5).map(g => <div className="list-item" key={g.id}><span>{g.title}<small>{people.find(p => p.id === g.person_id)?.first_name} · {g.occasion || "Idee"}</small></span></div>)}</section></div>
       <footer>Deine Daten. Dein Server. Dein Gedächtnis.</footer>
     </section></main>;
 }
