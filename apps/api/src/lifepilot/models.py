@@ -12,6 +12,12 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     username: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(240), default="")
+    nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    birthday: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    address: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class Person(Base):
@@ -24,6 +30,10 @@ class Person(Base):
     birthday: Mapped[str | None] = mapped_column(String(10), nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    address: Mapped[str] = mapped_column(Text, default="")
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

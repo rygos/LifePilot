@@ -11,7 +11,7 @@ def owned_person(db: Session, person_id: str | None, owner: User):
 
 def search(db: Session, owner: User, query: str):
     term = f"%{query.strip()}%"
-    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.notes.ilike(term)))).all()
+    people = db.scalars(select(Person).where(Person.owner_id == owner.id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.address.ilike(term), Person.website.ilike(term), Person.job_title.ilike(term), Person.organization.ilike(term), Person.notes.ilike(term)))).all()
     memories = db.scalars(select(Memory).where(Memory.owner_id == owner.id, or_(Memory.title.ilike(term), Memory.content.ilike(term)))).all()
     tasks = db.scalars(select(Task).where(Task.owner_id == owner.id, or_(Task.title.ilike(term), Task.description.ilike(term)))).all()
     conversations = db.scalars(select(Conversation).where(Conversation.owner_id == owner.id, or_(Conversation.title.ilike(term), Conversation.original_note.ilike(term), Conversation.summary.ilike(term), Conversation.location.ilike(term)))).all()

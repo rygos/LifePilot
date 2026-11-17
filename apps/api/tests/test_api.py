@@ -56,6 +56,21 @@ def test_relationship_validation_and_cross_user_isolation(client, auth):
     assert other_token.status_code == 401
     assert client.get(f"/api/people/{first['id']}", headers={"Authorization": "Bearer invalid"}).status_code == 401
 
+def test_relationships_and_profile_fields_are_readable_and_editable(client, auth):
+    martin = client.post("/api/people", headers=auth, json={"first_name": "Martin", "nickname": "Marty", "address": "Hauptstraße 4", "website": "https://example.org", "job_title": "Gärtner", "organization": "Verein"}).json()
+    lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
+    relation = client.post("/api/relationships", headers=auth, json={"source_person_id": martin["id"], "target_person_id": lea["id"], "relationship_type": "Vater von"})
+    assert relation.status_code == 201
+    visible = client.get(f"/api/relationships?person_id={lea['id']}", headers=auth).json()
+    assert visible[0]["source_person_name"] == "Martin"
+    assert visible[0]["target_person_name"] == "Lea"
+    assert client.get(f"/api/people/{martin['id']}", headers=auth).json()["address"] == "Hauptstraße 4"
+    profile = client.patch("/api/profile", headers=auth, json={"full_name": "Alex Beispiel", "nickname": "Alex", "address": "Parkweg 1", "email": "alex@example.org"})
+    assert profile.status_code == 200
+    assert client.get("/api/profile", headers=auth).json()["full_name"] == "Alex Beispiel"
+    assert client.delete(f"/api/relationships/{relation.json()['id']}", headers=auth).status_code == 204
+    assert client.get(f"/api/relationships?person_id={lea['id']}", headers=auth).json() == []
+
 def test_mcp_tools_are_registered():
     from lifepilot.main import mcp
     assert mcp is not None

@@ -14,6 +14,10 @@ class PersonIn(BaseModel):
     birthday: str | None = None
     email: str | None = None
     phone: str | None = None
+    address: str = ""
+    website: str | None = None
+    job_title: str | None = None
+    organization: str | None = None
     notes: str = ""
 class PersonOut(PersonIn):
     model_config = ConfigDict(from_attributes=True)
@@ -44,6 +48,34 @@ class RelationshipIn(BaseModel):
     relationship_type: str
     source_memory_id: str | None = None
     confirmed: bool = True
+
+class ProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    username: str
+    full_name: str
+    nickname: str | None
+    birthday: str | None
+    email: str | None
+    phone: str | None
+    address: str
+
+class ProfileUpdate(BaseModel):
+    full_name: str = ""
+    nickname: str | None = None
+    birthday: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str = ""
+
+class RelationshipOut(BaseModel):
+    id: str
+    source_person_id: str
+    source_person_name: str
+    target_person_id: str
+    target_person_name: str
+    relationship_type: str
+    confirmed: bool
+    source_memory_id: str | None
 
 class ConversationIn(BaseModel):
     title: str

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.models import Conversation, ConversationParticipant, Event, EventParticipant, Gift, Loan, Memory, Person, Relationship, Reminder, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MemoryIn, MemoryOut, PersonIn, PersonOut, ReminderAction, ReminderIn, ReminderOut, RelationshipIn, TaskIn, TaskOut, Token
+from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, ReminderAction, ReminderIn, ReminderOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.security import resolve_bearer_user
 from lifepilot.services import owned_person, relationship_create, search
@@ -44,6 +44,15 @@ def login_json(data: Credentials, db: Session = Depends(get_db)):
 @app.get("/api/auth/me")
 def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username}
 
+@app.get("/api/profile", response_model=ProfileOut)
+def profile_get(user: User = Depends(current_user)):
+    return ProfileOut.model_validate(user)
+
+@app.patch("/api/profile", response_model=ProfileOut)
+def profile_update(data: ProfileUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    for key, value in data.model_dump(exclude_unset=True).items(): setattr(user, key, value)
+    db.commit(); db.refresh(user); return ProfileOut.model_validate(user)
+
 @app.get("/api/people", response_model=list[PersonOut])
 def people_list(db: Session = Depends(get_db), user: User = Depends(current_user), q: str = ""):
     stmt = select(Person).where(Person.owner_id == user.id)
@@ -71,12 +80,23 @@ def person_delete(person_id: str, db: Session = Depends(get_db), user: User = De
 @app.get("/api/relationships")
 def relationship_list(db: Session = Depends(get_db), user: User = Depends(current_user), person_id: str | None = None):
     stmt = select(Relationship).where(Relationship.owner_id == user.id)
-    if person_id: stmt = stmt.where(or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))
-    return db.scalars(stmt).all()
+    if person_id:
+        owned_person(db, person_id, user)
+        stmt = stmt.where(or_(Relationship.source_person_id == person_id, Relationship.target_person_id == person_id))
+    rows = db.scalars(stmt.order_by(Relationship.created_at.desc())).all()
+    ids = {r.source_person_id for r in rows} | {r.target_person_id for r in rows}
+    people_by_id = {p.id: p for p in db.scalars(select(Person).where(Person.owner_id == user.id, Person.id.in_(ids))).all()} if ids else {}
+    return [RelationshipOut(id=r.id, source_person_id=r.source_person_id, source_person_name=f"{people_by_id[r.source_person_id].first_name} {people_by_id[r.source_person_id].last_name}".strip(), target_person_id=r.target_person_id, target_person_name=f"{people_by_id[r.target_person_id].first_name} {people_by_id[r.target_person_id].last_name}".strip(), relationship_type=r.relationship_type, confirmed=r.confirmed, source_memory_id=r.source_memory_id) for r in rows]
 
 @app.post("/api/relationships", status_code=201)
 def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return relationship_create(db, user, data.source_person_id, data.target_person_id, data.relationship_type, data.source_memory_id, data.confirmed)
+
+@app.delete("/api/relationships/{relationship_id}", status_code=204)
+def relationship_delete(relationship_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(Relationship).where(Relationship.id == relationship_id, Relationship.owner_id == user.id))
+    if row is None: raise HTTPException(status_code=404, detail="Beziehung nicht gefunden")
+    db.delete(row); db.commit()
 
 @app.post("/api/memories", response_model=MemoryOut, status_code=201)
 def memory_create(data: MemoryIn, db: Session = Depends(get_db), user: User = Depends(current_user)):

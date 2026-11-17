@@ -43,3 +43,11 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
 - [ ] Browserbasierte visuelle Abnahme war nicht verfügbar, da der Browser-Zugriffshost in dieser Sitzung nicht erreichbar war.
+
+## Personenprofile und Beziehungen
+
+- [x] Personenprofile um Adresse, Webseite, Beruf und Organisation erweitert; bestehende Felder für Spitzname, Geburtstag, E-Mail und Telefon in der Oberfläche sichtbar und bearbeitbar.
+- [x] Beziehungsansicht mit Namen, Richtung und Beziehungstyp im jeweiligen Personenprofil sowie Hinzufügen und Entfernen.
+- [x] Eigenes Benutzerprofil für Name, Spitzname, Geburtstag und Kontaktdaten.
+- [x] Migration `0004_person_profiles` und Backend-Tests für Profil- und Beziehungsoperationen.
+- [ ] Browserbasierte visuelle Abnahme weiterhin offen, Browser-Zugriffshost nicht verfügbar.
