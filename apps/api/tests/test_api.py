@@ -78,7 +78,66 @@ def test_mcp_tools_are_registered():
     from lifepilot.main import mcp
     assert mcp is not None
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool"} <= names
+    assert {"person_create_tool", "person_search_tool", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "memory_get", "memory_update", "memory_delete", "conversation_create", "conversation_search", "task_create", "task_search", "task_complete", "event_create", "upcoming_events", "loan_create", "loan_search", "loan_return", "gift_create", "gift_search", "person_context", "daily_briefing", "open_commitments"} <= names
+
+def test_official_mcp_client_auth_and_scope_enforcement(client):
+    import asyncio
+    import json
+    from httpx import ASGITransport, AsyncClient
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+    from lifepilot.main import mcp
+    from lifepilot.models import Person as PersonModel
+    from sqlalchemy.orm import Session
+    from lifepilot.security import resolve_bearer_scopes
+
+    writable = client.post("/api/auth/mcp-token", json={"username": "testuser", "password": "test-password", "access": "read_write"})
+    assert writable.status_code == 200
+    token = writable.json()["access_token"]
+    assert resolve_bearer_scopes(token) == ["memory:read", "memory:write"]
+    readonly = client.post("/api/auth/mcp-token", json={"username": "testuser", "password": "test-password", "access": "read_only"})
+    assert readonly.status_code == 200
+    readonly_token = readonly.json()["access_token"]
+    assert resolve_bearer_scopes(readonly_token) == ["memory:read"]
+    with Session(engine) as db:
+        other = User(username="mcp-private-user", password_hash="unused")
+        db.add(other); db.flush()
+        private_person = PersonModel(owner_id=other.id, first_name="Geheim")
+        db.add(private_person); db.commit()
+        foreign_person_id = private_person.id
+
+    async def connect_and_check() -> None:
+        app = mcp.streamable_http_app()
+        async with mcp.session_manager.run():
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost:8002", headers={"Authorization": f"Bearer {token}"}) as http:
+                async with streamable_http_client("http://localhost:8002/mcp", http_client=http) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        listed = await session.list_tools()
+                        assert "relationship_create" in {tool.name for tool in listed.tools}
+                        created = await session.call_tool("person_create_tool", {"first_name": "MCP", "last_name": "Client"})
+                        assert not created.isError
+                        person_id = json.loads(created.content[0].text)["id"]
+                        searched = await session.call_tool("person_search_tool", {"query": "MCP"})
+                        assert not searched.isError and "MCP" in str(searched.content)
+                        child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind"})
+                        child_id = json.loads(child.content[0].text)["id"]
+                        relation = await session.call_tool("relationship_create", {"source_person_id": person_id, "target_person_id": child_id, "relationship_type": "Vater von"})
+                        assert not relation.isError and "Tochter von" in str(relation.content)
+                        context = await session.call_tool("person_context", {"person_id": person_id})
+                        assert not context.isError and "MCP-Kind" in str(context.content)
+                        forbidden = await session.call_tool("person_get", {"person_id": foreign_person_id})
+                        assert forbidden.isError
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost:8002", headers={"Authorization": f"Bearer {readonly_token}"}) as http:
+                async with streamable_http_client("http://localhost:8002/mcp", http_client=http) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        denied = await session.call_tool("task_create", {"title": "Soll nicht gespeichert werden"})
+                        assert denied.isError
+                        denied_person = await session.call_tool("person_create_tool", {"first_name": "Soll auch nicht gespeichert werden"})
+                        assert denied_person.isError
+
+    asyncio.run(connect_and_check())
 
 def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()

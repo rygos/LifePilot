@@ -13,8 +13,13 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 def hash_password(password: str) -> str: return password_hash.hash(password)
 def verify_password(password: str, hashed: str) -> bool: return password_hash.verify(password, hashed)
-def create_token(user_id: str) -> str:
-    return jwt.encode({"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=12)}, settings.secret_key, algorithm="HS256")
+def create_token(user_id: str, scopes: list[str] | None = None) -> str:
+    granted_scopes = scopes if scopes is not None else ["memory:read", "memory:write"]
+    return jwt.encode({"sub": user_id, "scope": " ".join(granted_scopes), "exp": datetime.now(timezone.utc) + timedelta(hours=12)}, settings.secret_key, algorithm="HS256")
+
+def resolve_bearer_scopes(token: str) -> list[str]:
+    payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+    return str(payload.get("scope", "memory:read memory:write")).split()
 def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])

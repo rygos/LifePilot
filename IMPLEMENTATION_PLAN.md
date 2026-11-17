@@ -8,7 +8,7 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 
 - [x] Grundsystem: FastAPI, SQLite/PostgreSQL-kompatible SQLAlchemy-Modelle, initiale Alembic-Migration, Benutzerkonten und mandantenbezogene Daten.
 - [x] Kernfunktionen ohne KI: Personen, Beziehungen, Notizen/Erinnerungen, Aufgaben, Suche und deutsche Weboberfläche.
-- [x] MCP-Server mit Streamable HTTP und authentifizierten, typisierten Werkzeugen (4 Kernwerkzeuge erfolgreich mit offiziellem Client geprüft).
+- [x] MCP-Server mit Streamable HTTP und authentifizierten, typisierten Werkzeugen; initiale Kernwerkzeuge per offiziellem Client geprüft.
 - [x] Compose-Datei, Konfigurationsbeispiel, Betriebs- und Architekturhinweise.
 - [x] Backend-Tests (3 bestanden), Next.js-Produktionsbuild, SQLite-Migration und Compose-Health/API-/MCP-Szenarien ausgeführt.
 - [x] Erweiterung: 4 Backend-Tests bestanden, Migration `0002_phase1_domains` auf Test- und Compose-Datenbank aktiv, Web-Build und Compose-API-Aufrufe für Gespräche/Leihgaben/Geschenke geprüft.
@@ -34,7 +34,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Nächste Schritte
 
-1. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integriert testen.
+1. Verbleibende MCP-Operationen (vollständiges Update/Delete für alle Module, Audit-Log, Projekte und explizite Freigaben) ergänzen.
 2. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
 3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
@@ -78,3 +78,10 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Ausführungssperre verhindert überlappende Planungsläufe; Datenbankoperation bleibt idempotent.
 - [x] RQ-Integrationstest prüft Jobstatus, Retry-Konfiguration und erstellte Erinnerung mit echtem Redis.
 - [ ] KI-Extraktion und weitere Hintergrundprozesse an dieselbe Job-Infrastruktur anschließen.
+
+## MCP-Toolkatalog und Zugriff
+
+- [x] Typisierte Tools für Personen, Beziehungen, Erinnerungen, Gespräche, Aufgaben, Termine, Leihgaben, Geschenke und Briefings ergänzt; die vorhandenen Service- und REST-Geschäftsoperationen werden wiederverwendet.
+- [x] Lese- und Schreibrechte sind über kurzlebige MCP-Tokens getrennt konfigurierbar; schreibende Tools prüfen den Scope, Löschung verlangt eine explizite Bestätigung.
+- [x] Offizieller Streamable-HTTP-MCP-Client prüft Verbindung, Tool-Aufruf, Suche, Beziehungskontext und verweigerten Schreibzugriff mit Nur-Lese-Token.
+- [ ] Vollständige CRUD-Abdeckung, Audit-Ereignisse und explizite Freigabe kritischer Operationen stehen noch aus.
