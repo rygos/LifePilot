@@ -9,10 +9,10 @@ from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
-from lifepilot.models import Conversation, ConversationParticipant, Gift, Loan, Memory, Person, Relationship, Task, User
+from lifepilot.audit import AuditEventView
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, Gift, Loan, Memory, Person, Relationship, Task, User
 from lifepilot.schemas import ConversationIn, ConversationOut, Credentials, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token
 from lifepilot.security import create_token, current_user, hash_password, verify_password
-from lifepilot.security import resolve_bearer_scopes, resolve_bearer_user
 from lifepilot.services import owned_person, relationship_create, search
 from lifepilot.planner import router as planner_router
 
@@ -183,6 +183,10 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
     tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.status == "open").order_by(Task.due_at).limit(10)).all()
     return {"open_tasks": [TaskOut.model_validate(t).model_dump(mode="json") for t in tasks]}
 
+@app.get("/api/audit", response_model=list[AuditEventView])
+def audit_list(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = Query(default=50, ge=1, le=200)) -> list[AuditEvent]:
+    return list(db.scalars(select(AuditEvent).where(AuditEvent.owner_id == user.id).order_by(AuditEvent.created_at.desc()).limit(limit)).all())
+
 @app.get("/api/briefing/person/{person_id}")
 def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
@@ -192,229 +196,11 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     return {"person": PersonOut.model_validate(person), "memories": [MemoryOut.model_validate(m) for m in memories], "open_tasks": [TaskOut.model_validate(t) for t in tasks], "relationships": links}
 
 try:
-    from mcp.server.fastmcp import FastMCP
-    from mcp.server.auth.provider import AccessToken, TokenVerifier
-    from mcp.server.auth.middleware.auth_context import get_access_token
-    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
-    class LifePilotTokenVerifier(TokenVerifier):
-        async def verify_token(self, token: str) -> AccessToken | None:
-            with Session(engine) as db:
-                try:
-                    user = resolve_bearer_user(token, db)
-                    return AccessToken(token=token, client_id=user.id, scopes=resolve_bearer_scopes(token), resource="http://localhost/mcp/")
-                except HTTPException:
-                    return None
-    mcp = FastMCP("LifePilot", token_verifier=LifePilotTokenVerifier(), auth=AuthSettings(issuer_url="http://localhost", resource_server_url="http://localhost/mcp/", required_scopes=["memory:read"], client_registration_options=ClientRegistrationOptions(enabled=False), revocation_options=RevocationOptions(enabled=False), validate_token_resource=False), stateless_http=True, json_response=True, streamable_http_path="/mcp")
-    def mcp_user(required_scope: str = "memory:read"):
-        token = get_access_token()
-        if token is None: raise ValueError("Bearer token erforderlich")
-        if required_scope not in token.scopes: raise ValueError(f"MCP-Token benötigt den Bereich {required_scope}")
-        return token.client_id
-    @mcp.tool()
-    def person_create_tool(first_name: str, last_name: str = "", birthday: str | None = None, notes: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, birthday=birthday, notes=notes); db.add(row); db.commit(); db.refresh(row)
-            return PersonOut.model_validate(row).model_dump(mode="json")
-    @mcp.tool()
-    def person_search_tool(query: str) -> list[dict]:
-        owner_id = mcp_user(); term = f"%{query}%"
-        with Session(engine) as db:
-            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.notes.ilike(term)))).all()
-            return [PersonOut.model_validate(r).model_dump(mode="json") for r in rows]
-    @mcp.tool()
-    def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            user = db.get(User, owner_id); owned_person(db, person_id, user)
-            row = Memory(owner_id=owner_id, person_id=person_id, title=title, content=content); db.add(row); db.commit(); db.refresh(row)
-            return MemoryOut.model_validate(row).model_dump(mode="json")
-    @mcp.tool()
-    def memory_search_tool(query: str) -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            user = db.get(User, owner_id); result = search(db, user, query)
-            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]]}
-
-    @mcp.tool(name="person_get")
-    def person_get_mcp(person_id: str) -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            return PersonOut.model_validate(person_get(person_id, db, db.get(User, owner_id))).model_dump(mode="json")
-
-    @mcp.tool(name="person_update")
-    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
-        changes = {key: value for key, value in locals().copy().items() if key in PersonIn.model_fields and value is not None}
-        with Session(engine) as db:
-            person = owned_person(db, person_id, db.get(User, owner_id))
-            for key, value in changes.items(): setattr(person, key, value)
-            db.commit(); db.refresh(person)
-            return PersonOut.model_validate(person).model_dump(mode="json")
-
-    @mcp.tool(name="relationship_create")
-    def relationship_create_mcp(source_person_id: str, target_person_id: str, relationship_type: str, inverse_relationship_type: str | None = None, source_memory_id: str | None = None, confirmed: bool = True) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = relationship_add(RelationshipIn(source_person_id=source_person_id, target_person_id=target_person_id, relationship_type=relationship_type, inverse_relationship_type=inverse_relationship_type, source_memory_id=source_memory_id, confirmed=confirmed), db, db.get(User, owner_id))
-            names = relationship_list(db, db.get(User, owner_id), source_person_id)
-            match = next(item for item in names if item.id == row.id)
-            return match.model_dump(mode="json")
-
-    @mcp.tool(name="relationship_search")
-    def relationship_search_mcp(person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            return [item.model_dump(mode="json") for item in relationship_list(db, db.get(User, owner_id), person_id)]
-
-    @mcp.tool(name="memory_get")
-    def memory_get_mcp(memory_id: str) -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
-            if row is None: raise ValueError("Erinnerung nicht gefunden")
-            return MemoryOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="memory_update")
-    def memory_update_mcp(memory_id: str, title: str | None = None, content: str | None = None, person_id: str | None = None, occurred_at: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
-            if row is None: raise ValueError("Erinnerung nicht gefunden")
-            if person_id is not None: owned_person(db, person_id, db.get(User, owner_id))
-            parsed_occurred_at = datetime.fromisoformat(occurred_at.replace("Z", "+00:00")) if occurred_at is not None else None
-            for key, value in (("title", title), ("content", content), ("person_id", person_id), ("occurred_at", parsed_occurred_at)):
-                if value is not None: setattr(row, key, value)
-            db.commit(); db.refresh(row)
-            return MemoryOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="memory_delete")
-    def memory_delete_mcp(memory_id: str, confirm: bool) -> dict:
-        owner_id = mcp_user("memory:write")
-        if not confirm: raise ValueError("Löschen erfordert confirm=true")
-        with Session(engine) as db:
-            row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
-            if row is None: raise ValueError("Erinnerung nicht gefunden")
-            db.delete(row); db.commit()
-            return {"deleted": True, "memory_id": memory_id}
-
-    @mcp.tool(name="conversation_create")
-    def conversation_create_mcp(title: str, original_note: str, participant_ids: list[str] | None = None, occurred_at: str | None = None, location: str = "", summary: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = conversation_create(ConversationIn(title=title, original_note=original_note, participant_ids=participant_ids or [], occurred_at=occurred_at, location=location, summary=summary), db, db.get(User, owner_id))
-            return row.model_dump(mode="json")
-
-    @mcp.tool(name="conversation_search")
-    def conversation_search_mcp(query: str = "", person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            return [row.model_dump(mode="json") for row in conversation_list(db, db.get(User, owner_id), person_id, query)]
-
-    @mcp.tool(name="task_create")
-    def task_create_mcp(title: str, description: str = "", person_id: str | None = None, due_at: str | None = None, priority: int = 2, repeat_interval_days: int | None = None, repeat_until: str | None = None) -> dict:
-        from lifepilot.planner import task_create as create_task
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = create_task(TaskIn(title=title, description=description, person_id=person_id, due_at=due_at, priority=priority, repeat_interval_days=repeat_interval_days, repeat_until=repeat_until), db, db.get(User, owner_id))
-            return TaskOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="task_search")
-    def task_search_mcp(status: str | None = None, person_id: str | None = None) -> list[dict]:
-        from lifepilot.planner import task_list
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            rows = task_list(db, db.get(User, owner_id), status)
-            if person_id is not None: rows = [row for row in rows if row.person_id == person_id]
-            return [TaskOut.model_validate(row).model_dump(mode="json") for row in rows]
-
-    @mcp.tool(name="task_complete")
-    def task_complete_mcp(task_id: str) -> dict:
-        from lifepilot.planner import task_complete
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = task_complete(task_id, db, db.get(User, owner_id))
-            return TaskOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="event_create")
-    def event_create_mcp(title: str, starts_at: str, description: str = "", location: str = "", ends_at: str | None = None, participant_ids: list[str] | None = None, source_memory_id: str | None = None) -> dict:
-        from lifepilot.planner import event_create
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = event_create(EventIn(title=title, starts_at=starts_at, description=description, location=location, ends_at=ends_at, participant_ids=participant_ids or [], source_memory_id=source_memory_id), db, db.get(User, owner_id))
-            return row.model_dump(mode="json")
-
-    @mcp.tool(name="upcoming_events")
-    def upcoming_events_mcp(from_at: str | None = None, to_at: str | None = None, person_id: str | None = None) -> list[dict]:
-        from lifepilot.planner import event_list
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            start = datetime.fromisoformat(from_at.replace("Z", "+00:00")) if from_at else None
-            end = datetime.fromisoformat(to_at.replace("Z", "+00:00")) if to_at else None
-            rows = event_list(db, db.get(User, owner_id), start, end, person_id)
-            return [row.model_dump(mode="json") for row in rows]
-
-    @mcp.tool(name="loan_create")
-    def loan_create_mcp(item_name: str, lender_person_id: str | None = None, borrower_person_id: str | None = None, due_at: str | None = None, condition_note: str = "", source_memory_id: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = loan_create(LoanIn(item_name=item_name, lender_person_id=lender_person_id, borrower_person_id=borrower_person_id, due_at=due_at, condition_note=condition_note, source_memory_id=source_memory_id), db, db.get(User, owner_id))
-            return LoanOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="loan_search")
-    def loan_search_mcp(open_only: bool = True, person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            rows = loan_list(db, db.get(User, owner_id), open_only, person_id)
-            return [LoanOut.model_validate(row).model_dump(mode="json") for row in rows]
-
-    @mcp.tool(name="loan_return")
-    def loan_return_mcp(loan_id: str) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = loan_return(loan_id, db, db.get(User, owner_id))
-            return LoanOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="gift_create")
-    def gift_create_mcp(person_id: str, title: str, note: str = "", occasion: str = "", budget: int | None = None, source_memory_id: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
-        with Session(engine) as db:
-            row = gift_create(GiftIn(person_id=person_id, title=title, note=note, occasion=occasion, budget=budget, source_memory_id=source_memory_id), db, db.get(User, owner_id))
-            return GiftOut.model_validate(row).model_dump(mode="json")
-
-    @mcp.tool(name="gift_search")
-    def gift_search_mcp(person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            rows = gift_list(db, db.get(User, owner_id), person_id)
-            return [GiftOut.model_validate(row).model_dump(mode="json") for row in rows]
-
-    @mcp.tool(name="person_context")
-    def person_context_mcp(person_id: str) -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            data = person_briefing(person_id, db, db.get(User, owner_id))
-            relationships = relationship_list(db, db.get(User, owner_id), person_id)
-            return {"person": data["person"].model_dump(mode="json"), "memories": [row.model_dump(mode="json") for row in data["memories"]], "open_tasks": [row.model_dump(mode="json") for row in data["open_tasks"]], "relationships": [row.model_dump(mode="json") for row in relationships]}
-
-    @mcp.tool(name="daily_briefing")
-    def daily_briefing_mcp() -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            result = daily_briefing(db, db.get(User, owner_id))
-            return {"open_tasks": [row for row in result["open_tasks"]]}
-
-    @mcp.tool(name="open_commitments")
-    def open_commitments_mcp() -> dict:
-        owner_id = mcp_user()
-        with Session(engine) as db:
-            tasks = db.scalars(select(Task).where(Task.owner_id == owner_id, Task.status == "open").order_by(Task.due_at)).all()
-            loans = db.scalars(select(Loan).where(Loan.owner_id == owner_id, Loan.returned_at.is_(None)).order_by(Loan.due_at)).all()
-            return {"tasks": [TaskOut.model_validate(row).model_dump(mode="json") for row in tasks], "loans": [LoanOut.model_validate(row).model_dump(mode="json") for row in loans]}
+    from lifepilot.mcp_tools import mcp
 except ImportError:
-    pass
+    mcp = None
 
 def run_mcp():
     import uvicorn
-    if "mcp" not in globals(): raise RuntimeError("MCP SDK is unavailable")
+    if mcp is None: raise RuntimeError("MCP SDK ist nicht verfügbar")
     uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=settings.mcp_port)

@@ -18,7 +18,7 @@ Für den Backend-Testlauf Redis mit `docker compose up -d redis` starten und in 
 
 ## MCP
 
-MCP nutzt Streamable HTTP und Bearer-Token. Für getrennte Berechtigungen stellt `POST /api/auth/mcp-token` mit JSON `{ "username": "...", "password": "...", "access": "read_only" }` ein Nur-Lese-Token aus; `access: "read_write"` schaltet Schreibwerkzeuge frei. Die normale Anmeldung über `/api/auth/token` oder `/api/auth/login` erzeugt weiterhin ein Token mit Lese- und Schreibrechten. Den MCP-Endpunkt `http://<host>:8002/mcp` und `Authorization: Bearer <token>` im Client konfigurieren. Codex kann beispielsweise mit `{"mcpServers":{"lifepilot":{"url":"http://localhost:8002/mcp","headers":{"Authorization":"Bearer <token>"}}}}` verbunden werden. Die Werkzeuge umfassen Personen und Beziehungen, Erinnerungen, Gespräche, Aufgaben, Termine, Leihgaben, Geschenke sowie Briefings. Schreiboperationen verwenden dieselben Besitzerprüfungen und Geschäftsoperationen wie die REST-API; `memory_delete` verlangt zusätzlich `confirm: true`. Tokens wie Passwörter behandeln.
+MCP nutzt Streamable HTTP und Bearer-Token. Für getrennte Berechtigungen stellt `POST /api/auth/mcp-token` mit JSON `{ "username": "...", "password": "...", "access": "read_only" }` ein Nur-Lese-Token aus; `access: "read_write"` schaltet Schreibwerkzeuge frei. Die normale Anmeldung über `/api/auth/token` oder `/api/auth/login` erzeugt weiterhin ein Token mit Lese- und Schreibrechten. Den MCP-Endpunkt `http://<host>:8002/mcp` und `Authorization: Bearer <token>` im Client konfigurieren. Codex kann beispielsweise mit `{"mcpServers":{"lifepilot":{"url":"http://localhost:8002/mcp","headers":{"Authorization":"Bearer <token>"}}}}` verbunden werden. Die Werkzeuge umfassen Personen und Beziehungen, Erinnerungen, Gespräche, Aufgaben, Termine, Leihgaben, Geschenke sowie Briefings. Schreiboperationen verwenden dieselben Besitzerprüfungen und Geschäftsoperationen wie die REST-API; Löschungen von Personen, Beziehungen und Erinnerungen verlangen `confirm: true`. MCP-Schreibvorgänge werden mit Benutzer, Ressource, Aktion und Zeitpunkt protokolliert. Der angemeldete Benutzer kann die eigenen Einträge über `audit_search` oder `GET /api/audit` abrufen. Tokens wie Passwörter behandeln.
 
 Für den lokalen Testbetrieb waren die Standardports 8000 und 3000 bereits belegt; dort wurde daher `API_PORT=8001` und `WEB_PORT=3001` verwendet. Das beeinflusst die `.env.example` nicht.
 
@@ -32,7 +32,7 @@ Migrationen laufen beim API-Start via Alembic. Compose verwendet PostgreSQL 16 m
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, KI und semantische Suche, vollständige MCP-Operationen sowie automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, KI und semantische Suche, Projektwerkzeuge und Freigabeabläufe für kritische MCP-Operationen sowie automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
 
 ## Termine und Erinnerungen
 

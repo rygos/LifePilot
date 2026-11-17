@@ -153,3 +153,13 @@ class Reminder(Base):
     state: Mapped[str] = mapped_column(String(20), default="scheduled", index=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(20))
+    resource_type: Mapped[str] = mapped_column(String(80))
+    resource_id: Mapped[str] = mapped_column(String(120))
+    source: Mapped[str] = mapped_column(String(20), default="mcp")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)

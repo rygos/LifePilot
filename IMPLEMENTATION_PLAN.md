@@ -34,7 +34,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Nächste Schritte
 
-1. Verbleibende MCP-Operationen (vollständiges Update/Delete für alle Module, Audit-Log, Projekte und explizite Freigaben) ergänzen.
+1. Projekte und explizite Freigaben kritischer MCP-Operationen ergänzen; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
 2. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
 3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
@@ -84,4 +84,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Typisierte Tools für Personen, Beziehungen, Erinnerungen, Gespräche, Aufgaben, Termine, Leihgaben, Geschenke und Briefings ergänzt; die vorhandenen Service- und REST-Geschäftsoperationen werden wiederverwendet.
 - [x] Lese- und Schreibrechte sind über kurzlebige MCP-Tokens getrennt konfigurierbar; schreibende Tools prüfen den Scope, Löschung verlangt eine explizite Bestätigung.
 - [x] Offizieller Streamable-HTTP-MCP-Client prüft Verbindung, Tool-Aufruf, Suche, Beziehungskontext und verweigerten Schreibzugriff mit Nur-Lese-Token.
-- [ ] Vollständige CRUD-Abdeckung, Audit-Ereignisse und explizite Freigabe kritischer Operationen stehen noch aus.
+- [x] Änderungswerkzeuge für Aufgaben, Termine, Gespräche, Erinnerungen, Geschenke und Leihgaben sowie bestätigungspflichtige Personen- und Beziehungs-Löschungen ergänzt.
+- [x] Audit-Ereignisse für MCP-Schreibvorgänge werden innerhalb derselben Datenbanktransaktion gespeichert und benutzerspezifisch über `audit_search` und `GET /api/audit` abgerufen.
+- [x] Migration `0008_audit_events`; offizieller MCP-Client prüft Updates, Audit-Protokoll, Benutzertrennung und Scope-Verweigerung.
+- [ ] Projekte, vollständige CRUD-Abdeckung aller Ressourcen und explizite Freigabe kritischer Operationen stehen noch aus.
