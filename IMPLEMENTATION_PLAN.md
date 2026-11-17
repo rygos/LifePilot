@@ -40,7 +40,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
 2. [x] Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern.
 3. [x] Personen- und Tagesbriefings mit Quelldatensätzen, Zeitzonenbezug und MCP-Ausgabe ergänzen.
-4. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
+4. [ ] E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
 
@@ -63,6 +63,14 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Dashboard zeigt das Tagesbriefing; Personenprofile zeigen Kontext mit Datum und Kurzkennung der Originalquelle.
 - [x] MCP-Werkzeuge `daily_briefing` und `person_context` geben die erweiterten Briefings zurück.
 - [x] Backend-Tests decken Zeitzonen-/Tageszuordnung, Quellen und MCP-Antworten ab; Next.js-Produktionsbuild erfolgreich.
+
+## Backup und Wiederherstellung
+
+- [x] `scripts/backup.sh` erkennt PostgreSQL oder SQLite und erstellt ein Datenbankbackup, App-Datenarchiv, Manifest und Prüfsummen mit restriktiven Dateirechten.
+- [x] `scripts/restore.sh` validiert Prüfsummen und Archivpfade und restauriert ausschließlich in neue Datenbank- und Dateisystemziele.
+- [x] `BACKUP_RESTORE.md` dokumentiert den Linux-/Compose-Ablauf, Stagingprüfung, Umschaltung und Grenzen (SQLite, `.env`, Redis).
+- [x] SQLite-Backup mit der laufenden Compose-Datenbank erstellt, in ein neues Staging-Verzeichnis restauriert und Tabelleninhalte abgeglichen.
+- [ ] PostgreSQL-Backup/Restore in eine neue Staging-Datenbank validieren, sobald der Compose-Stack PostgreSQL als Primärdatenbank verwendet.
 
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
