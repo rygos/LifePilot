@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from mcp.server.fastmcp import FastMCP
 
 from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, ConversationParticipant, Gift, Loan, Person, Project, Relationship, Reminder, Task, User
+from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.planner import event_update, reminder_create, reminder_update
 from lifepilot.schemas import ConversationOut, EventPatch, GiftOut, LoanOut, ProjectIn, ProjectOut, ProjectPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
 from lifepilot.services import owned_person, project_create, project_get, project_list, project_update
@@ -68,6 +69,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
             for field in ("title", "description", "person_id", "due_at", "priority", "repeat_interval_days", "repeat_until"):
                 setattr(row, field, getattr(candidate, field))
             db.commit(); db.refresh(row)
+            enqueue_entity_embedding("task", row.id, owner_id)
             return TaskOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="event_update")
@@ -101,6 +103,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
                 db.execute(delete(ConversationParticipant).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == owner_id))
                 db.add_all(ConversationParticipant(conversation_id=row.id, person_id=person_id, owner_id=owner_id) for person_id in ids)
             db.commit(); db.refresh(row)
+            enqueue_entity_embedding("conversation", row.id, owner_id)
             participants = list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == owner_id)).all())
             return ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=participants).model_dump(mode="json")
 

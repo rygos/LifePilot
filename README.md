@@ -46,7 +46,7 @@ EMBEDDING_MODEL=<embedding-modell-mit-768-dimensionen>
 EMBEDDING_TIMEOUT_SECONDS=15
 ```
 
-Ist `EMBEDDING_BASE_URL` leer, wird `LLM_BASE_URL` genutzt; das Embedding-Modell bleibt separat anzugeben. Neue und geänderte Erinnerungen werden über Redis/RQ indexiert. Für bereits gespeicherte Erinnerungen im Dashboard auf „Semantischen Index erneuern“ klicken. PostgreSQL kombiniert Volltext-Ranking mit pgvector-Cosinus-Ranking. Ohne Embedding-Modell bleibt die strukturierte Volltextsuche verfügbar; SQLite unterstützt dieselben semantischen Tests über eine lokale Cosinus-Berechnung.
+Ist `EMBEDDING_BASE_URL` leer, wird `LLM_BASE_URL` genutzt; das Embedding-Modell bleibt separat anzugeben. Neue und geänderte Erinnerungen, Gespräche, Aufgaben, Beziehungen und Projekte werden über Redis/RQ indexiert. Für bereits gespeicherte Einträge im Dashboard auf „Semantischen Index erneuern“ klicken. PostgreSQL kombiniert Volltext-Ranking mit pgvector-Cosinus-Ranking. Ohne Embedding-Modell bleibt die strukturierte Volltextsuche verfügbar; SQLite unterstützt dieselbe semantische Suche über eine lokale Cosinus-Berechnung.
 
 ## Betrieb und Daten
 
@@ -54,7 +54,7 @@ Migrationen laufen beim API-Start via Alembic. Compose verwendet PostgreSQL 16 m
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, semantische Suche für andere Ressourcentypen, vollständige CRUD-Abdeckung, automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. Datei-Uploads, Personen- und Tagesbriefings, vollständige CRUD-Abdeckung sowie automatisierte End-to-End- und Backup/Restore-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
 
 ## Termine und Erinnerungen
 

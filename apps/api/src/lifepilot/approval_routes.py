@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
+from lifepilot.entity_embedding_jobs import delete_entity_embedding
 from lifepilot.models import ApprovalRequest, AuditEvent, Memory, Person, Project, Relationship, User
 from lifepilot.schemas import ApprovalOut
 from lifepilot.security import current_user
@@ -36,6 +37,10 @@ def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User
     resource = db.scalar(select(model).where(model.id == request.resource_id, model.owner_id == user.id))
     if resource is None:
         raise HTTPException(status_code=404, detail="Zugehöriger Eintrag wurde nicht gefunden")
+    if request.operation == "relationship_delete":
+        delete_entity_embedding(db, "relationship", request.resource_id, user.id)
+    if request.operation == "project_delete":
+        delete_entity_embedding(db, "project", request.resource_id, user.id)
     db.delete(resource)
     request.status = "executed"
     request.decided_at = datetime.now(timezone.utc)

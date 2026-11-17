@@ -1,14 +1,18 @@
 import math
-from typing import TypedDict
+from typing import TypedDict, assert_never
 from sqlalchemy import and_, or_, select
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 from datetime import datetime
 from fastapi import HTTPException
 from zoneinfo import ZoneInfo
+from lifepilot.config import settings
+from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.embeddings import EmbeddingProviderError, embed_text, embedding_provider_configured
+from lifepilot.entity_embedding_jobs import EntityMatches, semantic_entity_matches
+from lifepilot.entity_types import EntityType
 from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, Person, Project, Relationship, Task, User
-from lifepilot.schemas import ProjectIn, ProjectPatch
+from lifepilot.schemas import ProjectIn, ProjectPatch, RelationshipOut
 
 class SearchInfo(TypedDict):
     semantic_available: bool
@@ -22,6 +26,8 @@ class SearchResults(TypedDict):
     conversations: list[Conversation]
     loans: list[Loan]
     gifts: list[Gift]
+    relationships: list[RelationshipOut]
+    projects: list[Project]
     search_info: SearchInfo
 
 def is_quiet_hours(owner: User, now: datetime) -> bool:
@@ -46,29 +52,126 @@ def search(db: Session, owner: User, query: str) -> SearchResults:
     lexical_memories = list(db.scalars(select(Memory).where(Memory.owner_id == owner.id, or_(Memory.title.ilike(term), Memory.content.ilike(term))).order_by(Memory.created_at.desc())).all())
     fulltext_ids = _postgres_fulltext_memory_ids(db, owner.id, query.strip())
     semantic_ids: list[str] = []
+    entity_matches: EntityMatches = {"conversation": [], "task": [], "relationship": [], "project": []}
     semantic_available = False
     if embedding_provider_configured() and query.strip():
         try:
-            semantic_ids = _semantic_memory_ids(db, owner.id, embed_text(query.strip()))
+            query_vector = embed_text(query.strip())
+            semantic_ids = _semantic_memory_ids(db, owner.id, query_vector)
+            entity_matches = semantic_entity_matches(db, owner.id, settings.embedding_model, query_vector)
             semantic_available = True
         except EmbeddingProviderError:
             semantic_available = False
-    ranked_ids: dict[str, float] = {}
-    for ranked_group in ([row.id for row in lexical_memories], fulltext_ids, semantic_ids):
-        for rank, memory_id in enumerate(ranked_group, start=1):
-            ranked_ids[memory_id] = ranked_ids.get(memory_id, 0.0) + 1 / (60 + rank)
-    ordered_ids = sorted(ranked_ids, key=ranked_ids.__getitem__, reverse=True)
+    ordered_ids = _rank_ids([ [row.id for row in lexical_memories], fulltext_ids, semantic_ids ])
     memory_map = {row.id: row for row in lexical_memories}
     if ordered_ids:
         missing_ids = [memory_id for memory_id in ordered_ids if memory_id not in memory_map]
         if missing_ids:
             memory_map.update({row.id: row for row in db.scalars(select(Memory).where(Memory.owner_id == owner.id, Memory.id.in_(missing_ids))).all()})
     memories = [memory_map[memory_id] for memory_id in ordered_ids if memory_id in memory_map]
-    tasks = db.scalars(select(Task).where(Task.owner_id == owner.id, or_(Task.title.ilike(term), Task.description.ilike(term)))).all()
-    conversations = db.scalars(select(Conversation).where(Conversation.owner_id == owner.id, or_(Conversation.title.ilike(term), Conversation.original_note.ilike(term), Conversation.summary.ilike(term), Conversation.location.ilike(term)))).all()
+    lexical_tasks = list(db.scalars(select(Task).where(Task.owner_id == owner.id, or_(Task.title.ilike(term), Task.description.ilike(term)))).all())
+    fulltext_tasks = _postgres_fulltext_entity_ids(db, owner.id, query.strip(), "task")
+    task_ids = _rank_ids([[row.id for row in lexical_tasks], fulltext_tasks, entity_matches["task"]])
+    task_map = {row.id: row for row in lexical_tasks}
+    if task_ids:
+        missing_ids = [entity_id for entity_id in task_ids if entity_id not in task_map]
+        task_map.update({row.id: row for row in db.scalars(select(Task).where(Task.owner_id == owner.id, Task.id.in_(missing_ids))).all()})
+    tasks = [task_map[entity_id] for entity_id in task_ids if entity_id in task_map]
+    lexical_conversations = list(db.scalars(select(Conversation).where(Conversation.owner_id == owner.id, or_(Conversation.title.ilike(term), Conversation.original_note.ilike(term), Conversation.summary.ilike(term), Conversation.location.ilike(term)))).all())
+    fulltext_conversations = _postgres_fulltext_entity_ids(db, owner.id, query.strip(), "conversation")
+    conversation_ids = _rank_ids([[row.id for row in lexical_conversations], fulltext_conversations, entity_matches["conversation"]])
+    conversation_map = {row.id: row for row in lexical_conversations}
+    if conversation_ids:
+        missing_ids = [entity_id for entity_id in conversation_ids if entity_id not in conversation_map]
+        conversation_map.update({row.id: row for row in db.scalars(select(Conversation).where(Conversation.owner_id == owner.id, Conversation.id.in_(missing_ids))).all()})
+    conversations = [conversation_map[entity_id] for entity_id in conversation_ids if entity_id in conversation_map]
     loans = db.scalars(select(Loan).where(Loan.owner_id == owner.id, Loan.item_name.ilike(term))).all()
     gifts = db.scalars(select(Gift).where(Gift.owner_id == owner.id, or_(Gift.title.ilike(term), Gift.note.ilike(term), Gift.occasion.ilike(term)))).all()
-    return {"people": people, "memories": memories, "tasks": tasks, "conversations": conversations, "loans": loans, "gifts": gifts, "search_info": {"semantic_available": semantic_available, "semantic_matches": len(semantic_ids), "fulltext_used": db.get_bind().dialect.name == "postgresql"}}
+    lexical_projects = list(db.scalars(select(Project).where(Project.owner_id == owner.id, or_(Project.name.ilike(term), Project.description.ilike(term))).order_by(Project.updated_at.desc())).all())
+    project_ids = _rank_ids([[row.id for row in lexical_projects], _postgres_fulltext_entity_ids(db, owner.id, query.strip(), "project"), entity_matches["project"]])
+    project_map = {row.id: row for row in lexical_projects}
+    if project_ids:
+        missing_ids = [entity_id for entity_id in project_ids if entity_id not in project_map]
+        project_map.update({row.id: row for row in db.scalars(select(Project).where(Project.owner_id == owner.id, Project.id.in_(missing_ids))).all()})
+    projects = [project_map[entity_id] for entity_id in project_ids if entity_id in project_map]
+    lexical_relationships = _lexical_relationships(db, owner.id, term)
+    relationship_ids = _rank_ids([[row.id for row in lexical_relationships], _postgres_fulltext_entity_ids(db, owner.id, query.strip(), "relationship"), entity_matches["relationship"]])
+    relationship_map = {row.id: row for row in lexical_relationships}
+    if relationship_ids:
+        missing_ids = [entity_id for entity_id in relationship_ids if entity_id not in relationship_map]
+        relationship_map.update({row.id: row for row in db.scalars(select(Relationship).where(Relationship.owner_id == owner.id, Relationship.id.in_(missing_ids))).all()})
+    relationships = [relationship_map[entity_id] for entity_id in relationship_ids if entity_id in relationship_map]
+    related_ids = {person_id for row in relationships for person_id in (row.source_person_id, row.target_person_id)}
+    if related_ids:
+        people_map = {row.id: row for row in people}
+        people_map.update({row.id: row for row in db.scalars(select(Person).where(Person.owner_id == owner.id, Person.id.in_(related_ids))).all()})
+        people = list(people_map.values())
+    people_by_id = {person.id: person for person in people}
+    relationship_views = [RelationshipOut(
+        id=row.id,
+        source_person_id=row.source_person_id,
+        source_person_name=f"{people_by_id[row.source_person_id].first_name} {people_by_id[row.source_person_id].last_name}".strip(),
+        target_person_id=row.target_person_id,
+        target_person_name=f"{people_by_id[row.target_person_id].first_name} {people_by_id[row.target_person_id].last_name}".strip(),
+        relationship_type=row.relationship_type,
+        inverse_relationship_type=row.inverse_relationship_type,
+        confirmed=row.confirmed,
+        source_memory_id=row.source_memory_id,
+    ) for row in relationships]
+    return {"people": people, "memories": memories, "tasks": tasks, "conversations": conversations, "loans": loans, "gifts": gifts, "relationships": relationship_views, "projects": projects, "search_info": {"semantic_available": semantic_available, "semantic_matches": len(semantic_ids) + sum(map(len, entity_matches.values())), "fulltext_used": db.get_bind().dialect.name == "postgresql"}}
+
+
+def _rank_ids(groups: list[list[str]]) -> list[str]:
+    scores: dict[str, float] = {}
+    for group in groups:
+        for rank, entity_id in enumerate(group, start=1):
+            scores[entity_id] = scores.get(entity_id, 0.0) + 1 / (60 + rank)
+    return sorted(scores, key=scores.__getitem__, reverse=True)
+
+
+def _lexical_relationships(db: Session, owner_id: str, term: str) -> list[Relationship]:
+    from sqlalchemy.orm import aliased
+
+    source = aliased(Person)
+    target = aliased(Person)
+    return list(db.scalars(
+        select(Relationship)
+        .join(source, source.id == Relationship.source_person_id)
+        .join(target, target.id == Relationship.target_person_id)
+        .where(
+            Relationship.owner_id == owner_id,
+            source.owner_id == owner_id,
+            target.owner_id == owner_id,
+            or_(source.first_name.ilike(term), source.last_name.ilike(term), target.first_name.ilike(term), target.last_name.ilike(term), Relationship.relationship_type.ilike(term), Relationship.inverse_relationship_type.ilike(term)),
+        )
+    ).all())
+
+
+def _postgres_fulltext_entity_ids(db: Session, owner_id: str, query: str, entity_type: EntityType) -> list[str]:
+    if db.get_bind().dialect.name != "postgresql" or not query:
+        return []
+    parsed_query = func.websearch_to_tsquery("simple", query)
+    match entity_type:
+        case "conversation":
+            document = func.to_tsvector("simple", func.concat_ws(" ", Conversation.title, Conversation.original_note, Conversation.summary, Conversation.location))
+            statement = select(Conversation.id).where(Conversation.owner_id == owner_id)
+        case "task":
+            document = func.to_tsvector("simple", func.concat_ws(" ", Task.title, Task.description, Task.status))
+            statement = select(Task.id).where(Task.owner_id == owner_id)
+        case "project":
+            document = func.to_tsvector("simple", func.concat_ws(" ", Project.name, Project.description, Project.status))
+            statement = select(Project.id).where(Project.owner_id == owner_id)
+        case "relationship":
+            from sqlalchemy.orm import aliased
+
+            source = aliased(Person)
+            target = aliased(Person)
+            document = func.to_tsvector("simple", func.concat_ws(" ", source.first_name, source.last_name, Relationship.relationship_type, Relationship.inverse_relationship_type, target.first_name, target.last_name))
+            statement = select(Relationship.id).join(source, source.id == Relationship.source_person_id).join(target, target.id == Relationship.target_person_id).where(Relationship.owner_id == owner_id, source.owner_id == owner_id, target.owner_id == owner_id)
+        case unreachable: assert_never(unreachable)
+    rank = func.ts_rank_cd(document, parsed_query)
+    statement = statement.where(document.op("@@")(parsed_query)).order_by(desc(rank)).limit(100)
+    return list(db.scalars(statement).all())
 
 def _postgres_fulltext_memory_ids(db: Session, owner_id: str, query: str) -> list[str]:
     if db.get_bind().dialect.name != "postgresql" or not query:
@@ -80,7 +183,7 @@ def _postgres_fulltext_memory_ids(db: Session, owner_id: str, query: str) -> lis
     return list(db.scalars(statement).all())
 
 def _semantic_memory_ids(db: Session, owner_id: str, query_vector: list[float]) -> list[str]:
-    statement = select(MemoryEmbedding).where(MemoryEmbedding.owner_id == owner_id)
+    statement = select(MemoryEmbedding).where(MemoryEmbedding.owner_id == owner_id, MemoryEmbedding.model == settings.embedding_model)
     if db.get_bind().dialect.name == "postgresql":
         return list(db.scalars(select(MemoryEmbedding.memory_id).where(MemoryEmbedding.owner_id == owner_id).order_by(MemoryEmbedding.embedding.cosine_distance(query_vector)).limit(20)).all())
     query_length = math.sqrt(sum(value * value for value in query_vector))
@@ -107,6 +210,7 @@ def relationship_create(db: Session, owner: User, source_id: str, target_id: str
     if existing is not None: raise HTTPException(status_code=409, detail="Diese Beziehung ist bereits gespeichert")
     row = Relationship(owner_id=owner.id, source_person_id=source_id, target_person_id=target_id, relationship_type=relationship_type, inverse_relationship_type=inverse, source_memory_id=source_memory_id, confirmed=confirmed)
     db.add(row); db.commit(); db.refresh(row)
+    enqueue_entity_embedding("relationship", row.id, owner.id)
     return row
 
 def project_list(db: Session, owner: User, query: str = "", status: str | None = None) -> list[Project]:
@@ -123,6 +227,7 @@ def project_create(db: Session, owner: User, data: ProjectIn) -> Project:
     db.add(project)
     db.commit()
     db.refresh(project)
+    enqueue_entity_embedding("project", project.id, owner.id)
     return project
 
 def project_get(db: Session, owner: User, project_id: str) -> Project:
@@ -138,4 +243,5 @@ def project_update(db: Session, owner: User, project_id: str, data: ProjectPatch
             setattr(project, key, value)
     db.commit()
     db.refresh(project)
+    enqueue_entity_embedding("project", project.id, owner.id)
     return project

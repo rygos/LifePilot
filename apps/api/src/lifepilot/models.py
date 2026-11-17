@@ -1,9 +1,10 @@
 from datetime import datetime, time, timezone
 from uuid import uuid4
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 from lifepilot.db import Base
+from lifepilot.entity_types import EntityType
 
 def now(): return datetime.now(timezone.utc)
 def new_id(): return str(uuid4())
@@ -58,6 +59,28 @@ class MemoryEmbedding(Base):
     __tablename__ = "memory_embeddings"
     memory_id: Mapped[str] = mapped_column(ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    model: Mapped[str] = mapped_column(String(160))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    embedding: Mapped[list[float]] = mapped_column(Vector(768))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+class EntityEmbedding(Base):
+    __tablename__ = "entity_embeddings"
+    __table_args__ = (
+        CheckConstraint("(entity_type = 'conversation' AND conversation_id = entity_id AND task_id IS NULL AND relationship_id IS NULL AND project_id IS NULL) OR (entity_type = 'task' AND task_id = entity_id AND conversation_id IS NULL AND relationship_id IS NULL AND project_id IS NULL) OR (entity_type = 'relationship' AND relationship_id = entity_id AND conversation_id IS NULL AND task_id IS NULL AND project_id IS NULL) OR (entity_type = 'project' AND project_id = entity_id AND conversation_id IS NULL AND task_id IS NULL AND relationship_id IS NULL)", name="ck_entity_embeddings_single_target"),
+        UniqueConstraint("conversation_id", name="uq_entity_embeddings_conversation"),
+        UniqueConstraint("task_id", name="uq_entity_embeddings_task"),
+        UniqueConstraint("relationship_id", name="uq_entity_embeddings_relationship"),
+        UniqueConstraint("project_id", name="uq_entity_embeddings_project"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    entity_type: Mapped[EntityType] = mapped_column(String(32), index=True)
+    entity_id: Mapped[str] = mapped_column(String(36))
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True)
+    relationship_id: Mapped[str | None] = mapped_column(ForeignKey("relationships.id", ondelete="CASCADE"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     model: Mapped[str] = mapped_column(String(160))
     content_hash: Mapped[str] = mapped_column(String(64))
     embedding: Mapped[list[float]] = mapped_column(Vector(768))

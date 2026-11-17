@@ -19,7 +19,8 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Redis 7 per Compose mit Healthcheck und persistentem AOF-Volume; Scheduler-Zyklen koordinieren und Hintergrundjobs über RQ mit begrenzten Wiederholungen verarbeiten.
 - [x] Optionale LLM-Extraktion mit expliziter Prüfung, Quellenbezug und OpenAI-kompatibler API.
 - [x] OpenAI-kompatible Embeddings für Erinnerungen, asynchrone RQ-Indizierung, HNSW/pgvector und hybride PostgreSQL-Suche; klassische Suche bleibt ohne Provider funktionsfähig.
-- [ ] Semantische Suche für weitere Ressourcentypen und Briefings.
+- [x] Semantische Suche für Gespräche, Aufgaben, Beziehungen und Projekte einschließlich Volltext-Fallback.
+- [ ] Personen- und Tagesbriefings aus belegten Quellen.
 - [ ] Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
@@ -37,8 +38,9 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Nächste Schritte
 
 1. [x] Projekte (REST, UI, MCP) und explizite Benutzerfreigaben für kritische MCP-Löschungen ergänzt; danach verbleibende UI-, E2E- und Backup/Restore-Lücken schließen.
-2. Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern, danach Briefings.
-3. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
+2. [x] Semantische Suche auf Gespräche, Aufgaben, Beziehungen und Projekte erweitern.
+3. Personen- und Tagesbriefings aus belegten Quellen ausbauen.
+4. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
 
 ## Letzter Ausbauschritt
 
@@ -49,6 +51,10 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Migration 0011_memory_embeddings speichert Vektoren und erzeugt auf PostgreSQL einen HNSW-Cosinusindex; SQLite bleibt für lokale Nutzung und Tests verfügbar.
 - [x] PostgreSQL kombiniert Volltext-Ranking und Vektor-Ranking. Der Suchendpunkt ordnet lexikalische, Volltext- und semantische Treffer per Reciprocal Rank Fusion und bleibt bei Provider-Ausfall klassisch durchsuchbar.
 - [x] Eine authentifizierte Reindex-Aktion im Dashboard plant vorhandene Erinnerungen ein. Tests prüfen semantische Treffer, Besitzertrennung, idempotente Indizierung und den Fallback bei Provider-Ausfall.
+- [x] Migration `0012_entity_embeddings` speichert referentielle, benutzergebundene Embeddings für Gespräche, Aufgaben, Beziehungen und Projekte; Fremdschlüssel entfernen den Indexeintrag bei Ressourcendeletion.
+- [x] Create- und Update-Pfade in REST, MCP und Projekt-/Beziehungsservices reihen semantische Neuindizierung ein. Die Reindex-Aktion nimmt jetzt alle fünf indizierten Ressourcentypen auf.
+- [x] Hybride Suche rankt alle fünf indizierten Typen per Reciprocal Rank Fusion; PostgreSQL-Volltextsuche deckt zusätzliche Felder der vier neuen Typen ab, Beziehungen liefern beide Personennamen.
+- [x] Backend-Tests prüfen semantische Treffer über alle vier zusätzlichen Typen, Besitzertrennung und das Entfernen eines Beziehungsindexes beim Löschen.
 
 - [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
 - [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
@@ -112,4 +118,4 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Vorschläge bleiben bis zur Auswahl unbestätigt; ausgewählte Erinnerungen speichern ihre Quell-Eingabe und Ereigniszeit.
 - [x] Eingang in der Weboberfläche zeigt Originaltext, Vorschläge und Fehlerstatus; Vorschläge können einzeln ausgewählt und übernommen werden.
 - [x] Migration `0009_reviewable_captures` und Backend-Tests für Persistenz ohne Provider, Review-Auswahl, Quellverknüpfung, Fehlerbehandlung und Benutzertrennung.
-- [ ] Embeddings und hybride Suche bleiben offen.
+- [x] Embeddings und hybride Suche für Erinnerungen, Gespräche, Aufgaben, Beziehungen und Projekte; Briefings bleiben offen.

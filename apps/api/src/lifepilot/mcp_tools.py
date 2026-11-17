@@ -6,8 +6,9 @@ from lifepilot.audit import ACTOR_KEY
 from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.embedding_jobs import enqueue_memory_embedding
+from lifepilot.entity_embedding_jobs import enqueue_person_context_embeddings
 from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
+from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
 from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
 from lifepilot.services import owned_person, search
 from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_get, relationship_add, relationship_list
@@ -73,7 +74,7 @@ try:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
             user = db.get(User, owner_id); result = search(db, user, query)
-            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]], "search_info": result["search_info"]}
+            return {"people": [PersonOut.model_validate(x).model_dump(mode="json") for x in result["people"]], "memories": [MemoryOut.model_validate(x).model_dump(mode="json") for x in result["memories"]], "tasks": [TaskOut.model_validate(x).model_dump(mode="json") for x in result["tasks"]], "conversations": [ConversationOut.model_validate(x).model_dump(mode="json") for x in result["conversations"]], "loans": [LoanOut.model_validate(x).model_dump(mode="json") for x in result["loans"]], "gifts": [GiftOut.model_validate(x).model_dump(mode="json") for x in result["gifts"]], "relationships": [row.model_dump(mode="json") for row in result["relationships"]], "projects": [ProjectOut.model_validate(row).model_dump(mode="json") for row in result["projects"]], "search_info": result["search_info"]}
 
     @mcp.tool(name="person_get")
     def person_get_mcp(person_id: str) -> dict:
@@ -89,6 +90,7 @@ try:
             person = owned_person(db, person_id, db.get(User, owner_id))
             for key, value in changes.items(): setattr(person, key, value)
             db.commit(); db.refresh(person)
+            enqueue_person_context_embeddings(db, person.id, owner_id)
             return PersonOut.model_validate(person).model_dump(mode="json")
 
     @mcp.tool(name="relationship_create")

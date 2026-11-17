@@ -19,6 +19,7 @@ from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
 from lifepilot.approval_routes import router as approval_router
 from lifepilot.embedding_jobs import enqueue_memory_embedding
+from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.search_routes import router as search_router
 
 @asynccontextmanager
@@ -90,7 +91,9 @@ def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depen
 def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
     for key, value in data.model_dump().items(): setattr(person, key, value)
-    db.commit(); db.refresh(person); return person
+    db.commit(); db.refresh(person)
+    enqueue_person_context_embeddings(db, person.id, user.id)
+    return person
 
 @app.delete("/api/people/{person_id}", status_code=204)
 def person_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -115,6 +118,7 @@ def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: 
 def relationship_delete(relationship_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     row = db.scalar(select(Relationship).where(Relationship.id == relationship_id, Relationship.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Beziehung nicht gefunden")
+    delete_entity_embedding(db, "relationship", row.id, user.id)
     db.delete(row); db.commit()
 
 @app.post("/api/memories", response_model=MemoryOut, status_code=201)
@@ -145,6 +149,7 @@ def conversation_create(data: ConversationIn, db: Session = Depends(get_db), use
     db.add(conversation); db.flush()
     db.add_all(ConversationParticipant(conversation_id=conversation.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
     db.commit(); db.refresh(conversation)
+    enqueue_entity_embedding("conversation", conversation.id, user.id)
     return ConversationOut(id=conversation.id, title=conversation.title, original_note=conversation.original_note, summary=conversation.summary, location=conversation.location, occurred_at=conversation.occurred_at, created_at=conversation.created_at, participant_ids=participant_ids)
 
 @app.get("/api/conversations", response_model=list[ConversationOut])

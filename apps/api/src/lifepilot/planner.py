@@ -5,6 +5,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
+from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.models import Event, EventParticipant, Memory, Person, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
@@ -32,6 +33,7 @@ def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depend
     db.add(task)
     db.commit()
     db.refresh(task)
+    enqueue_entity_embedding("task", task.id, user.id)
     return task
 
 
@@ -51,6 +53,7 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
     if task.status == "done":
         return task
     task.status = "done"
+    next_task: Task | None = None
     reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id, Reminder.state == "scheduled"))
     if reminder is not None:
         reminder.state = "done"
@@ -63,6 +66,9 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
             db.add(Reminder(owner_id=task.owner_id, title=task.title, due_at=next_due_at, task_id=next_task.id))
     db.commit()
     db.refresh(task)
+    enqueue_entity_embedding("task", task.id, user.id)
+    if next_task is not None:
+        enqueue_entity_embedding("task", next_task.id, user.id)
     return task
 
 
