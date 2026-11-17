@@ -262,7 +262,7 @@ def test_daily_and_person_briefings_include_owned_sources(client, auth):
     assert profile.status_code == 200
     now = datetime.now(timezone.utc)
     local_today = now.astimezone(ZoneInfo("Europe/Berlin")).date()
-    event_time = now + timedelta(hours=1)
+    event_time = datetime.combine(local_today, datetime.min.time(), tzinfo=ZoneInfo("Europe/Berlin")) + timedelta(hours=12)
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin"}).json()
     memory = client.post("/api/memories", headers=auth, json={"title": "Kaffee", "content": "Martin bevorzugt Hafermilch.", "person_id": martin["id"], "occurred_at": (now - timedelta(days=1)).isoformat()}).json()
     conversation = client.post("/api/conversations", headers=auth, json={"title": "Vereinstreffen", "original_note": "Martin berichtet vom Umzug.", "participant_ids": [martin["id"]], "occurred_at": (now - timedelta(days=2)).isoformat()}).json()
@@ -275,6 +275,8 @@ def test_daily_and_person_briefings_include_owned_sources(client, auth):
     lea = client.post("/api/people", headers=auth, json={"first_name": "Lea"}).json()
     relationship = client.post("/api/relationships", headers=auth, json={"source_person_id": martin["id"], "target_person_id": lea["id"], "relationship_type": "Vater von", "inverse_relationship_type": "Tochter von"}).json()
     event = client.post("/api/events", headers=auth, json={"title": "Mittagessen", "starts_at": event_time.isoformat(), "participant_ids": [martin["id"]]}).json()
+    future_event_time = datetime.combine(local_today + timedelta(days=1), datetime.min.time(), tzinfo=ZoneInfo("Europe/Berlin")) + timedelta(hours=12)
+    future_event = client.post("/api/events", headers=auth, json={"title": "Kaffee", "starts_at": future_event_time.isoformat(), "participant_ids": [martin["id"]]}).json()
 
     daily = client.get("/api/briefing/daily", headers=auth)
     assert daily.status_code == 200
@@ -292,7 +294,7 @@ def test_daily_and_person_briefings_include_owned_sources(client, auth):
     assert result["open_tasks"][0]["id"] == task["id"]
     assert result["open_loans"][0]["item_name"] == "Bohrmaschine"
     assert result["gift_ideas"][0]["title"] == "Kochbuch"
-    assert result["upcoming_events"][0]["id"] == event["id"]
+    assert result["upcoming_events"][0]["id"] == future_event["id"]
     assert result["relationships"][0]["id"] == relationship["id"]
     with Session(engine) as db:
         other_owner = User(username="briefing-other", password_hash="unused")

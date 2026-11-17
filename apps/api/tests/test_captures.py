@@ -109,16 +109,22 @@ def test_openai_compatible_extractor_parses_validated_json(monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_api_key", "local-key")
     monkeypatch.setattr(settings, "llm_model", "small-local-model")
     payload = {"choices": [{"message": {"content": json.dumps({"suggestions": [{"title": "Wunsch", "content": "Anna mag Romane.", "person_name": "Anna", "occurred_at": None}]})}}]}
-    requests: list[tuple[str, int, str]] = []
+    requests: list[tuple[str, int, str, dict]] = []
 
     def respond(request: Request, timeout: int) -> BytesIO:
-        requests.append((request.full_url, timeout, request.get_header("Authorization")))
+        requests.append((request.full_url, timeout, request.get_header("Authorization"), json.loads(request.data)))
         return BytesIO(json.dumps(payload).encode())
 
     monkeypatch.setattr("lifepilot.capture_ai.urlopen", respond)
     suggestions = extract_facts("Anna mag Romane.")
     assert suggestions == [CaptureSuggestion(title="Wunsch", content="Anna mag Romane.", person_name="Anna", occurred_at=None)]
-    assert requests == [("http://local-model/v1/chat/completions", settings.llm_timeout_seconds, "Bearer local-key")]
+    assert len(requests) == 1
+    endpoint, timeout, authorization, body = requests[0]
+    assert (endpoint, timeout, authorization) == ("http://local-model/v1/chat/completions", settings.llm_timeout_seconds, "Bearer local-key")
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["name"] == "capture_suggestions"
+    assert body["max_tokens"] == 5000
+    assert body["temperature"] == 0.7
 
 
 def test_openai_compatible_extractor_rejects_malformed_model_output(monkeypatch) -> None:
@@ -331,3 +337,27 @@ def test_relative_day_uses_capture_timestamp_not_processing_timestamp(monkeypatc
     assert suggestions[0].occurred_at == datetime(2026, 11, 16, 12, tzinfo=timezone.utc)
     assert suggestions[0].date_precision == "day"
     assert "2026-11-16" in suggestions[0].content
+
+
+def test_extractor_requires_confirmation_for_former_names_and_unlinked_relations(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    result = {"suggestions": [
+        {"kind": "former_name", "title": "Früherer Name", "content": "Vor der Hochzeit Anfang des Jahres hieß Kristin Dölz.", "person_name": "Kristin Abeler", "former_name": "Dölz", "date_precision": "year", "confirmation_required": False},
+        {"kind": "owner_relationship", "title": "Kristin Kollegin", "content": "Kristin ist Arbeitskollegin des Nutzers.", "person_name": "Kristin Abeler", "former_name": "Dölz", "relationship_type": "Arbeitskollegin", "date_precision": "unknown", "confirmation_required": False},
+        {"kind": "conversation", "title": "Gespräch", "content": "Heute mit Kristin gesprochen.", "person_name": "Kristin Abeler", "occurred_at": "2026-11-17T12:00:00Z", "date_precision": "exact", "confirmation_required": False},
+        {"kind": "relationship", "title": "Kollegin", "content": "Kristin ist Arbeitskollegin des Nutzers.", "related_person_name": "Kristin Abeler", "relationship_type": "Arbeitskollegin", "date_precision": "unknown", "confirmation_required": False},
+    ]}
+    monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(result, ensure_ascii=False)}}]}).encode()))
+    suggestions = extract_facts("Meine Arbeitskollegin, Kristin Abeler, die vor der Hochzeit Anfang dieses Jahres noch Dölz hieß, hat heute mit mir über das Projekt 6012 - OAS Umzüge gesprochen.", datetime(2026, 11, 17, 12, tzinfo=timezone.utc))
+    assert suggestions is not None
+    former_name = next(item for item in suggestions if item.kind == "former_name")
+    conversation = next(item for item in suggestions if item.kind == "conversation")
+    owner_relationship = next(item for item in suggestions if item.kind == "owner_relationship")
+    assert former_name.person_name == "Kristin Abeler"
+    assert former_name.former_name == "Dölz"
+    assert former_name.confirmation_required is True
+    assert conversation.date_precision == "day"
+    assert conversation.project_name == "6012 - OAS Umzüge"
+    assert owner_relationship.person_name == "Kristin Abeler"
+    assert all(item.kind != "relationship" for item in suggestions)

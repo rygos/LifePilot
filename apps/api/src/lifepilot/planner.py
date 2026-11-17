@@ -27,6 +27,12 @@ def utc_datetime(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def stored_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @router.post("/api/tasks", response_model=TaskOut, status_code=201)
 def task_create(data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
     owned_person(db, data.person_id, user)
@@ -115,13 +121,17 @@ def event_create(data: EventIn, db: Session = Depends(get_db), user: User = Depe
         raise HTTPException(status_code=404, detail="Quellerinnerung nicht gefunden")
     if data.ends_at and utc_datetime(data.ends_at) < utc_datetime(data.starts_at):
         raise HTTPException(status_code=422, detail="Das Ende muss nach dem Beginn liegen")
-    event = Event(owner_id=user.id, **data.model_dump(exclude={"participant_ids"}))
+    event_data = data.model_dump(exclude={"participant_ids"})
+    event_data["starts_at"] = stored_utc(event_data["starts_at"])
+    if event_data["ends_at"] is not None:
+        event_data["ends_at"] = stored_utc(event_data["ends_at"])
+    event = Event(owner_id=user.id, **event_data)
     db.add(event)
     db.flush()
     db.add_all(EventParticipant(event_id=event.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
     db.commit()
     db.refresh(event)
-    return event_output(db, event, user.id)
+    return EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
 
 
 @router.get("/api/events", response_model=list[EventOut])

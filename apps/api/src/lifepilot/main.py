@@ -286,6 +286,8 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
     start = datetime.combine(local_now.date(), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
     end = datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
     horizon = datetime.combine(local_now.date() + timedelta(days=7), time.min, tzinfo=local_now.tzinfo).astimezone(timezone.utc)
+    if db.bind and db.bind.dialect.name == "sqlite":
+        start, end, horizon = start.replace(tzinfo=None), end.replace(tzinfo=None), horizon.replace(tzinfo=None)
     tasks = db.scalars(select(Task).where(Task.owner_id == user.id, Task.status == "open", or_(Task.due_at.is_(None), Task.due_at < horizon)).order_by(Task.due_at.is_(None), Task.due_at).limit(20)).all()
     events = db.scalars(select(Event).where(Event.owner_id == user.id, Event.starts_at >= start, Event.starts_at < end).order_by(Event.starts_at).limit(20)).all()
     reminders = db.scalars(select(Reminder).where(Reminder.owner_id == user.id, Reminder.state == "scheduled", Reminder.due_at < horizon).order_by(Reminder.due_at).limit(20)).all()
