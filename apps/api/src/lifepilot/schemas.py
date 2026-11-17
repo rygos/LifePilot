@@ -98,3 +98,43 @@ class GiftOut(GiftIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     created_at: datetime
+
+class EventIn(BaseModel):
+    title: str
+    description: str = ""
+    location: str = ""
+    starts_at: datetime
+    ends_at: datetime | None = None
+    participant_ids: list[str] = Field(default_factory=list)
+    source_memory_id: str | None = None
+
+class EventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    description: str
+    location: str
+    starts_at: datetime
+    ends_at: datetime | None
+    source_memory_id: str | None
+    participant_ids: list[str]
+
+class ReminderIn(BaseModel):
+    title: str
+    due_at: datetime
+    task_id: str | None = None
+    event_id: str | None = None
+
+class ReminderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    due_at: datetime
+    state: str
+    snoozed_until: datetime | None
+    task_id: str | None
+    event_id: str | None
+
+class ReminderAction(BaseModel):
+    state: str
+    snoozed_until: datetime | None = None

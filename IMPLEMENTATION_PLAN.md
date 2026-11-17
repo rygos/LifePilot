@@ -13,9 +13,10 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Backend-Tests (3 bestanden), Next.js-Produktionsbuild, SQLite-Migration und Compose-Health/API-/MCP-Szenarien ausgeführt.
 - [x] Erweiterung: 4 Backend-Tests bestanden, Migration `0002_phase1_domains` auf Test- und Compose-Datenbank aktiv, Web-Build und Compose-API-Aufrufe für Gespräche/Leihgaben/Geschenke geprüft.
 - [x] Gespräche mit Teilnehmern und Ereigniszeit, Leihgaben mit Rückgabe und Geschenke mit Anlass/Quelle (REST, UI und Migration).
-- [ ] PostgreSQL/Redis/Worker-Betrieb sowie Termine und eigenständige Ereignisse.
+- [x] Termine mit Teilnehmern/Quellen, persistente Erinnerungen und unabhängiger Scheduler-Worker.
+- [ ] PostgreSQL/pgvector und Redis; Scheduler nutzt derzeit dieselbe persistente Datenbank.
 - [ ] KI-Pipeline mit expliziter Prüfung vorgeschlagener Fakten, Embeddings und hybride Suche.
-- [ ] Regelbasierte Scheduler, Benachrichtigungen, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
+- [ ] Ruhezeiten, Wiederholungsregeln, Briefings, PWA und vollständige UI- und MCP-Abdeckung.
 - [ ] Vollständige MCP-Toolabdeckung, Berechtigungs-, E2E- und Wiederherstellungsprüfungen.
 
 ## Initiales Datenmodell
@@ -32,7 +33,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Nächste Schritte
 
 1. PostgreSQL mit pgvector, Redis und getrenntem Scheduler/Worker ergänzen.
-2. Ereignis- und Terminmodelle sowie Quellenhistorie und Änderungsversionen ergänzen.
+2. Regeln für Ruhezeiten, Wiederholungen und Ereignisänderungen erweitern.
 3. MCP-Toolkatalog entlang der Geschäftsoperationen vervollständigen und per MCP-Client integrieren testen.
 4. KI-Extraktion nur als prüfbare Vorschläge implementieren, danach hybride Suche und Briefings.
 5. E2E-, Datenschutz-, Backup/Restore- und Compose-Neustart-Szenarien automatisieren.
+
+## Letzter Ausbauschritt
+
+- [x] Migration `0003_events_reminders`, 5 Backend-Tests einschließlich Scheduler-Deduplizierung und Aufgabenabschluss, In-App-Erinnerungen, Verschieben, Python-Kompilierung, Compose-Konfiguration und Next.js-Produktionsbuild geprüft.
+- [x] Laufender Compose-Stack nach Migration mit API-Aufrufen für fällige Erinnerungen und deren Abschluss geprüft.
+- [ ] Browserbasierte visuelle Abnahme war nicht verfügbar, da der Browser-Zugriffshost in dieser Sitzung nicht erreichbar war.

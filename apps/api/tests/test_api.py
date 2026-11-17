@@ -12,7 +12,7 @@ os.environ["LIFE_PILOT_BOOTSTRAP_PASSWORD"] = "test-password"
 from fastapi.testclient import TestClient
 from lifepilot.main import app
 from lifepilot.db import Base, engine
-from lifepilot.models import Conversation, ConversationParticipant, Gift, Loan, Memory, Person, User
+from lifepilot.models import Gift, Loan, Memory, Person, Task, User
 from lifepilot.security import hash_password
 
 @pytest.fixture(scope="module")
@@ -82,3 +82,33 @@ def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     assert client.get(f"/api/gifts?person_id={martin['id']}", headers=auth).json()[0]["id"] == gift.json()["id"]
     assert client.get("/api/search?q=Bohrmaschine", headers=auth).json()["loans"][0]["id"] == loan.json()["id"]
     assert client.get("/api/conversations", headers={"Authorization": "Bearer invalid"}).status_code == 401
+
+def test_events_scheduler_notifications_and_reminder_actions(client, auth):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy.orm import Session
+    from lifepilot.scheduler import schedule_due_items
+    event = client.post("/api/events", headers=auth, json={"title": "Arzttermin", "location": "Praxis", "starts_at": "2026-11-16T10:00:00Z"})
+    assert event.status_code == 201
+    assert client.post("/api/events", headers=auth, json={"title": "Falsch", "starts_at": "2026-11-16T10:00:00Z", "ends_at": "2026-11-15T10:00:00Z"}).status_code == 422
+    with Session(engine) as db:
+        task = Task(owner_id=db.query(User).filter_by(username="testuser").one().id, title="internal")
+        task.due_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.add(task); db.commit()
+        created = schedule_due_items(db)
+        assert created >= 1
+        assert schedule_due_items(db) == 0
+    due = client.get("/api/notifications", headers=auth)
+    assert any(item["title"] == "internal" for item in due.json())
+    reminder = next(item for item in due.json() if item["title"] == "internal")
+    action = client.patch(f"/api/reminders/{reminder['id']}", headers=auth, json={"state": "scheduled", "snoozed_until": "2026-11-17T12:00:00Z"})
+    assert action.status_code == 200
+    assert action.json()["snoozed_until"] is not None
+    task_reminder = client.post("/api/tasks", headers=auth, json={"title": "Abschließbare Aufgabe", "due_at": "2026-11-16T08:00:00Z"}).json()
+    with Session(engine) as db:
+        created = schedule_due_items(db)
+        assert created == 1
+    linked = client.get("/api/reminders", headers=auth).json()
+    linked_reminder = next(item for item in linked if item["task_id"] == task_reminder["id"])
+    assert client.patch(f"/api/tasks/{task_reminder['id']}/complete", headers=auth).json()["status"] == "done"
+    updated_reminders = client.get("/api/reminders", headers=auth).json()
+    assert next(item for item in updated_reminders if item["id"] == linked_reminder["id"])["state"] == "done"

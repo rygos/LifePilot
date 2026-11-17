@@ -1,6 +1,6 @@
 # LifePilot
 
-LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Der ausführbare Kern bietet Benutzerkonten, Personen, gerichtete Beziehungen, Erinnerungen/Notizen, Aufgaben, Gespräche, offene Leihgaben, Geschenkideen, strukturierte Suche, REST und einen authentifizierten MCP-Endpunkt.
+LifePilot ist ein deutschsprachiges, selbst hostbares persönliches Gedächtnis. Der ausführbare Kern bietet Benutzerkonten, Personen, gerichtete Beziehungen, Erinnerungen/Notizen, Aufgaben, Gespräche, Termine, persistente In-App-Erinnerungen, offene Leihgaben, Geschenkideen, strukturierte Suche, REST und einen authentifizierten MCP-Endpunkt.
 
 ## Schnellstart mit Compose
 
@@ -30,4 +30,10 @@ Migrationen laufen beim API-Start via Alembic. Updates: `docker compose pull && 
 
 ## Status und Einschränkungen
 
-Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. PostgreSQL/pgvector-Betrieb, Redis-Worker, Termine, regelbasierte Hintergrundbenachrichtigungen, Datei-Uploads, KI, vollständige MCP-Operationen und automatisierte End-to-End-Tests. Dies ist ein benutzbarer Kern, noch keine Umsetzung des Gesamtumfangs.
+Siehe [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) und [ARCHITECTURE.md](ARCHITECTURE.md). Noch fehlen u.a. PostgreSQL/pgvector-Betrieb, Redis, Ruhezeiten und Wiederholungsregeln für Benachrichtigungen, Datei-Uploads, KI, vollständige MCP-Operationen und automatisierte End-to-End-Tests. Der Scheduler erzeugt einmalige Erinnerungen für Aufgaben und Termine; externe Zustellkanäle sind nicht enthalten.
+
+## Termine und Erinnerungen
+
+Termine lassen sich über `POST /api/events` mit Startzeit, optionalem Ende, Ort, Teilnehmern und Quellerinnerung speichern. `GET /api/events` unterstützt `from_at`, `to_at` und `person_id`. Der unabhängige `worker`-Dienst plant persistente Erinnerungen für Termine und fällige Aufgaben. `GET /api/notifications` liefert fällige Einträge; `PATCH /api/reminders/{id}` schließt sie ab, pausiert sie oder verschiebt sie mit `snoozed_until`. Beim Erledigen einer Aufgabe wird ihre geplante Erinnerung ebenfalls abgeschlossen. Die UI bietet Termin-Erfassung und Aktionen zum Verschieben um eine Stunde oder Abschließen.
+
+Der Scheduler prüft die gemeinsame persistente Datenbank minütlich und benötigt kein Sprachmodell oder Redis. Erinnerungen werden aktuell einmalig erzeugt; wiederkehrende Regeln, Ruhezeiten und externe Zustellung sind noch nicht umgesetzt.

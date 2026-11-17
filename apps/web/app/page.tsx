@@ -8,6 +8,8 @@ type Task = { id: string; title: string; status: string; due_at?: string | null 
 type Conversation = { id: string; title: string; original_note: string; occurred_at?: string | null; location: string; participant_ids: string[] };
 type Loan = { id: string; item_name: string; lender_person_id?: string | null; borrower_person_id?: string | null; due_at?: string | null };
 type Gift = { id: string; person_id: string; title: string; occasion: string; status: string };
+type Event = { id: string; title: string; starts_at: string; location: string; participant_ids: string[] };
+type Reminder = { id: string; title: string; due_at: string; state: string };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
@@ -20,6 +22,8 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [notifications, setNotifications] = useState<Reminder[]>([]);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
 
@@ -30,8 +34,8 @@ export default function Home() {
   }
   async function refresh() {
     try {
-      const [p, m, t, c, l, g] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts")]);
-      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g);
+      const [p, m, t, c, l, g, e, n] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications")]);
+      setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n);
     } catch (error) { setMessage(String(error)); }
   }
   useEffect(() => { const saved = localStorage.getItem("lifepilot-token"); if (saved) setToken(saved); }, []);
@@ -74,6 +78,13 @@ export default function Home() {
     catch (error) { setMessage(String(error)); }
   }
   async function returnLoan(id: string) { try { await request(`/api/loans/${id}/return`, { method: "PATCH" }); await refresh(); } catch (error) { setMessage(String(error)); } }
+  async function createEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const person = String(form.get("person_id") ?? "");
+    try { await request("/api/events", { method: "POST", body: JSON.stringify({ title: form.get("title"), location: form.get("location") || "", starts_at: form.get("starts_at"), participant_ids: person ? [person] : [] }) }); event.currentTarget.reset(); await refresh(); }
+    catch (error) { setMessage(String(error)); }
+  }
+  async function finishReminder(id: string) { try { await request(`/api/reminders/${id}`, { method: "PATCH", body: JSON.stringify({ state: "done" }) }); await refresh(); } catch (error) { setMessage(String(error)); } }
+  async function snoozeReminder(id: string) { try { await request(`/api/reminders/${id}`, { method: "PATCH", body: JSON.stringify({ state: "scheduled", snoozed_until: new Date(Date.now() + 60 * 60 * 1000).toISOString() }) }); await refresh(); } catch (error) { setMessage(String(error)); } }
   async function complete(id: string) { try { await request(`/api/tasks/${id}/complete`, { method: "PATCH" }); await refresh(); } catch (error) { setMessage(String(error)); } }
   async function search(event: FormEvent) { event.preventDefault(); try { const result = await request<{ people: Person[]; memories: Memory[]; tasks: Task[] }>(`/api/search?q=${encodeURIComponent(query)}`); setPeople(result.people); setMemories(result.memories); setTasks(result.tasks); } catch (error) { setMessage(String(error)); } }
 
@@ -82,6 +93,7 @@ export default function Home() {
   return <main className="shell"><aside className="sidebar"><div className="brand">L<span>·</span>P</div><p className="eyebrow">LIFEPILOT</p><nav><a className="active">◷　Übersicht</a><a href="#people">♙　Menschen</a><a href="#memories">▤　Gedächtnis</a><a href="#tasks">✓　Aufgaben</a></nav><div className="profile"><div className="avatar">{username[0]?.toUpperCase()}</div><div>{username}<small>Persönlicher Bereich</small></div><button className="quiet" onClick={() => { localStorage.removeItem("lifepilot-token"); setToken(""); }}>Abmelden</button></div></aside>
     <section className="content"><header><div><p className="eyebrow">DEIN ZWEITGEDÄCHTNIS</p><h1>Guten Tag.</h1><p className="muted">Was möchtest du heute festhalten?</p></div><span className="date">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full" }).format(new Date())}</span></header>
       {message && <p className="notice" role="status">{message}<button className="quiet" onClick={() => setMessage("")}>×</button></p>}
+      {notifications.length > 0 && <section className="card panel notification-panel"><div className="panel-head"><div><span className="eyebrow">JETZT FÄLLIG</span><h2>Erinnerungen</h2></div><span className="count">{notifications.length}</span></div>{notifications.map(n => <div className="list-item" key={n.id}><span>{n.title}<small>{new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(n.due_at))}</small></span><button className="quiet" onClick={() => void snoozeReminder(n.id)}>+1 Std.</button><button className="quiet" onClick={() => void finishReminder(n.id)}>Erledigt</button></div>)}</section>}
       <section className="capture card"><div><span className="eyebrow">SCHNELLERFASSUNG</span><h2>Ein Gedanke, gut aufgehoben.</h2></div><form onSubmit={capture}><textarea name="content" placeholder="Schreib einfach los. Ein Gespräch, eine Idee, etwas zum Erinnern …" required /><div className="row"><span className="muted">Deine Notiz bleibt privat.</span><button>Speichern <span aria-hidden="true">↗</span></button></div></form></section>
       <div className="search card"><span>⌕</span><form onSubmit={search}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Menschen, Erinnerungen und Aufgaben durchsuchen …" /></form><kbd>↵</kbd></div>
       <div className="grid"><section id="tasks" className="card panel"><div className="panel-head"><div><span className="eyebrow">IM BLICK</span><h2>Aufgaben</h2></div><span className="count">{tasks.length}</span></div><form className="inline-form" onSubmit={createTask}><input name="title" placeholder="Neue Aufgabe …" required /><button aria-label="Aufgabe hinzufügen">+</button></form>{tasks.length ? tasks.map(t => <div className="list-item" key={t.id}><button className="check" onClick={() => void complete(t.id)} aria-label="Aufgabe abschließen" /><span>{t.title}</span></div>) : <p className="empty">Alles im Blick. Neue Aufgaben kannst du oben ergänzen.</p>}</section>
@@ -89,6 +101,7 @@ export default function Home() {
       <section id="memories" className="card panel memory-panel"><div className="panel-head"><div><span className="eyebrow">ZULETZT GESPEICHERT</span><h2>Erinnerungen</h2></div><span className="count">{memories.length}</span></div>{memories.length ? memories.slice(0, 6).map(m => <article className="memory" key={m.id}><span className="memory-dot" /><div><h3>{m.title}</h3><p>{m.content}</p><time>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(m.created_at))}</time></div></article>) : <p className="empty">Hier erscheinen deine gespeicherten Gedanken und Begegnungen.</p>}</section>
       <div className="grid domain-grid"><section className="card panel"><div className="panel-head"><div><span className="eyebrow">EPISODISCHES GEDÄCHTNIS</span><h2>Gespräche</h2></div><span className="count">{conversations.length}</span></div><form className="person-form" onSubmit={createConversation}><input name="title" placeholder="Titel" required /><select name="person_id" defaultValue=""><option value="">Person (optional)</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><input name="occurred_at" type="datetime-local" aria-label="Zeitpunkt" /><input name="location" placeholder="Ort (optional)" /><textarea name="original_note" placeholder="Gesprächsnotiz im Original …" required /><button>Gespräch speichern</button></form>{conversations.slice(0, 4).map(c => <article className="memory" key={c.id}><span className="memory-dot" /><div><h3>{c.title}</h3><p>{c.original_note}</p><time>{c.occurred_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(c.occurred_at)) : "Zeitpunkt offen"}{c.location ? ` · ${c.location}` : ""}</time></div></article>)}</section>
       <section className="card panel"><div className="panel-head"><div><span className="eyebrow">IM UMLAUF</span><h2>Leihgaben</h2></div><span className="count">{loans.length}</span></div><form className="inline-form" onSubmit={createLoan}><input name="item_name" placeholder="Gegenstand" required /><select name="person_id" defaultValue="" required><option value="">Entleiher …</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><button aria-label="Leihgabe speichern">+</button></form>{loans.map(l => <div className="list-item" key={l.id}><span>{l.item_name}<small>{people.find(p => p.id === l.borrower_person_id)?.first_name ?? "Unbekannt"}</small></span><button className="quiet" onClick={() => void returnLoan(l.id)}>Zurück</button></div>)}<div className="panel-head gift-heading"><div><span className="eyebrow">VORMERKEN</span><h2>Geschenkideen</h2></div><span className="count">{gifts.length}</span></div><form className="inline-form" onSubmit={createGift}><select name="person_id" defaultValue="" required><option value="">Für wen?</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><input name="title" placeholder="Geschenkidee" required /><input name="occasion" placeholder="Anlass" /><button aria-label="Geschenkidee speichern">+</button></form>{gifts.slice(0, 5).map(g => <div className="list-item" key={g.id}><span>{g.title}<small>{people.find(p => p.id === g.person_id)?.first_name} · {g.occasion || "Idee"}</small></span></div>)}</section></div>
+      <section className="card panel events-panel"><div className="panel-head"><div><span className="eyebrow">VORAUSSCHAU</span><h2>Termine</h2></div><span className="count">{events.length}</span></div><form className="event-form" onSubmit={createEvent}><input name="title" placeholder="Termin" required /><input name="starts_at" type="datetime-local" required aria-label="Beginn" /><select name="person_id" defaultValue=""><option value="">Person (optional)</option>{people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}</select><input name="location" placeholder="Ort" /><button>Termin speichern</button></form>{events.filter(e => new Date(e.starts_at) >= new Date()).slice(0, 5).map(e => <div className="list-item" key={e.id}><span>{e.title}<small>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(e.starts_at))}{e.location ? ` · ${e.location}` : ""}</small></span></div>)}</section>
       <footer>Deine Daten. Dein Server. Dein Gedächtnis.</footer>
     </section></main>;
 }
