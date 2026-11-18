@@ -188,7 +188,16 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Modus „Festhalten“ speichert Originaltexte über die persistente Capture-Pipeline; Vorschläge bleiben bis zur ausdrücklichen Bestätigung im Eingang offen.
 - [x] Modus „Fragen“ nutzt benutzergebundene hybride Suche und OpenAI-kompatible Chat-Completions; Antworten erhalten anklickbare Quellen und erfinden bei leeren Treffern keine Antwort.
 - [x] Bei fehlendem Modellzugriff bleiben gefundene Quellen sichtbar und die Oberfläche erklärt den Ausfall.
+
+## Capture-Verläufe und Dublettenprüfung
+
+- [x] Bereits gespeicherte Vorschläge anhand vorhandener, besitzergebundener Datensätze vor der Inbox-Anzeige herausfiltern; unveränderte Vorschläge aus einem Capture-Verlauf ebenfalls unterdrücken.
+- [x] Familienmuster mit expliziten Söhnen/Töchtern sowie Elternlisten erkennen, inverse Kanten als prüfbare Vorschläge vorbereiten und redundante Fakten sowie unbelegte biografische Ereignisse ausblenden.
+- [x] Nachträge an eine vorherige Erfassung hängen und deren Originaltext/strukturierte Vorschläge dem Modell als Verlaufskontext geben.
+- [x] Strukturierte Vorschläge im Chat anzeigen und natürliche Korrekturen/Ergänzungen über den Eingang oder direkt im Chat als Nachtrag erfassen.
 - [x] API-Test deckt Datenbesitzergrenze und Modell-Ausfall ab; Playwright-E2E prüft Chat-Erfassung und quellgebundene Frage.
 - [x] Echter Chat-Aufruf über den konfigurierten lokalen Qwen beantwortete eine Frage aus einem gespeicherten Datensatz und lieferte die Datensatz-ID als Quelle; der Prüfdatensatz wurde danach gelöscht.
-- [x] Compose-Produktionsbuild, Backend-Suite (42 bestanden, 2 übersprungen), Playwright-E2E (1 bestanden), Draft-Guard und `git diff --check` erfolgreich.
+- [x] Compose-Produktionsbuild, Backend-Suite (50 bestanden, 2 übersprungen), Draft-Guard und `git diff --check` erfolgreich.
+- [x] Live-Test mit `qwen/qwen3.5-9b`: erster Capture mit Ehebeziehung, Nachtrag mit zwei Söhnen; im Nachtrag erschienen nur vier neue Eltern-Kind-Kanten und eine Geschwisterkante, die Ehebeziehung und das Treffen wurden nicht wiederholt.
+- [ ] Playwright-E2E erreicht Chat-Erfassung, Folgeerfassung und Suche; der abschließende Offline-Shell-Schritt schlägt fehl und zeigt die Anmeldeseite mit „Failed to fetch“.
 - [x] Playwright-Ansicht bei 390 und 1440 Pixeln in Hell- und Dunkelmodus geprüft; Moduswechsel und Bestätigungshinweis sichtbar, kein horizontales Overflow.

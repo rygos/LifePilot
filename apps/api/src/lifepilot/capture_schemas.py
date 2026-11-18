@@ -10,6 +10,7 @@ DatePrecision = Literal["exact", "day", "month", "year", "approximate", "unknown
 
 class CaptureIn(BaseModel):
     original_text: str = Field(min_length=1, max_length=20000)
+    parent_capture_id: str | None = Field(default=None, max_length=36)
 
 
 class CaptureSuggestion(BaseModel):
@@ -59,6 +60,7 @@ class CaptureOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    parent_capture_id: str | None = None
     original_text: str
     status: Literal["pending", "ready", "unavailable", "failed", "reviewed"]
     suggestions: list[CaptureSuggestion]

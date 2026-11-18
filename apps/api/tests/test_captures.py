@@ -28,6 +28,75 @@ def test_capture_persists_original_when_ai_is_not_configured(client, auth, monke
     assert client.get("/api/captures", headers=auth).json()[0]["id"] == response.json()["id"]
 
 
+def test_follow_up_capture_is_linked_and_receives_the_previous_context(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    contexts: list[str] = []
+
+    def extract(text: str, captured_at=None, prior_context: str = "") -> list[CaptureSuggestion]:
+        contexts.append(prior_context)
+        return []
+
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", extract)
+    parent = client.post("/api/captures", headers=auth, json={"original_text": "Ich traf Christian mit seiner Familie."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    assert process_capture_job(parent["id"], owner_id) == "ready"
+
+    child_response = client.post("/api/captures", headers=auth, json={"original_text": "Die Kinder Julian und Lukas fehlten.", "parent_capture_id": parent["id"]})
+
+    assert child_response.status_code == 201
+    child = child_response.json()
+    assert child["parent_capture_id"] == parent["id"]
+    assert process_capture_job(child["id"], owner_id) == "ready"
+    assert "Ich traf Christian mit seiner Familie." in contexts[-1]
+    assert "Die Kinder Julian und Lukas fehlten." == child["original_text"]
+
+
+def test_follow_up_hides_unchanged_parent_suggestions_but_keeps_new_facts(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    spouse = CaptureSuggestion(kind="relationship", title="Ehepartner", content="Christian ist Tanjas Ehepartner.", person_name="Christian", related_person_name="Tanja", relationship_type="Ehepartner von", inverse_relationship_type="Ehepartner von")
+    conversation = CaptureSuggestion(kind="conversation", title="Treffen mit Christian", content="Gestern habe ich Christian getroffen.", person_name="Christian", occurred_at=datetime(2026, 11, 17, 12, tzinfo=timezone.utc), date_precision="day")
+    child_relation = CaptureSuggestion(kind="relationship", title="Elternteil", content="Christian ist Julians Vater.", person_name="Christian", related_person_name="Julian", relationship_type="Elternteil von", inverse_relationship_type="Kind von")
+    responses = [[spouse, conversation], [spouse, conversation, child_relation]]
+
+    def extract(text: str, captured_at=None, prior_context: str = "") -> list[CaptureSuggestion]:
+        return responses.pop(0)
+
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", extract)
+    parent = client.post("/api/captures", headers=auth, json={"original_text": "Gestern traf ich Christian und Tanja."}).json()
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    process_capture_job(parent["id"], owner_id)
+    child = client.post("/api/captures", headers=auth, json={"original_text": "Julian ist Christians Sohn.", "parent_capture_id": parent["id"]}).json()
+
+    process_capture_job(child["id"], owner_id)
+
+    child = next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == child["id"])
+    assert [(item["kind"], item["relationship_type"]) for item in child["suggestions"]] == [("relationship", "Elternteil von")]
+    assert "2 bereits gespeicherte oder doppelte Vorschläge ausgeblendet." == child["processing_error"]
+
+
+def test_follow_up_capture_cannot_reference_another_users_capture(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    parent = client.post("/api/captures", headers=auth, json={"original_text": "Privater Verlauf"}).json()
+    with Session(engine) as db:
+        user = User(username="capture-thread-owner-check", password_hash="unused")
+        db.add(user)
+        db.commit()
+        other_headers = {"Authorization": f"Bearer {create_token(user.id)}"}
+
+    response = client.post("/api/captures", headers=other_headers, json={"original_text": "Fremder Nachtrag", "parent_capture_id": parent["id"]})
+
+    assert response.status_code == 404
+
+
 def test_capture_review_only_persists_explicitly_accepted_suggestions(client, auth, monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "small-local-model")

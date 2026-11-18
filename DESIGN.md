@@ -60,8 +60,8 @@ Layout: Dashboard scheduling controls - create tasks and appointments, adjust a 
 - Primary action: save an unstructured note for review or ask a natural-language question about stored records.
 - Information priorities: explicit mode, clear statement that capture is persisted before review, answer with clickable source records.
 - Left out on purpose: automatic acceptance of extracted facts and unsupported model answers without retrieved data.
-- Required content: capture/question switch, transcript, message composer, processing feedback, saved capture confirmation, source cards, link to the review inbox.
-- Data shape -> component: capture requests use the existing durable capture pipeline; question requests use owner-scoped hybrid search and an OpenAI-compatible grounded response.
+- Required content: capture/question switch, transcript, message composer, processing feedback, structured capture suggestions in the transcript, source cards, link to the review inbox, and a natural-language follow-up on an existing capture.
+- Data shape -> component: capture requests use the durable, parent-linked capture pipeline; suggestions stay reviewable and are deduplicated against saved records; question requests use owner-scoped hybrid search and an OpenAI-compatible grounded response.
 
 ## Components and behavior
 

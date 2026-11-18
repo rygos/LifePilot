@@ -26,6 +26,7 @@ suggestion_list = TypeAdapter(list[CaptureSuggestion])
 def capture_output(row: Capture) -> CaptureOut:
     return CaptureOut(
         id=row.id,
+        parent_capture_id=row.parent_capture_id,
         original_text=row.original_text,
         status=row.status,
         suggestions=suggestion_list.validate_json(row.suggestions_json),
@@ -79,7 +80,10 @@ def _create_person_from_explicit_name(db: Session, owner: User, name: str, creat
 
 @router.post("", response_model=CaptureOut, status_code=201)
 def capture_create(data: CaptureIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> CaptureOut:
-    row = Capture(owner_id=user.id, original_text=data.original_text.strip())
+    parent = db.scalar(select(Capture).where(Capture.id == data.parent_capture_id, Capture.owner_id == user.id)) if data.parent_capture_id else None
+    if data.parent_capture_id and parent is None:
+        raise HTTPException(status_code=404, detail="Die zugehörige Erfassung wurde nicht gefunden")
+    row = Capture(owner_id=user.id, parent_capture_id=parent.id if parent else None, original_text=data.original_text.strip())
     if not row.original_text:
         raise HTTPException(status_code=422, detail="Die Eingabe darf nicht leer sein")
     db.add(row)

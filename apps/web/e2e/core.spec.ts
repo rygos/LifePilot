@@ -9,6 +9,7 @@ const parentName = `E2E-Person-${suffix}`;
 const childName = `E2E-Kind-${suffix}`;
 const captureText = `E2E-Original-${suffix}`;
 const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
+const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
 
 async function login(page: Page): Promise<void> {
   if (!username || !password) {
@@ -35,7 +36,7 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const capturesResponse = await request.get(`${apiUrl}/api/captures`, { headers: { Authorization: `Bearer ${token}` } });
   if (capturesResponse.ok()) {
     const captures = (await capturesResponse.json()) as { id: string; original_text: string }[];
-    for (const capture of captures.filter(({ original_text }) => original_text === captureText || original_text === chatCaptureText)) {
+    for (const capture of captures.filter(({ original_text }) => original_text === captureText || original_text === chatCaptureText || original_text === chatFollowUpText)) {
       await request.delete(`${apiUrl}/api/captures/${capture.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
@@ -91,8 +92,13 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await page.getByLabel("Was möchtest du festhalten?").fill(chatCaptureText);
   await page.getByRole("button", { name: "Speichern und prüfen" }).click();
   await expect(page.locator(".chat-entry.assistant")).toBeVisible();
+  await expect(page.locator(".capture-chat-result")).toContainText("Strukturierte Erfassung");
   await page.goto("/inbox");
   await expect(page.locator(".inbox-panel")).toContainText(chatCaptureText);
+  const chatCapture = page.locator(".inbox-item").filter({ hasText: chatCaptureText }).first();
+  await chatCapture.locator("textarea[name=follow_up]").fill(chatFollowUpText);
+  await chatCapture.getByRole("button", { name: "Im Verlauf ergänzen" }).click();
+  await expect(page.locator(".inbox-panel")).toContainText(chatFollowUpText);
 
   await page.goto("/chat");
   await page.getByRole("button", { name: "Fragen" }).click();
