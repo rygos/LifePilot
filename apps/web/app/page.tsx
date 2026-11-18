@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useLifePilotSession } from "./use-life-pilot-session";
 
 type Person = { id: string; first_name: string; last_name: string; nickname?: string | null; birthday?: string | null; email?: string | null; phone?: string | null; address: string; website?: string | null; job_title?: string | null; organization?: string | null; notes: string };
 type ChatSource = { id: string; kind: string; title: string; excerpt: string; href: string };
@@ -29,7 +30,7 @@ export default function Home() {
   const pathname = usePathname();
   const currentView = pathname === "/" ? "dashboard" : pathname.startsWith("/people/") ? "person" : pathname.slice(1).split("/")[0] || "dashboard";
   const personRouteId = currentView === "person" ? pathname.split("/")[2] : null;
-  const [token, setToken] = useState("");
+  const { token, setToken, isAuthenticated, sessionMessage, clearSession, request } = useLifePilotSession(api);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [people, setPeople] = useState<Person[]>([]);
@@ -72,20 +73,18 @@ export default function Home() {
     }
   }, []);
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${api}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers } });
-    if (!response.ok) throw new Error((await response.json()).detail ?? "Anfrage fehlgeschlagen");
-    return response.status === 204 ? undefined as T : response.json();
-  }
   async function refresh() {
     try {
       const [p, m, t, c, l, g, e, n, inbox, projectRows, approvalRows, briefing] = await Promise.all([request<Person[]>("/api/people"), request<Memory[]>("/api/memories"), request<Task[]>("/api/tasks?status=open"), request<Conversation[]>("/api/conversations"), request<Loan[]>("/api/loans"), request<Gift[]>("/api/gifts"), request<Event[]>("/api/events"), request<Reminder[]>("/api/notifications"), request<Capture[]>("/api/captures"), request<Project[]>("/api/projects"), request<Approval[]>("/api/approvals"), request<DailyBriefing>("/api/briefing/daily")]);
       setPeople(p); setMemories(m); setTasks(t); setConversations(c); setLoans(l); setGifts(g); setEvents(e); setNotifications(n); setCaptures(inbox); setProjects(projectRows); setApprovals(approvalRows); setDailyBriefing(briefing);
-    } catch (error) { setMessage(String(error)); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
   }
-  useEffect(() => { const saved = localStorage.getItem("lifepilot-token"); if (saved) setToken(saved); }, []);
-  useEffect(() => { if (token) { localStorage.setItem("lifepilot-token", token); void refresh(); } }, [token]);
-  useEffect(() => { if (token) void request<Profile>("/api/profile").then(setProfile).catch(error => setMessage(String(error))); }, [token]);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void Promise.all([refresh(), request<Profile>("/api/profile")])
+      .then(([, currentProfile]) => setProfile(currentProfile))
+      .catch(error => setMessage(error instanceof Error ? error.message : String(error)));
+  }, [isAuthenticated]);
   useEffect(() => {
     if (currentView === "settings") setShowProfile(true);
     if (personRouteId && token && people.length > 0 && selectedPerson?.id !== personRouteId) {
@@ -152,7 +151,7 @@ export default function Home() {
   }
 
   async function login(event: FormEvent) {
-    event.preventDefault(); setMessage("");
+    event.preventDefault(); clearSession(); setMessage("");
     try { const result = await request<{ access_token: string }>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }); setToken(result.access_token); }
     catch (error) { setMessage(String(error)); }
   }
@@ -273,11 +272,11 @@ export default function Home() {
     } catch (error) { setMessage(String(error)); }
   }
 
-  if (!token) return <main className="login"><div className="brand">L<span>·</span>P</div><p className="eyebrow">DEIN PERSÖNLICHES GEDÄCHTNIS</p><h1>Alles Wichtige<br />im Kopf. Ohne Kopf.</h1><form onSubmit={login} className="card stack"><label>Benutzername<input value={username} onChange={e => setUsername(e.target.value)} /></label><label>Passwort<input type="password" value={password} onChange={e => setPassword(e.target.value)} /></label><button>Anmelden</button>{message && <p className="error">{message}</p>}</form></main>;
+  if (!token || !isAuthenticated) return <main className="login"><div className="brand">L<span>·</span>P</div><p className="eyebrow">DEIN PERSÖNLICHES GEDÄCHTNIS</p><h1>Alles Wichtige<br />im Kopf. Ohne Kopf.</h1><form onSubmit={login} className="card stack"><label>Benutzername<input value={username} onChange={e => setUsername(e.target.value)} /></label><label>Passwort<input type="password" value={password} onChange={e => setPassword(e.target.value)} /></label><button>Anmelden</button>{(sessionMessage || message) && <p className="error">{sessionMessage || message}</p>}</form></main>;
 
   const navItems = [["/", "Übersicht"], ["/chat", "Chat"], ["/people", "Menschen"], ["/memory", "Gedächtnis"], ["/planning", "Planung"], ["/things", "Gegenstände"], ["/inbox", "Eingang"], ["/settings", "Einstellungen"]];
   const pageTitle = currentView === "person" ? (selectedPerson ? `${selectedPerson.first_name} ${selectedPerson.last_name}` : "Personenprofil") : ({ dashboard: "Übersicht", chat: "Chat", people: "Menschen", memory: "Gedächtnis", planning: "Planung", things: "Gegenstände", inbox: "Eingang", settings: "Einstellungen" } as Record<string, string>)[currentView] ?? "LifePilot";
-  return <main className="shell" data-view={currentView}><aside className="sidebar"><a className="brand" href="/">L<span>·</span>P</a><p className="eyebrow">LIFEPILOT</p><nav aria-label="Hauptnavigation">{navItems.map(([href, label]) => <a key={href} href={href} className={currentView === (href === "/" ? "dashboard" : href.slice(1)) || (currentView === "person" && href === "/people") ? "active" : undefined}>{label}</a>)}</nav><div className="profile"><div className="avatar">{username[0]?.toUpperCase()}</div><div>{profile?.full_name || username}<small>Persönlicher Bereich</small></div><button className="quiet" onClick={() => { localStorage.removeItem("lifepilot-token"); setToken(""); }}>Abmelden</button></div></aside>
+  return <main className="shell" data-view={currentView}><aside className="sidebar"><a className="brand" href="/">L<span>·</span>P</a><p className="eyebrow">LIFEPILOT</p><nav aria-label="Hauptnavigation">{navItems.map(([href, label]) => <a key={href} href={href} className={currentView === (href === "/" ? "dashboard" : href.slice(1)) || (currentView === "person" && href === "/people") ? "active" : undefined}>{label}</a>)}</nav><div className="profile"><div className="avatar">{username[0]?.toUpperCase()}</div><div>{profile?.full_name || username}<small>Persönlicher Bereich</small></div><button className="quiet" onClick={() => clearSession()}>Abmelden</button></div></aside>
     <section className="content"><header><div><p className="eyebrow">DEIN ZWEITGEDÄCHTNIS</p><h1>{pageTitle}</h1><p className="muted">{currentView === "chat" ? "Erfasse Gedanken oder frage dein gespeichertes Gedächtnis." : currentView === "people" ? "Kontakte und ihre Beziehungen" : currentView === "planning" ? "Aufgaben und Termine" : currentView === "memory" ? "Gespräche, Ereignisse und Notizen" : currentView === "things" ? "Leihgaben und Geschenkideen" : currentView === "inbox" ? "Eingaben prüfen und zuordnen" : currentView === "settings" ? "Dein persönliches Profil" : "Was möchtest du heute festhalten?"}</p></div><div className="header-actions"><span className="date">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full" }).format(new Date())}</span><button type="button" onClick={() => setCaptureOpen(true)}>Schnellerfassung</button>{selectedPerson && currentView === "person" && <button type="button" className="danger-button" onClick={() => void deleteRecord(`/api/people/${selectedPerson.id}`, "Person")}>Person löschen</button>}<a className="quiet profile-toggle" href="/settings">{profile?.full_name || profile?.username || "Mein Profil"}</a></div></header>
       {currentView === "chat" && <section className="card panel chat-panel"><div className="chat-modes" role="group" aria-label="Chat-Modus"><button type="button" className={chatMode === "capture" ? "selected" : "quiet"} aria-pressed={chatMode === "capture"} onClick={() => setChatMode("capture")}>Festhalten</button><button type="button" className={chatMode === "ask" ? "selected" : "quiet"} aria-pressed={chatMode === "ask"} onClick={() => setChatMode("ask")}>Fragen</button></div><p className="chat-guidance">{chatMode === "capture" ? "Schreib frei, was du festhalten möchtest. LifePilot speichert zuerst deinen Originaltext." : "Frage nach Personen, Gesprächen, Aufgaben, Terminen, Leihgaben und anderen gespeicherten Informationen. Antworten stützen sich auf angezeigte Datenbankquellen."}</p><div className="chat-review-note">KI-Vorschläge werden nicht ungeprüft übernommen. Bitte bestätige vorgeschlagene Änderungen im <a href="/inbox">Eingang</a>.</div><div className="chat-transcript" aria-live="polite">{chatEntries.length === 0 ? <p className="empty">{chatMode === "capture" ? "Zum Beispiel: „Ich habe Anna heute getroffen und wir haben über ihren Umzug gesprochen.“" : "Zum Beispiel: „Wem habe ich meine Bohrmaschine geliehen?“"}</p> : chatEntries.map(entry => <article className={`chat-entry ${entry.role}`} key={entry.id}><p>{entry.text}</p>{entry.sources?.map(source => <a className="chat-source" key={`${source.kind}-${source.id}`} href={source.href}><strong>{source.title}</strong><small>{source.kind} · {source.excerpt || "Gespeicherter Datensatz"}</small></a>)}</article>)}</div><form className="chat-composer" onSubmit={event => void sendChatMessage(event)}><label htmlFor="chat-message">{chatMode === "capture" ? "Was möchtest du festhalten?" : "Deine Frage"}</label><textarea id="chat-message" name="chat_message" rows={3} maxLength={2000} required placeholder={chatMode === "capture" ? "Schreib einfach los …" : "Frag dein persönliches Gedächtnis …"} /><button disabled={chatBusy}>{chatBusy ? "Wird verarbeitet …" : chatMode === "capture" ? "Speichern und prüfen" : "Frage stellen"}</button></form></section>}
       {currentView === "people" && <label className="person-filter">Personen suchen<input type="search" value={personFilter} onChange={event => setPersonFilter(event.target.value)} placeholder="Name, Spitzname oder Kontakt …" /></label>}
