@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 const username = process.env.LIFEPILOT_E2E_USERNAME ?? process.env.LIFE_PILOT_BOOTSTRAP_USERNAME;
 const password = process.env.LIFEPILOT_E2E_PASSWORD ?? process.env.LIFE_PILOT_BOOTSTRAP_PASSWORD;
@@ -10,6 +11,7 @@ const childName = `E2E-Kind-${suffix}`;
 const captureText = `E2E-Original-${suffix}`;
 const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
+const organizationName = `E2E-Verein-${suffix}`;
 
 async function login(page: Page): Promise<void> {
   if (!username || !password) {
@@ -32,6 +34,13 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const people = (await peopleResponse.json()) as { id: string; first_name: string }[];
   for (const person of people.filter(({ first_name }) => first_name === parentName || first_name === childName)) {
     await request.delete(`${apiUrl}/api/people/${person.id}`, { headers: { Authorization: `Bearer ${token}` } });
+  }
+  const organizationsResponse = await request.get(`${apiUrl}/api/organizations`, { headers: { Authorization: `Bearer ${token}` } });
+  if (organizationsResponse.ok()) {
+    const organizations = (await organizationsResponse.json()) as { id: string; name: string }[];
+    for (const organization of organizations.filter(({ name }) => name === organizationName)) {
+      await request.delete(`${apiUrl}/api/organizations/${organization.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    }
   }
   const capturesResponse = await request.get(`${apiUrl}/api/captures`, { headers: { Authorization: `Bearer ${token}` } });
   if (capturesResponse.ok()) {
@@ -65,6 +74,49 @@ test("Freunde-Beziehungen sind im Personenprofil sichtbar", async ({ page }) => 
   await page.goto("/people");
   await page.getByRole("button", { name: new RegExp(childName) }).click();
   await expect(page.locator(".person-profile")).toContainText(`${parentName} und ${childName} sind befreundet`);
+});
+
+test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch für das eigene Profil", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.locator("#people input[name=birthday]").fill("1990-01-01");
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  const personCard = page.locator(".person-card").filter({ hasText: parentName });
+  await expect(personCard).toContainText("Jahre");
+  await personCard.click();
+  await expect(page).toHaveURL(/\/people\/.+/);
+
+  const image = await readFile("public/icon-192.png");
+  await page.getByLabel("Profilbild auswählen").setInputFiles({ name: "profil.png", mimeType: "image/png", buffer: image });
+  await expect(page.locator(".person-profile-hero .avatar-photo")).toBeVisible();
+
+  await page.locator(".membership-create-form input[name=organization_name]").fill(organizationName);
+  await page.locator(".membership-create-form").getByRole("button", { name: "Anlegen" }).click();
+  await expect(page.getByRole("status")).toContainText("Verein gespeichert");
+  await page.locator(".membership-form select[name=organization_id]").selectOption({ label: organizationName });
+  await page.locator(".membership-form input[name=role]").fill("Mitglied");
+  await page.locator(".membership-form").getByRole("button", { name: "Mitgliedschaft hinzufügen" }).click();
+  await expect(page.locator(".organization-card")).toContainText(organizationName);
+  await expect(page.locator(".organization-card")).toContainText("Mitglied");
+
+  await page.goto("/people");
+  await page.getByLabel("Filtern").selectOption("photo");
+  await expect(page.locator(".person-card").filter({ hasText: parentName })).toBeVisible();
+  await page.getByLabel("Personen suchen").fill("nicht vorhanden");
+  await expect(page.locator("#people")).toContainText("Keine passenden Personen");
+
+  await page.getByLabel("Personen suchen").fill("");
+  await page.getByLabel("Filtern").selectOption("all");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cardPositions = await page.locator(".people-grid .person-card").evaluateAll(cards => cards.slice(0, 2).map(card => card.getBoundingClientRect().top));
+  expect(cardPositions).toHaveLength(2);
+  expect(cardPositions[0]).toBe(cardPositions[1]);
+  const selfCard = page.locator(".person-card").filter({ hasText: "Du · eigenes Profil" });
+  await selfCard.click();
+  await page.locator(".membership-form select[name=organization_id]").selectOption({ label: organizationName });
+  await page.locator(".membership-form").getByRole("button", { name: "Mitgliedschaft hinzufügen" }).click();
+  await expect(page.locator(".organization-card").filter({ hasText: organizationName })).toContainText("Mitglied");
 });
 
 test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funktionieren", async ({ page }) => {

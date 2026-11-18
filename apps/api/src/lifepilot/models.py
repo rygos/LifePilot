@@ -40,10 +40,34 @@ class Person(Base):
     website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
     organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    photo_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_self: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    __table_args__ = (UniqueConstraint("owner_id", "normalized_name", name="uq_organizations_owner_name"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    normalized_name: Mapped[str] = mapped_column(String(200))
+    organization_type: Mapped[str] = mapped_column(String(40), default="club")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class PersonOrganization(Base):
+    __tablename__ = "person_organizations"
+    __table_args__ = (UniqueConstraint("owner_id", "person_id", "organization_id", name="uq_person_organization_membership"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(160), default="")
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class PersonNameHistory(Base):
     __tablename__ = "person_name_history"

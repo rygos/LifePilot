@@ -19,5 +19,6 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = ""
     embedding_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    data_dir: str = "/app/data"
 
 settings = Settings()

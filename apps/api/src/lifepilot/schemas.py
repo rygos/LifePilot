@@ -65,6 +65,43 @@ class PersonOut(PersonIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     is_self: bool = False
+    photo_key: str | None = None
+    created_at: datetime
+
+class OrganizationIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    organization_type: str = Field(default="club", pattern="^(club|company|school|other)$")
+    notes: str = ""
+
+class OrganizationOut(OrganizationIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    members: list[dict] = Field(default_factory=list)
+
+class MembershipIn(BaseModel):
+    organization_id: str
+    role: str = Field(default="", max_length=160)
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_period(self) -> Self:
+        if self.valid_from and self.valid_until and self.valid_until <= self.valid_from:
+            raise ValueError("Das Ende der Mitgliedschaft muss nach dem Beginn liegen")
+        return self
+
+class MembershipOut(BaseModel):
+    id: str
+    person_id: str
+    person_name: str
+    person_photo_key: str | None
+    person_birthday: str | None
+    organization_id: str
+    organization_name: str
+    organization_type: str
+    role: str
+    valid_from: datetime | None
+    valid_until: datetime | None
 class MemoryIn(BaseModel):
     title: str
     content: str

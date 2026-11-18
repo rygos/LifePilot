@@ -18,6 +18,8 @@ Layout: Application sections - keep people, memory, planning, objects, and revie
 
 Layout: People directory and profile - browse the contact list, then inspect one person's details and relationship context -> route-based list-detail; scroll owner: document; anti-patterns: profile forms mixed into the directory, inaccessible destructive actions, relationship context without named people. Pattern reference: https://github.com/changeroa/StyleGallery/blob/main/patterns/split-sidebar/list-detail.md
 
+Layout: People directory cards and relationship context - search, filter, and sort contacts, then follow linked profile cards grouped by relationship area -> responsive card grid in the directory and grouped card grids in profiles; scroll owner: document; anti-patterns: profile photos without authorized delivery, non-clickable relationship names, club membership stored only as free text. Pattern reference: existing `.people-grid`, `.relationship-card-grid`, and `.organization-member-grid` patterns in `apps/web/app/style.css`.
+
 Layout: Planning and appointments - enter one appointment with multiple participants and manage tasks in a focused planning view -> stacked planning sections; scroll owner: document; anti-patterns: single-person appointment selector, unlabeled participant controls, nested scroll areas. Pattern reference: https://github.com/changeroa/StyleGallery/blob/main/patterns/stacking/stack.md
 
 Layout: Memory, objects, and review - navigate between episodic records, loans and gifts, and pending capture review -> route-based content sections with compact lists; scroll owner: document; anti-patterns: unrelated records sharing one page, destructive controls without confirmation.
@@ -37,10 +39,10 @@ Layout: Dashboard scheduling controls - create tasks and appointments, adjust a 
 
 ### People directory and person profile
 - Primary action: open a person profile from the directory; the profile's primary action is saving edits.
-- Information priorities: searchable people; identity and contact data; relationships and sourced personal context.
+- Information priorities: searchable, filterable, sortable people cards with profile photo and age; prominent profile identity; grouped, clickable relationship and club membership cards.
 - Left out on purpose: tasks, events, gifts, and loans unrelated to the selected person.
-- Required content: first and last name, nickname, birthday, email, phone, address, work, organization, notes, relationships, profile update, relationship add/remove, person delete with confirmation.
-- Data shape -> component: people are a searchable list; one selected person is a dedicated detail form and context timeline.
+- Required content: first and last name, nickname, birthday, email, phone, address, work, organization, notes, photo upload, age, search, filters, sorting, relationships grouped by family/friends/work/other, clickable linked profiles, club and organization memberships (including the user's self profile), profile update, relationship add/remove, person delete with confirmation.
+- Data shape -> component: many contacts use a filter bar and responsive card grid; one selected person is a dedicated detail view with prominent photo, edit form, grouped relationship cards, membership cards, and sourced context.
 
 ### Planning
 - Primary action: save a task or appointment.

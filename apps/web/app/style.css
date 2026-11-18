@@ -10,7 +10,7 @@
 
 .shell[data-view] .content{min-width:0}
 .shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.briefing-panel):not(.capture):not(#dashboard-panels):not(footer){display:none}
-.shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
+.shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
 .shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-briefing){display:none}
@@ -51,7 +51,49 @@
 .brand{color:var(--ink);text-decoration:none}
 .profile-toggle{text-decoration:none;color:var(--muted)}
 .capture{border-top:0}
-.person-filter{display:grid;gap:6px;max-width:520px;margin:0 0 14px;color:var(--muted);font-size:12px}
-.person-filter input{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px;background:var(--paper);color:var(--ink);font:inherit}
+.people-toolbar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.people-toolbar label,.membership-form label,.membership-create-form label{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.people-toolbar input,.people-toolbar select,.membership-form input,.membership-form select,.membership-create-form input,.membership-create-form select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}
+.people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:13px;margin-top:20px}
+.person-card{display:flex;min-width:0;min-height:205px;align-items:center;flex-direction:column;gap:7px;padding:16px 12px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;text-align:center}
+.person-card:hover,.relationship-card:hover,.organization-card:hover{background:var(--pale)}
+.person-card-photo{width:112px!important;height:112px!important;border-radius:50%;font-size:32px!important;object-fit:cover}
+.avatar-photo{display:block;object-fit:cover;background:var(--pale)}
+.person-card-name{max-width:100%;font-weight:600;overflow-wrap:anywhere}
+.person-card-meta{max-width:100%;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.person-profile-hero{display:flex;align-items:center;gap:20px;padding:4px 0 20px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+.person-profile-photo{width:136px!important;height:136px!important;border-radius:50%;object-fit:cover;font-size:42px!important;flex:none}
+.person-profile-intro{min-width:0;flex:1}
+.person-profile-intro h2{margin:6px 0;font:600 28px 'Playfair Display',serif}
+.person-profile-intro p{margin:0;color:var(--muted)}
+.photo-upload{display:grid;gap:7px;max-width:200px;color:var(--muted);font-size:12px}
+.photo-upload{position:relative;align-content:start}
+.photo-upload input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.photo-upload-button{display:inline-flex;min-height:42px;align-items:center;justify-content:center;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer}
+.photo-upload input:focus-visible~.photo-upload-button{outline:2px solid var(--green);outline-offset:2px}
+.relationship-group{margin-top:15px}
+.relationship-group h4{margin:0 0 9px;font-size:14px}
+.relationship-card-grid,.organization-member-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:11px}
+.relationship-card,.organization-card{display:flex;min-width:0;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.relationship-person-link{display:flex;min-width:0;flex:1;align-items:center;flex-direction:column;gap:5px;text-align:center;color:var(--ink);text-decoration:none;padding:4px}
+.relationship-person-link:hover strong{text-decoration:underline}
+.relationship-person-link strong{overflow-wrap:anywhere}
+.relationship-person-link>span:not(.avatar){font-size:12px;color:var(--muted)}
+.relationship-person-link small{color:var(--green);font-size:11px}
+.relationship-photo{width:74px!important;height:74px!important;border-radius:50%;font-size:25px!important;object-fit:cover}
+.relationship-card>.quiet{margin-left:0}
+.organization-card{align-items:flex-start;flex-wrap:wrap}
+.organization-card>div:first-child{display:grid;gap:4px;flex:1;min-width:110px}
+.organization-card>div:first-child span,.organization-card small{font-size:12px;color:var(--muted)}
+.member-avatars{display:flex!important;flex-direction:row;flex-wrap:wrap;gap:3px;flex-basis:100%}
+.member-avatar-link{width:34px;height:34px;padding:0;background:transparent;border:0}
+.member-photo{width:32px!important;height:32px!important;font-size:12px!important}
+.member-avatar-link:hover{background:var(--pale)}
+.membership-form,.membership-create-form{display:grid;grid-template-columns:minmax(180px,1fr) minmax(130px,.8fr) auto;gap:9px;align-items:end;margin-top:12px}
+.membership-create-form{grid-template-columns:minmax(180px,1fr) minmax(130px,.5fr) auto;padding-top:12px;border-top:1px solid var(--line)}
+.membership-form button,.membership-create-form button{min-height:42px}
+.relationship-person-link .avatar{width:74px;height:74px;font-size:25px}
+.person-profile-hero>.quiet{align-self:flex-start}
+@media(max-width:850px){.people-toolbar{grid-template-columns:1fr}.people-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.person-card{min-height:178px;padding:12px 8px}.person-card-photo{width:92px!important;height:92px!important}.person-profile-hero{align-items:flex-start;flex-wrap:wrap}.person-profile-photo{width:104px!important;height:104px!important}.photo-upload{flex:1}.person-profile-hero>.quiet{margin-left:auto}.membership-form,.membership-create-form{grid-template-columns:1fr}.relationship-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.relationship-card{flex-direction:column;gap:4px;padding:7px}.relationship-photo{width:62px!important;height:62px!important}.relationship-card>.quiet{align-self:flex-end}.organization-member-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
 .owner-relationship-form{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:8px;margin-top:12px}.owner-relationship-form label{display:grid;gap:5px;font-size:12px;color:var(--muted)}.owner-relationship-form input{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}.owner-relationship-form button{min-height:38px}@media(max-width:850px){.owner-relationship-form{grid-template-columns:1fr}}
 .capture-chat-result{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.capture-chat-result ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}.chat-suggestion{padding:9px 10px;border:1px solid var(--line);border-radius:9px}.chat-suggestion .suggestion{padding:0}.chat-suggestion>label:not(.suggestion){display:grid;gap:5px;margin:7px 0 0;font-size:12px}.chat-suggestion select{width:100%;min-width:0;border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--paper);color:var(--ink)}.chat-suggestion .suggestion-confirm{display:flex!important;align-items:center;gap:7px}.chat-suggestion .suggestion-confirm input{width:16px;flex:none}.chat-review-hint{font-size:12px;color:var(--muted)}.capture-chat-result button{justify-self:start;margin-top:4px}.capture-chat-result button:disabled{opacity:.55;cursor:not-allowed}.capture-follow-up{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.capture-follow-up label{display:grid;gap:6px;font-weight:600}.capture-follow-up textarea{width:100%;resize:vertical;min-height:64px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--paper);color:var(--ink);font:inherit}.capture-follow-up button{justify-self:start}

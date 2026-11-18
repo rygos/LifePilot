@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from starlette.responses import Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile, File
+from starlette.responses import Response, FileResponse
+from pathlib import Path
+from uuid import uuid4
+from PIL import Image, UnidentifiedImageError
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11,8 +14,8 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
-from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
+from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.planner import router as planner_router
@@ -104,6 +107,119 @@ def people_list(db: Session = Depends(get_db), user: User = Depends(current_user
         alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
         stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.id.in_(alias_ids)))
     return db.scalars(stmt.order_by(Person.is_self.desc(), Person.first_name, Person.last_name)).all()
+
+@app.post("/api/people/{person_id}/photo", response_model=PersonOut)
+async def person_photo_upload(person_id: str, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    contents = await file.read(8 * 1024 * 1024 + 1)
+    if len(contents) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Das Bild darf höchstens 8 MB groß sein")
+    try:
+        import io
+        with Image.open(io.BytesIO(contents)) as image:
+            if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 40_000_000:
+                raise HTTPException(status_code=415, detail="Bitte ein JPEG-, PNG- oder WebP-Bild unter 40 Megapixeln wählen")
+            image.thumbnail((2048, 2048))
+            normalized = image.convert("RGB")
+            output = io.BytesIO()
+            normalized.save(output, format="JPEG", quality=88, optimize=True)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(status_code=415, detail="Die Datei ist kein gültiges Bild") from None
+    photo_key = f"{uuid4().hex}.jpg"
+    photo_dir = Path(settings.data_dir) / "people"
+    photo_dir.mkdir(parents=True, exist_ok=True)
+    (photo_dir / photo_key).write_bytes(output.getvalue())
+    previous_key = person.photo_key
+    person.photo_key = photo_key
+    db.add(AuditEvent(owner_id=user.id, action="update", resource_type="people_photo", resource_id=person.id, source="web"))
+    db.commit(); db.refresh(person)
+    if previous_key:
+        (photo_dir / previous_key).unlink(missing_ok=True)
+    return person
+
+@app.get("/api/people/{person_id}/photo")
+def person_photo_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    if not person.photo_key:
+        raise HTTPException(status_code=404, detail="Für diese Person ist kein Profilbild gespeichert")
+    photo_path = Path(settings.data_dir) / "people" / person.photo_key
+    if not photo_path.is_file():
+        raise HTTPException(status_code=404, detail="Das Profilbild wurde nicht gefunden")
+    return FileResponse(photo_path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+
+@app.delete("/api/people/{person_id}/photo", response_model=PersonOut)
+def person_photo_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    old_key = person.photo_key
+    person.photo_key = None
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people_photo", resource_id=person.id, source="web"))
+    db.commit(); db.refresh(person)
+    if old_key:
+        (Path(settings.data_dir) / "people" / old_key).unlink(missing_ok=True)
+    return person
+
+def organization_membership_out(db: Session, row: PersonOrganization, organization: Organization, person: Person) -> dict:
+    return {"id": row.id, "person_id": person.id, "person_name": f"{person.first_name} {person.last_name}".strip(), "person_photo_key": person.photo_key, "person_birthday": person.birthday, "organization_id": organization.id, "organization_name": organization.name, "organization_type": organization.organization_type, "role": row.role, "valid_from": row.valid_from, "valid_until": row.valid_until}
+
+@app.get("/api/organizations", response_model=list[OrganizationOut])
+def organization_list(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    organizations = db.scalars(select(Organization).where(Organization.owner_id == user.id).order_by(Organization.name)).all()
+    result = []
+    for organization in organizations:
+        memberships = db.execute(select(PersonOrganization, Person).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.organization_id == organization.id).order_by(Person.first_name, Person.last_name)).all()
+        result.append(OrganizationOut.model_validate(organization).model_copy(update={"members": [organization_membership_out(db, row, organization, person) for row, person in memberships]}))
+    return result
+
+@app.post("/api/organizations", response_model=OrganizationOut, status_code=201)
+def organization_create(data: OrganizationIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Bitte einen Namen angeben")
+    normalized = " ".join(name.casefold().split())
+    existing = db.scalar(select(Organization).where(Organization.owner_id == user.id, Organization.normalized_name == normalized))
+    if existing:
+        raise HTTPException(status_code=409, detail="Diese Organisation ist bereits angelegt")
+    row = Organization(owner_id=user.id, name=name, normalized_name=normalized, organization_type=data.organization_type, notes=data.notes)
+    db.add(row); db.flush()
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="organizations", resource_id=row.id, source="web"))
+    db.commit(); db.refresh(row)
+    return row
+
+@app.delete("/api/organizations/{organization_id}", status_code=204)
+def organization_delete(organization_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    organization = db.scalar(select(Organization).where(Organization.id == organization_id, Organization.owner_id == user.id))
+    if organization is None:
+        raise HTTPException(status_code=404, detail="Verein oder Organisation nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="organizations", resource_id=organization.id, source="web"))
+    db.delete(organization); db.commit()
+
+@app.post("/api/people/{person_id}/organizations", response_model=MembershipOut, status_code=201)
+def organization_membership_add(person_id: str, data: MembershipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    organization = db.scalar(select(Organization).where(Organization.id == data.organization_id, Organization.owner_id == user.id))
+    if organization is None:
+        raise HTTPException(status_code=404, detail="Verein oder Organisation nicht gefunden")
+    if db.scalar(select(PersonOrganization).where(PersonOrganization.owner_id == user.id, PersonOrganization.person_id == person_id, PersonOrganization.organization_id == organization.id)):
+        raise HTTPException(status_code=409, detail="Diese Mitgliedschaft ist bereits gespeichert")
+    row = PersonOrganization(owner_id=user.id, person_id=person_id, organization_id=organization.id, role=data.role.strip(), valid_from=data.valid_from, valid_until=data.valid_until)
+    db.add(row); db.flush()
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="person_organizations", resource_id=row.id, source="web"))
+    db.commit()
+    return organization_membership_out(db, row, organization, person)
+
+@app.get("/api/people/{person_id}/organizations")
+def person_organizations(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    rows = db.execute(select(PersonOrganization, Organization, Person).join(Organization, Organization.id == PersonOrganization.organization_id).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.person_id == person_id).order_by(Organization.name)).all()
+    return [organization_membership_out(db, membership, organization, person) for membership, organization, person in rows]
+
+@app.delete("/api/organizations/{organization_id}/members/{person_id}", status_code=204)
+def organization_membership_delete(organization_id: str, person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(PersonOrganization).where(PersonOrganization.owner_id == user.id, PersonOrganization.organization_id == organization_id, PersonOrganization.person_id == person_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Mitgliedschaft nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="person_organizations", resource_id=row.id, source="web"))
+    db.delete(row); db.commit()
 
 @app.post("/api/people", response_model=PersonOut, status_code=201)
 def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
