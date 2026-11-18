@@ -203,6 +203,8 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Echter Chat-Aufruf über den konfigurierten lokalen Qwen beantwortete eine Frage aus einem gespeicherten Datensatz und lieferte die Datensatz-ID als Quelle; der Prüfdatensatz wurde danach gelöscht.
 - [x] Compose-Produktionsbuild, Backend-Suite (50 bestanden, 2 übersprungen), Draft-Guard und `git diff --check` erfolgreich.
 - [x] Live-Test mit `qwen/qwen3.5-9b`: erster Capture mit Ehebeziehung, Nachtrag mit zwei Söhnen; im Nachtrag erschienen nur vier neue Eltern-Kind-Kanten und eine Geschwisterkante, die Ehebeziehung und das Treffen wurden nicht wiederholt.
+- [x] Explizite Formulierungen wie „Hanna ist die Tochter von Ramona und mir“ erzeugen bestätigungspflichtige Graphbeziehungen zu benannten Personen und zum eigenen Personenprofil; bestätigte Kanten erscheinen in der normalen Beziehungsansicht und behalten ihre Capture-Quelle.
+- [x] Regressionstests decken regelbasierte und LLM-normalisierte Elternangaben ab; API-Suite: 54 bestanden, 2 übersprungen.
 - [ ] Playwright-E2E erreicht Chat-Erfassung, Folgeerfassung und Suche; der abschließende Offline-Shell-Schritt schlägt fehl und zeigt die Anmeldeseite mit „Failed to fetch“.
 - [x] Playwright-Ansicht bei 390 und 1440 Pixeln in Hell- und Dunkelmodus geprüft; Moduswechsel und Bestätigungshinweis sichtbar, kein horizontales Overflow.
 

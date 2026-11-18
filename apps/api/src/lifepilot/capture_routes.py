@@ -14,10 +14,10 @@ from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
+from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
 from lifepilot.security import current_user
 from lifepilot.revisions import record_conversation_revision, record_task_revision
-from lifepilot.services import relationship_create
+from lifepilot.services import ensure_self_person, owner_relationship_types, relationship_create
 
 router = APIRouter(prefix="/api/captures", tags=["Eingang"])
 suggestion_list = TypeAdapter(list[CaptureSuggestion])
@@ -192,12 +192,14 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                 case "owner_relationship":
                     if person is None or not suggestion.relationship_type:
                         raise HTTPException(status_code=422, detail="Beziehung zum Nutzer benötigt eine Person und einen Beziehungstyp")
-                    owner_relation = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == user.id, UserPersonRelationship.person_id == person.id, UserPersonRelationship.relationship_type == suggestion.relationship_type, UserPersonRelationship.valid_until.is_(None)))
-                    if owner_relation is None:
-                        owner_relation = UserPersonRelationship(owner_id=user.id, person_id=person.id, relationship_type=suggestion.relationship_type, valid_from=suggestion.occurred_at, source_capture_id=row.id, confirmed=True)
-                        db.add(owner_relation)
-                        db.flush()
-                    accepted.append(AcceptedMemory(id=owner_relation.id, title=suggestion.title, kind=suggestion.kind, resource_id=owner_relation.id, resource_type="owner_relationship"))
+                    self_person = ensure_self_person(db, user)
+                    relation_type, inverse_type = owner_relationship_types(suggestion.relationship_type)
+                    memory = Memory(owner_id=user.id, title=suggestion.title, content=row.original_text, person_id=person.id, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                    db.add(memory)
+                    db.flush()
+                    owner_edge = relationship_create(db, user, person.id, self_person.id, relation_type, memory.id, True, inverse_type, commit=False)
+                    memory_rows.append(memory)
+                    accepted.append(AcceptedMemory(id=owner_edge.id, title=suggestion.title, kind=suggestion.kind, resource_id=owner_edge.id, resource_type="relationship"))
                 case "task":
                     task = Task(owner_id=user.id, title=suggestion.title, description=suggestion.content, person_id=person.id if person else None, project_id=project.id if project else None, due_at=suggestion.due_at)
                     db.add(task)

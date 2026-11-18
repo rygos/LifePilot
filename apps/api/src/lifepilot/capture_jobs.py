@@ -13,6 +13,7 @@ from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.models import Capture, Conversation, ConversationParticipant, Event, Loan, Memory, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User, UserPersonRelationship
+from lifepilot.services import owner_relationship_types
 
 CAPTURE_QUEUE_NAME = "lifepilot"
 
@@ -202,7 +203,23 @@ def _already_saved(suggestion: CaptureSuggestion, db: Session, owner_id: str) ->
             inverse = (suggestion.inverse_relationship_type or "").casefold()
             return any(row.relationship_type.casefold() in {requested, inverse} or row.inverse_relationship_type.casefold() in {requested, inverse} for row in rows)
         case "owner_relationship":
-            return bool(person_id and db.scalar(select(UserPersonRelationship.id).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == person_id, UserPersonRelationship.relationship_type == suggestion.relationship_type, UserPersonRelationship.valid_until.is_(None))))
+            if person_id is None:
+                return False
+            legacy_link = db.scalar(select(UserPersonRelationship.id).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == person_id, UserPersonRelationship.relationship_type == suggestion.relationship_type, UserPersonRelationship.valid_until.is_(None)))
+            self_id = db.scalar(select(Person.id).where(Person.owner_id == owner_id, Person.is_self.is_(True)))
+            if self_id is None:
+                return bool(legacy_link)
+            relation_type, inverse_type = owner_relationship_types(suggestion.relationship_type or "")
+            graph_rows = db.scalars(select(Relationship).where(Relationship.owner_id == owner_id, or_(
+                (Relationship.source_person_id == person_id) & (Relationship.target_person_id == self_id),
+                (Relationship.source_person_id == self_id) & (Relationship.target_person_id == person_id),
+            ))).all()
+            graph_link = any(
+                row.relationship_type in {relation_type, inverse_type}
+                or row.inverse_relationship_type in {relation_type, inverse_type}
+                for row in graph_rows
+            )
+            return bool(legacy_link or graph_link)
         case "former_name":
             alias = (suggestion.former_name or "").casefold()
             return bool(person_id and alias and db.scalar(select(PersonNameHistory.id).where(PersonNameHistory.owner_id == owner_id, PersonNameHistory.person_id == person_id, PersonNameHistory.name_type == "former", func.lower(PersonNameHistory.name) == alias, PersonNameHistory.confirmed.is_(True))))

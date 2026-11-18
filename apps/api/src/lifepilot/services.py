@@ -47,6 +47,26 @@ def owned_person(db: Session, person_id: str | None, owner: User):
     if person is None: raise HTTPException(status_code=404, detail="Person nicht gefunden")
     return person
 
+def owner_relationship_types(relationship_type: str) -> tuple[str, str]:
+    role = " ".join(relationship_type.split())
+    inverse_by_role = {
+        "Tochter von": "Elternteil von",
+        "Sohn von": "Elternteil von",
+        "Kind von": "Elternteil von",
+        "Elternteil von": "Kind von",
+        "Mutter von": "Kind von",
+        "Vater von": "Kind von",
+        "Partner von": "Partner von",
+        "Ehepartner von": "Ehepartner von",
+        "Geschwister von": "Geschwister von",
+        "Bruder von": "Geschwister von",
+        "Schwester von": "Geschwister von",
+    }
+    if role in inverse_by_role:
+        return role, inverse_by_role[role]
+    edge = role if role.endswith(" von") else f"{role} von"
+    return edge, edge
+
 def ensure_self_person(db: Session, owner: User) -> Person:
     person = db.scalar(select(Person).where(Person.owner_id == owner.id, Person.is_self.is_(True)))
     if person is not None:

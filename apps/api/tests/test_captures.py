@@ -276,14 +276,52 @@ def test_capture_saves_explicit_relationship_to_owner_and_surfaces_it_in_context
         db.commit()
 
     accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": [0], "person_assignments": {"0": person["id"]}, "confirmations": [0]})
-    assert accepted.status_code == 201 and accepted.json()[0]["resource_type"] == "owner_relationship"
+    assert accepted.status_code == 201 and accepted.json()[0]["resource_type"] == "relationship"
     context = client.get(f"/api/briefing/person/{person['id']}", headers=auth).json()
-    assert context["owner_relationships"][0]["relationship_type"] == "Arbeitskollegin"
-    assert context["owner_relationships"][0]["source_capture_id"] == capture["id"]
+    self_id = client.get("/api/profile", headers=auth).json()["self_person_id"]
+    links = client.get(f"/api/relationships?person_id={person['id']}", headers=auth).json()
+    assert any(link["source_person_id"] == person["id"] and link["target_person_id"] == self_id and link["relationship_type"] == "Arbeitskollegin von" for link in links)
+    assert context["owner_relationships"] == []
     assert person["id"] in {item["id"] for item in client.get("/api/search?q=Arbeitskollegin", headers=auth).json()["people"]}
     with Session(engine) as db:
-        edge = db.scalar(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == owner_id, UserPersonRelationship.person_id == person["id"]))
-        assert edge is not None and edge.source_capture_id == capture["id"]
+        edge = db.scalar(select(Relationship).where(Relationship.owner_id == owner_id, Relationship.source_person_id == person["id"], Relationship.target_person_id == self_id))
+        assert edge is not None and edge.source_memory_id
+        memory = db.get(Memory, edge.source_memory_id)
+        assert memory is not None and memory.source_capture_id == capture["id"]
+
+
+def test_family_statements_link_named_parent_and_user_profile_to_each_child(client, auth) -> None:
+    from datetime import datetime, timezone
+    from lifepilot.capture_rules import apply_family_meeting_and_loan_rules
+
+    ramona = client.post("/api/people", headers=auth, json={"first_name": "Ramona", "last_name": "ElternTest"}).json()
+    hanna = client.post("/api/people", headers=auth, json={"first_name": "Hanna", "last_name": "Hering"}).json()
+    vincent = client.post("/api/people", headers=auth, json={"first_name": "Vincent", "last_name": "Hering"}).json()
+    self_id = client.get("/api/profile", headers=auth).json()["self_person_id"]
+    original = "Füge Hanna Hering und Vincent Hering hinzu. Hanna ist die Tochter von Ramona und mir. Vincent ist der Sohn von Ramona und mir."
+    suggestions = apply_family_meeting_and_loan_rules(original, datetime(2026, 11, 18, 12, tzinfo=timezone.utc), [])
+    capture = client.post("/api/captures", headers=auth, json={"original_text": original}).json()
+    with Session(engine) as db:
+        stored = db.get(Capture, capture["id"])
+        assert stored is not None
+        stored.status = "ready"
+        stored.suggestions_json = json.dumps([item.model_dump(mode="json") for item in suggestions], ensure_ascii=False)
+        db.commit()
+
+    relation_indices = [index for index, item in enumerate(suggestions) if item.kind == "relationship"]
+    owner_indices = [index for index, item in enumerate(suggestions) if item.kind == "owner_relationship"]
+    person_assignments = {
+        index: ramona["id"] if suggestions[index].kind == "relationship" else hanna["id"] if suggestions[index].person_name.startswith("Hanna") else vincent["id"]
+        for index in relation_indices + owner_indices
+    }
+    related_assignments = {index: hanna["id"] if suggestions[index].related_person_name.startswith("Hanna") else vincent["id"] for index in relation_indices}
+    accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": relation_indices + owner_indices, "person_assignments": person_assignments, "related_person_assignments": related_assignments, "confirmations": relation_indices + owner_indices})
+
+    assert accepted.status_code == 201, accepted.text
+    for child in (hanna, vincent):
+        links = client.get(f"/api/relationships?person_id={child['id']}", headers=auth).json()
+        assert any(link["source_person_id"] == ramona["id"] and link["target_person_id"] == child["id"] and link["relationship_type"] == "Elternteil von" for link in links)
+        assert any(link["source_person_id"] == child["id"] and link["target_person_id"] == self_id and link["inverse_relationship_type"] == "Elternteil von" for link in links)
 
 
 def test_review_stores_former_name_with_original_source_after_explicit_confirmation(client, auth, monkeypatch) -> None:
@@ -463,3 +501,25 @@ def test_extractor_requires_confirmation_for_former_names_and_unlinked_relations
     assert conversation.project_name == "6012 - OAS Umzüge"
     assert owner_relationship.person_name == "Kristin Abeler"
     assert all(item.kind != "relationship" for item in suggestions)
+
+
+def test_extractor_turns_parent_facts_about_user_into_graph_relationship_suggestions(monkeypatch) -> None:
+    from lifepilot.capture_ai import extract_facts
+
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    result = {"suggestions": [
+        {"kind": "fact", "title": "Beziehung: Hanna Hering als Tochter", "content": "Hanna Hering wird als Tochter des Nutzers und von Ramona identifiziert.", "person_name": "Hanna Hering"},
+        {"kind": "fact", "title": "Beziehung: Vincent Hering als Sohn", "content": "Vincent Hering wird als Sohn des Nutzers und von Ramona identifiziert.", "person_name": "Vincent Hering"},
+    ]}
+    monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(result, ensure_ascii=False)}}]}).encode()))
+
+    suggestions = extract_facts("Füge Hanna Hering und Vincent Hering hinzu. Hanna ist die Tochter von Ramona und mir. Vincent ist der Sohn von Ramona und mir.", datetime(2026, 11, 18, 12, tzinfo=timezone.utc))
+
+    assert suggestions is not None
+    assert [(item.kind, item.person_name, item.related_person_name, item.relationship_type) for item in suggestions] == [
+        ("relationship", "Ramona", "Hanna Hering", "Elternteil von"),
+        ("relationship", "Ramona", "Vincent Hering", "Elternteil von"),
+        ("owner_relationship", "Hanna Hering", None, "Tochter von"),
+        ("owner_relationship", "Vincent Hering", None, "Sohn von"),
+    ]

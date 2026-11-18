@@ -19,6 +19,7 @@ def apply_family_meeting_and_loan_rules(
     subject = _canonical_person(subject_match.group("person")) if subject_match else None
     spouse_match = re.search(r"(?i:\bseine)\s+Frau\s+([A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)", original_text)
     spouse = spouse_match.group(1).strip() if spouse_match else None
+    explicit_edges, explicit_owner_edges, explicit_children, explicit_parents = _explicit_child_parent_edges(original_text)
     parent_statement = re.search(r"(?P<parents>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?\s+und\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)\s+haben\s+(?:zwei|drei|vier|ihre|gemeinsame[nr]?)\s+(?:Söhne|Töchter|Kinder)", original_text)
     extra_parents = _name_list(parent_statement.group("parents")) if parent_statement else []
     children = _children_from_text(original_text)
@@ -37,11 +38,13 @@ def apply_family_meeting_and_loan_rules(
     extra_parents = [next((known for known in (subject, spouse) if known and known.split()[0].casefold() == name.split()[0].casefold()), name) for name in extra_parents]
     family_people: set[str] = {name for name in (subject, spouse) if name}
     family_people.update(children)
+    family_people.update(explicit_children)
     parents = list(dict.fromkeys([name for name in (subject, spouse, *extra_parents) if name]))
     family_people.update(parents)
-    has_family = bool(subject and (spouse or children or extra_parents))
+    family_people.update(explicit_parents)
+    has_family = bool((subject and (spouse or children or extra_parents)) or explicit_edges or explicit_owner_edges)
     meeting = _meeting_suggestion(subject, original_text, captured_at) if subject and meeting_is_explicit else None
-    family_edges = _family_relationships(subject, spouse, children, parents) if has_family and subject else []
+    family_edges = (_family_relationships(subject, spouse, children, parents) if subject else []) + explicit_edges
     loan = _loan_suggestion(subject, original_text, captured_at) if subject else None
     if meeting is None and not family_edges and loan is None:
         return suggestions
@@ -64,11 +67,15 @@ def apply_family_meeting_and_loan_rules(
                     family_edges and _mentions_family(item, family_first_names) and _describes_family_relationship(item)
                 ):
                     kept.append(item)
-            case "owner_relationship" | "former_name" | "life_event" | "task" | "project_link":
+            case "owner_relationship":
+                if not (explicit_owner_edges and _mentions_family(item, family_first_names)):
+                    kept.append(item)
+            case "former_name" | "life_event" | "task" | "project_link":
                 kept.append(item)
     if meeting is not None:
         kept.insert(0, meeting)
     kept.extend(family_edges)
+    kept.extend(explicit_owner_edges)
     if loan is not None:
         kept.append(loan)
     return kept
@@ -85,6 +92,60 @@ def _canonical_person(name: str) -> str:
 def _children_from_text(original_text: str) -> list[str]:
     matches = re.finditer(r"\bseine\s+(?:Kinder|Söhne|Töchter|Sohn|Tochter)\s+(.+?)(?=\s+sowie\s+seine\s+(?:Frau|Kinder|Söhne|Töchter|Sohn|Tochter)|\s+und\s+seine\s+(?:Frau|Kinder|Söhne|Töchter|Sohn|Tochter)|\s+getroffen\b|[.!?]|$)", original_text, re.IGNORECASE)
     return list(dict.fromkeys(name for match in matches for name in _name_list(match.group(1))))
+
+
+def _explicit_child_parent_edges(original_text: str) -> tuple[list[CaptureSuggestion], list[CaptureSuggestion], list[str], list[str]]:
+    relation_edges: list[CaptureSuggestion] = []
+    owner_edges: list[CaptureSuggestion] = []
+    children: list[str] = []
+    parents: list[str] = []
+    full_names = re.findall(
+        r"(?=(\b[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+){1,2}\b))",
+        original_text,
+    )
+    statement = re.compile(
+        r"(?P<child>[A-ZÄÖÜ][\wÄÖÜäöüß'-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]*){0,2})\s+ist\s+"
+        r"(?:die\s+Tochter|der\s+Sohn|ein\s+Kind|eine\s+Tochter|ein\s+Sohn|Tochter|Sohn|Kind)\s+von\s+"
+        r"(?P<parents>[^.!?;\n]+)",
+        re.IGNORECASE,
+    )
+    for match in statement.finditer(original_text):
+        child = match.group("child").strip()
+        matching_full_names = [name for name in full_names if name.split()[0].casefold() == child.split()[0].casefold()]
+        if len(matching_full_names) == 1:
+            child = matching_full_names[0]
+        relation = "Tochter von" if re.search(r"Tochter", match.group(0), re.IGNORECASE) else "Sohn von" if re.search(r"Sohn", match.group(0), re.IGNORECASE) else "Kind von"
+        named_parents: list[str] = []
+        refers_to_user = False
+        for part in re.split(r"\s+(?:und|,)\s+", match.group("parents"), flags=re.IGNORECASE):
+            if re.search(r"\b(?:mir|mich|meiner|meinem|meines|uns)\b", part, re.IGNORECASE):
+                refers_to_user = True
+            name = re.sub(r"\b(?:mir|mich|meiner|meinem|meines|uns)\b", "", part, flags=re.IGNORECASE).strip(" ,")
+            if re.fullmatch(r"[A-ZÄÖÜ][\wÄÖÜäöüß'-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]*){0,2}", name):
+                named_parents.append(name)
+        children.append(child)
+        parents.extend(named_parents)
+        for parent in named_parents:
+            relation_edges.append(CaptureSuggestion(
+                kind="relationship",
+                title=f"Elternteil: {parent} → {child}",
+                content=f"{parent} ist Elternteil von {child}.",
+                person_name=parent,
+                related_person_name=child,
+                relationship_type="Elternteil von",
+                inverse_relationship_type="Kind von",
+                confirmation_required=True,
+            ))
+        if refers_to_user:
+            owner_edges.append(CaptureSuggestion(
+                kind="owner_relationship",
+                title=f"Elternteil: Du → {child}",
+                content=f"{child} ist {relation} dir.",
+                person_name=child,
+                relationship_type=relation,
+                confirmation_required=True,
+            ))
+    return relation_edges, owner_edges, list(dict.fromkeys(children)), list(dict.fromkeys(parents))
 
 
 def _name_list(value: str) -> list[str]:
