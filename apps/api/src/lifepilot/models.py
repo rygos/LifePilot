@@ -258,6 +258,7 @@ class Capture(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     parent_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True, index=True)
     original_text: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(20), default="capture", server_default="capture", index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     suggestions_json: Mapped[str] = mapped_column(Text, default="[]")
     processing_error: Mapped[str] = mapped_column(Text, default="")

@@ -126,6 +126,39 @@ def test_capture_review_only_persists_explicitly_accepted_suggestions(client, au
     assert client.get("/api/memories", headers=auth).json()[0]["source_capture_id"] == capture["id"]
 
 
+def test_chat_capture_partial_review_applies_checked_items_and_carries_only_open_items_forward(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    suggestion_done = CaptureSuggestion(title="Erledigter Fakt", content="Martin mag Kaffee.")
+    suggestion_open = CaptureSuggestion(title="Offener Fakt", content="Martin plant einen Umzug.")
+    contexts: list[str] = []
+
+    def extract(text: str, captured_at=None, prior_context: str = "") -> list[CaptureSuggestion]:
+        contexts.append(prior_context)
+        return [suggestion_done, suggestion_open] if not prior_context else []
+
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", extract)
+    created = client.post("/api/captures", headers=auth, json={"original_text": "Martin erzählte mir etwas.", "source": "chat"}).json()
+    assert created["source"] == "chat"
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    assert process_capture_job(created["id"], owner_id) == "ready"
+
+    accepted = client.post(f"/api/captures/{created['id']}/review", headers=auth, json={"accepted_indices": [0]})
+
+    assert accepted.status_code == 201
+    remaining = next(item for item in client.get("/api/captures", headers=auth).json() if item["id"] == created["id"])
+    assert remaining["status"] == "ready"
+    assert [item["title"] for item in remaining["suggestions"]] == ["Offener Fakt"]
+    assert any(item["content"] == "Martin mag Kaffee." for item in client.get("/api/memories", headers=auth).json())
+
+    follow_up = client.post("/api/captures", headers=auth, json={"original_text": "Das mit dem Umzug möchte ich noch prüfen.", "parent_capture_id": created["id"], "source": "chat"}).json()
+    assert process_capture_job(follow_up["id"], owner_id) == "ready"
+    assert "Erledigter Fakt" not in contexts[-1]
+    assert "Offener Fakt" in contexts[-1]
+
+
 def test_capture_failure_keeps_original_and_other_users_cannot_read_it(client, auth, monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "small-local-model")

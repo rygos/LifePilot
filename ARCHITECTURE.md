@@ -10,7 +10,7 @@ Jede fachliche Zeile trägt einen Besitzer. Services filtern jede Abfrage anhand
 
 Jedes Benutzerkonto besitzt außerdem genau ein geschütztes `Person`-Profil (`is_self`). Eine Migration legt dieses Profil für bestehende Konten aus den Kontaktdaten des Benutzerkontos an. Es kann wie jede andere Person in Beziehungen und Ereignissen verwendet werden; Änderungen an Name und Kontaktdaten werden zwischen Konto und Profil synchronisiert. Das eigene Profil kann nicht gelöscht werden.
 
-Die Weboberfläche bietet zwei Chat-Modi. „Festhalten“ delegiert an den vorhandenen Capture-Endpunkt, der den Originaltext vor dem optionalen LLM-Auftrag persistiert. „Fragen“ führt eine besitzergebundene hybride Suche aus und übergibt nur eine begrenzte Menge passender Treffer an den konfigurierten OpenAI-kompatiblen Chat-Completions-Provider. Antworten verlinken die verwendeten Quellen; bei leerer Suche wird kein LLM um eine Vermutung gebeten.
+Die Weboberfläche bietet zwei Chat-Modi. „Festhalten“ delegiert an den Capture-Endpunkt, der den Originaltext vor dem optionalen LLM-Auftrag persistiert. Vorschläge werden im Chat einzeln ausgewählt und übernommen; beim nächsten Chatbeitrag werden angehakte Vorschläge zuerst gespeichert. Eine Teilauswahl lässt nur offene Vorschläge an der Erfassung und im Folgekontext stehen. Chat-Erfassungen werden getrennt vom allgemeinen Eingang gespeichert und der Gesprächsverlauf wird nach einem Neuladen aus ihnen rekonstruiert. „Fragen“ führt eine besitzergebundene hybride Suche aus und übergibt nur eine begrenzte Menge passender Treffer an den konfigurierten OpenAI-kompatiblen Chat-Completions-Provider. Antworten verlinken die verwendeten Quellen; bei leerer Suche wird kein LLM um eine Vermutung gebeten.
 
 ## Temporale und Quellenfelder
 

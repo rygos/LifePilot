@@ -97,15 +97,16 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await page.goto("/chat");
   await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
   await page.getByLabel("Was möchtest du festhalten?").fill(chatCaptureText);
-  await page.getByRole("button", { name: "Speichern und prüfen" }).click();
+  await page.getByRole("button", { name: "Nachricht senden" }).click();
   await expect(page.locator(".chat-entry.assistant")).toBeVisible();
-  await expect(page.locator(".capture-chat-result")).toContainText("Strukturierte Erfassung");
+  await expect(page.locator(".capture-chat-result")).toContainText("Vorschläge aus deiner Eingabe");
   await page.goto("/inbox");
-  await expect(page.locator(".inbox-panel")).toContainText(chatCaptureText);
-  const chatCapture = page.locator(".inbox-item").filter({ hasText: chatCaptureText }).first();
-  await chatCapture.locator("textarea[name=follow_up]").fill(chatFollowUpText);
-  await chatCapture.getByRole("button", { name: "Im Verlauf ergänzen" }).click();
-  await expect(page.locator(".inbox-panel")).toContainText(chatFollowUpText);
+  await expect(page.locator(".inbox-panel")).not.toContainText(chatCaptureText);
+  await page.goto("/chat");
+  await expect(page.locator(".chat-transcript")).toContainText(chatCaptureText);
+  await page.getByLabel("Was möchtest du festhalten?").fill(chatFollowUpText);
+  await page.getByRole("button", { name: "Nachricht senden" }).click();
+  await expect(page.locator(".chat-transcript")).toContainText(chatFollowUpText);
 
   await page.goto("/chat");
   await page.getByRole("button", { name: "Fragen" }).click();

@@ -185,9 +185,13 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 ## Chatoberfläche mit Capture und Gedächtnisfragen
 
 - [x] Chat als eigene Route direkt unter Übersicht in der Hauptnavigation.
-- [x] Modus „Festhalten“ speichert Originaltexte über die persistente Capture-Pipeline; Vorschläge bleiben bis zur ausdrücklichen Bestätigung im Eingang offen.
+- [x] Modus „Festhalten“ speichert Originaltexte über die persistente Capture-Pipeline; erkannte Vorschläge werden direkt im Chat einzeln geprüft und übernommen.
 - [x] Modus „Fragen“ nutzt benutzergebundene hybride Suche und OpenAI-kompatible Chat-Completions; Antworten erhalten anklickbare Quellen und erfinden bei leeren Treffern keine Antwort.
 - [x] Bei fehlendem Modellzugriff bleiben gefundene Quellen sichtbar und die Oberfläche erklärt den Ausfall.
+- [x] Migration `0018_capture_chat_source` trennt Chat-Eingaben vom allgemeinen Eingang; bestätigte Vorschläge werden entfernt, offene bleiben im Gespräch und werden in Folgeeingaben weiter berücksichtigt.
+- [x] Ausgewählte Vorschläge werden beim nächsten Chatbeitrag automatisch übernommen; der Chatverlauf wird nach dem Neuladen aus gespeicherten Erfassungen wiederhergestellt.
+- [x] Regressionstest für partielle Bestätigung, Datenbankspeicherung und Folgekontext; Backend-Suite: 52 bestanden, 2 übersprungen. Next.js-Produktionsbuild und PostgreSQL-Migration bis Head erfolgreich.
+- [x] Playwright-E2E durchlief Chat, Ausschluss aus dem Eingang, Verlaufsladen und Folgeeingabe; es scheitert anschließend unverändert am Offline-Shell-Schritt mit „Failed to fetch“.
 
 ## Capture-Verläufe und Dublettenprüfung
 

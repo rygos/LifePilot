@@ -28,6 +28,7 @@ def capture_output(row: Capture) -> CaptureOut:
         id=row.id,
         parent_capture_id=row.parent_capture_id,
         original_text=row.original_text,
+        source=row.source,
         status=row.status,
         suggestions=suggestion_list.validate_json(row.suggestions_json),
         processing_error=row.processing_error,
@@ -83,7 +84,7 @@ def capture_create(data: CaptureIn, db: Session = Depends(get_db), user: User = 
     parent = db.scalar(select(Capture).where(Capture.id == data.parent_capture_id, Capture.owner_id == user.id)) if data.parent_capture_id else None
     if data.parent_capture_id and parent is None:
         raise HTTPException(status_code=404, detail="Die zugehörige Erfassung wurde nicht gefunden")
-    row = Capture(owner_id=user.id, parent_capture_id=parent.id if parent else None, original_text=data.original_text.strip())
+    row = Capture(owner_id=user.id, parent_capture_id=parent.id if parent else None, original_text=data.original_text.strip(), source=data.source)
     if not row.original_text:
         raise HTTPException(status_code=422, detail="Die Eingabe darf nicht leer sein")
     db.add(row)
@@ -243,9 +244,10 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                         db.add(MemoryProject(memory_id=memory.id, project_id=project.id, owner_id=user.id))
                     memory_rows.append(memory)
                     accepted.append(AcceptedMemory(id=memory.id, title=memory.title, kind=suggestion.kind, resource_id=memory.id, resource_type="memory"))
-        row.status = "reviewed"
-        row.reviewed_at = datetime.now(timezone.utc)
-        row.suggestions_json = json.dumps([item.model_dump(mode="json") for item in suggestions], ensure_ascii=False)
+        remaining_suggestions = [item for index, item in enumerate(suggestions) if index not in accepted_indices]
+        row.suggestions_json = json.dumps([item.model_dump(mode="json") for item in remaining_suggestions], ensure_ascii=False)
+        row.status = "reviewed" if not remaining_suggestions else "ready"
+        row.reviewed_at = datetime.now(timezone.utc) if not remaining_suggestions else None
         db.commit()
     except (HTTPException, ValueError):
         db.rollback()
