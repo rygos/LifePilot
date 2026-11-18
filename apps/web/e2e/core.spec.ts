@@ -8,6 +8,7 @@ const suffix = randomUUID().slice(0, 8);
 const parentName = `E2E-Person-${suffix}`;
 const childName = `E2E-Kind-${suffix}`;
 const captureText = `E2E-Original-${suffix}`;
+const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 
 async function login(page: Page): Promise<void> {
   if (!username || !password) {
@@ -34,7 +35,7 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const capturesResponse = await request.get(`${apiUrl}/api/captures`, { headers: { Authorization: `Bearer ${token}` } });
   if (capturesResponse.ok()) {
     const captures = (await capturesResponse.json()) as { id: string; original_text: string }[];
-    for (const capture of captures.filter(({ original_text }) => original_text === captureText)) {
+    for (const capture of captures.filter(({ original_text }) => original_text === captureText || original_text === chatCaptureText)) {
       await request.delete(`${apiUrl}/api/captures/${capture.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
@@ -44,7 +45,7 @@ test.afterEach(async ({ request }) => {
   await deleteCreatedPeople(request);
 });
 
-test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async ({ page }) => {
+test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funktionieren", async ({ page }) => {
   await login(page);
 
   const manifest = await page.request.get(new URL("/manifest.webmanifest", page.url()).toString());
@@ -58,6 +59,7 @@ test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async (
 
   await page.locator(".capture textarea[name=content]").fill(captureText);
   await page.locator(".capture").getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByRole("status")).toContainText(/Originaltext gespeichert|Eingabe gespeichert/);
   await page.goto("/inbox");
   await expect(page.locator(".inbox-panel")).toContainText(captureText);
 
@@ -83,6 +85,21 @@ test("Anmeldung, Personenbeziehung und PWA-Offline-Shell funktionieren", async (
   await page.locator(".owner-relationship-form input[name=relationship_type]").fill("Arbeitskollegin");
   await page.locator(".owner-relationship-form").getByRole("button", { name: "Beziehung speichern" }).click();
   await expect(page.locator(".person-profile")).toContainText(`Du kennst ${parentName} als Arbeitskollegin`);
+
+  await page.goto("/chat");
+  await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
+  await page.getByLabel("Was möchtest du festhalten?").fill(chatCaptureText);
+  await page.getByRole("button", { name: "Speichern und prüfen" }).click();
+  await expect(page.locator(".chat-entry.assistant")).toBeVisible();
+  await page.goto("/inbox");
+  await expect(page.locator(".inbox-panel")).toContainText(chatCaptureText);
+
+  await page.goto("/chat");
+  await page.getByRole("button", { name: "Fragen" }).click();
+  await page.getByLabel("Deine Frage").fill(`Was weißt du über ${parentName}?`);
+  await page.getByRole("button", { name: "Frage stellen" }).click();
+  await expect(page.locator(".chat-entry.assistant").last()).toBeVisible();
+  await expect(page.locator(".chat-source").filter({ hasText: parentName }).first()).toBeVisible();
 
   await page.goto("/planning");
   const eventForm = page.locator(".events-panel .event-form");

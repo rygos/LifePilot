@@ -123,6 +123,27 @@ def test_event_multiple_participants_and_web_deletes_are_owner_scoped(client, au
     assert client.delete(f"/api/people/{first['id']}", headers=other_auth).status_code == 404
     assert client.delete(f"/api/people/{first['id']}", headers=auth).status_code == 204
 
+
+def test_chat_answers_with_owner_scoped_database_sources_when_model_is_unavailable(client, auth, monkeypatch):
+    from lifepilot.config import settings
+
+    monkeypatch.setattr(settings, "llm_base_url", "")
+    monkeypatch.setattr(settings, "llm_model", "")
+    other_username = f"chat-private-{os.urandom(4).hex()}"
+    with Session(engine) as db:
+        db.add(User(username=other_username, password_hash=hash_password("chat-private-password")))
+        db.commit()
+    other_token = client.post("/api/auth/login", json={"username": other_username, "password": "chat-private-password"}).json()["access_token"]
+    other_auth = {"Authorization": f"Bearer {other_token}"}
+    own_memory = client.post("/api/memories", headers=auth, json={"title": "Chat-Rettungsring", "content": "Liegt im blauen Schrank im Flur."}).json()
+    other_memory = client.post("/api/memories", headers=other_auth, json={"title": "Chat-Rettungsring", "content": "Liegt im privaten Bereich eines anderen Benutzers."}).json()
+    response = client.post("/api/chat/ask", headers=auth, json={"question": "Wo liegt der Chat-Rettungsring?"})
+
+    assert response.status_code == 200
+    assert response.json()["model_available"] is False
+    assert any(source["id"] == own_memory["id"] and source["href"] == "/memory" for source in response.json()["sources"])
+    assert all(source["id"] != other_memory["id"] for source in response.json()["sources"])
+
 def test_task_and_conversation_edits_keep_owner_scoped_revision_history(client, auth):
     person = client.post("/api/people", headers=auth, json={"first_name": "Maya", "last_name": "Revisionstest"}).json()
     task = client.post("/api/tasks", headers=auth, json={"title": "Projekt 6012", "person_id": person["id"]}).json()

@@ -22,6 +22,8 @@ Layout: Planning and appointments - enter one appointment with multiple particip
 
 Layout: Memory, objects, and review - navigate between episodic records, loans and gifts, and pending capture review -> route-based content sections with compact lists; scroll owner: document; anti-patterns: unrelated records sharing one page, destructive controls without confirmation.
 
+Layout: LifePilot Chat - switch between capturing an original note and asking questions over cited database results -> focused single-column conversation with a bounded transcript and composer; scroll owner: `.chat-transcript` for conversation history, document for the page; anti-patterns: silently treating questions as facts, presenting generated answers without sources, hiding the review step.
+
 Layout: Dashboard scheduling controls - create tasks and appointments, adjust a saved appointment, and set personal quiet hours -> existing dashboard cards with compact labeled forms and inline appointment details; scroll owner: document; anti-patterns: hidden required fields, nested scroll areas, horizontal overflow at mobile width.
 
 ## Screen brief: Dashboard scheduling controls
@@ -53,6 +55,13 @@ Layout: Dashboard scheduling controls - create tasks and appointments, adjust a 
 - Left out on purpose: unrelated planning and profile forms.
 - Required content: memories, conversations, sources, loans, returns, gift ideas, capture original text, suggestion review, approvals, confirmed deletions.
 - Data shape -> component: chronological memories use a timeline; active object records use compact rows; review uses source-first articles with explicit actions.
+
+### LifePilot Chat
+- Primary action: save an unstructured note for review or ask a natural-language question about stored records.
+- Information priorities: explicit mode, clear statement that capture is persisted before review, answer with clickable source records.
+- Left out on purpose: automatic acceptance of extracted facts and unsupported model answers without retrieved data.
+- Required content: capture/question switch, transcript, message composer, processing feedback, saved capture confirmation, source cards, link to the review inbox.
+- Data shape -> component: capture requests use the existing durable capture pipeline; question requests use owner-scoped hybrid search and an OpenAI-compatible grounded response.
 
 ## Components and behavior
 

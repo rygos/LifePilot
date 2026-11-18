@@ -22,6 +22,7 @@ from lifepilot.approval_routes import router as approval_router
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.search_routes import router as search_router
+from lifepilot.chat_routes import router as chat_router
 from lifepilot.revisions import history, record_conversation_revision
 
 @asynccontextmanager
@@ -39,6 +40,7 @@ app.include_router(capture_router)
 app.include_router(project_router)
 app.include_router(approval_router)
 app.include_router(search_router)
+app.include_router(chat_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}

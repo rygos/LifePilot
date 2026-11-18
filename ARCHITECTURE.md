@@ -8,6 +8,8 @@
 
 Jede fachliche Zeile trägt einen Besitzer. Services filtern jede Abfrage anhand des authentifizierten Benutzers. Passwörter werden mit Argon2 gehasht; signierte kurzlebige Bearer-Tokens authentifizieren API und MCP. Fremdschlüssel verhindern Beziehungen zu nicht vorhandenen Personen. Eine Schnellerfassung speichert den Originaltext als `Capture`; strukturierte Vorschläge werden separat validiert und erst nach Review in typisierte Datensätze übernommen. Gespräche, Fakten und Beziehungen verweisen auf ihre Quellerfassung. Frühere Namen (`PersonNameHistory`) und biografische Ereignisse (`PersonLifeEvent`) behalten zeitliche Genauigkeit und Quelle. Projekte können mit Gesprächen, Fakten und Aufgaben verknüpft werden. Kritische MCP-Löschungen werden als typisierte Freigabeanträge gespeichert. Die API prüft bei der Entscheidung erneut Antrag, Besitzer und Zielressource; Freigabezustand und Löschung werden gemeinsam committet.
 
+Die Weboberfläche bietet zwei Chat-Modi. „Festhalten“ delegiert an den vorhandenen Capture-Endpunkt, der den Originaltext vor dem optionalen LLM-Auftrag persistiert. „Fragen“ führt eine besitzergebundene hybride Suche aus und übergibt nur eine begrenzte Menge passender Treffer an den konfigurierten OpenAI-kompatiblen Chat-Completions-Provider. Antworten verlinken die verwendeten Quellen; bei leerer Suche wird kein LLM um eine Vermutung gebeten.
+
 ## Temporale und Quellenfelder
 
 Erinnerungen unterscheiden Erfassungszeit (`created_at`) von Ereigniszeit (`occurred_at`). Beziehungen bewahren `valid_from`, `valid_until`, `source_memory_id` und `confirmed`. Diese Felder bilden die Grundlage für nachvollziehbare Aussagen und spätere Korrekturhistorie.
