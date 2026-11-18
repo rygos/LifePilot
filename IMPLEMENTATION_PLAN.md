@@ -205,6 +205,10 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Live-Test mit `qwen/qwen3.5-9b`: erster Capture mit Ehebeziehung, Nachtrag mit zwei Söhnen; im Nachtrag erschienen nur vier neue Eltern-Kind-Kanten und eine Geschwisterkante, die Ehebeziehung und das Treffen wurden nicht wiederholt.
 - [x] Explizite Formulierungen wie „Hanna ist die Tochter von Ramona und mir“ erzeugen bestätigungspflichtige Graphbeziehungen zu benannten Personen und zum eigenen Personenprofil; bestätigte Kanten erscheinen in der normalen Beziehungsansicht und behalten ihre Capture-Quelle.
 - [x] Regressionstests decken regelbasierte und LLM-normalisierte Elternangaben ab; API-Suite: 54 bestanden, 2 übersprungen.
+- [x] Beziehungstyp „Freunde“ ist symmetrisch, im Profil auswählbar und wird als „sind befreundet“ dargestellt; die KI-Anweisungen verwenden denselben Typ.
+- [x] Ausdrückliche Sätze wie „Hanna Hering und Vincent Hering sind Freunde“ werden unabhängig von unvollständiger Modellausgabe als bestätigungspflichtige, beidseitig sichtbare Graphbeziehung vorbereitet.
+- [x] API-Suite: 56 bestanden, 2 übersprungen; Next.js-Produktionsbuild und Playwright-Test für beide Personenprofile erfolgreich.
+- [x] Live-Extraktion mit `qwen/qwen3.5-9b` erzeugt für „Hanna Hering und Vincent Hering sind Freunde“ genau einen vollständigen, beidseitigen und bestätigungspflichtigen Beziehungsvorschlag.
 - [ ] Playwright-E2E erreicht Chat-Erfassung, Folgeerfassung und Suche; der abschließende Offline-Shell-Schritt schlägt fehl und zeigt die Anmeldeseite mit „Failed to fetch“.
 - [x] Playwright-Ansicht bei 390 und 1440 Pixeln in Hell- und Dunkelmodus geprüft; Moduswechsel und Bestätigungshinweis sichtbar, kein horizontales Overflow.
 

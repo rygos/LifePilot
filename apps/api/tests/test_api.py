@@ -2,6 +2,7 @@ import os
 import pytest
 from lifepilot.db import engine
 from lifepilot.models import Gift, Loan, Memory, Person, Task, User
+from lifepilot.services import owner_relationship_types
 from lifepilot.security import hash_password
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,27 @@ def test_relationship_validation_and_cross_user_isolation(client, auth):
     other_token = client.post("/api/auth/login", json={"username": "other", "password": "other-password"})
     assert other_token.status_code == 401
     assert client.get(f"/api/people/{first['id']}", headers={"Authorization": "Bearer invalid"}).status_code == 401
+
+def test_friend_relationship_is_symmetric_and_rejects_reverse_duplicate(client, auth):
+    first = client.post("/api/people", headers=auth, json={"first_name": "Nina"}).json()
+    second = client.post("/api/people", headers=auth, json={"first_name": "Mara"}).json()
+
+    created = client.post("/api/relationships", headers=auth, json={
+        "source_person_id": first["id"],
+        "target_person_id": second["id"],
+        "relationship_type": "Freunde",
+    })
+
+    assert created.status_code == 201
+    assert created.json()["inverse_relationship_type"] == "Freunde"
+    assert client.get(f"/api/relationships?person_id={second['id']}", headers=auth).json()[0]["relationship_type"] == "Freunde"
+    assert owner_relationship_types("Freundin") == ("Freunde", "Freunde")
+    duplicate = client.post("/api/relationships", headers=auth, json={
+        "source_person_id": second["id"],
+        "target_person_id": first["id"],
+        "relationship_type": "Freunde",
+    })
+    assert duplicate.status_code == 409
 
 def test_relationships_and_profile_fields_are_readable_and_editable(client, auth):
     martin = client.post("/api/people", headers=auth, json={"first_name": "Martin", "nickname": "Marty", "address": "Hauptstraße 4", "website": "https://example.org", "job_title": "Gärtner", "organization": "Verein"}).json()

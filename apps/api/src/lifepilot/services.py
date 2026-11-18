@@ -49,6 +49,8 @@ def owned_person(db: Session, person_id: str | None, owner: User):
 
 def owner_relationship_types(relationship_type: str) -> tuple[str, str]:
     role = " ".join(relationship_type.split())
+    if role in {"Freund", "Freundin", "Freund von", "Freundin von"}:
+        return "Freunde", "Freunde"
     inverse_by_role = {
         "Tochter von": "Elternteil von",
         "Sohn von": "Elternteil von",
@@ -61,6 +63,11 @@ def owner_relationship_types(relationship_type: str) -> tuple[str, str]:
         "Geschwister von": "Geschwister von",
         "Bruder von": "Geschwister von",
         "Schwester von": "Geschwister von",
+        "Freund": "Freunde",
+        "Freundin": "Freunde",
+        "Freund von": "Freunde",
+        "Freundin von": "Freunde",
+        "Freunde": "Freunde",
     }
     if role in inverse_by_role:
         return role, inverse_by_role[role]
@@ -271,7 +278,7 @@ def relationship_create(db: Session, owner: User, source_id: str, target_id: str
     owned_person(db, source_id, owner); owned_person(db, target_id, owner)
     if source_memory_id is not None and db.scalar(select(Memory.id).where(Memory.id == source_memory_id, Memory.owner_id == owner.id)) is None:
         raise HTTPException(status_code=404, detail="Quelle nicht gefunden")
-    inverse = inverse_relationship_type or {"Tochter von": "Vater von", "Sohn von": "Vater von", "Vater von": "Tochter von", "Mutter von": "Tochter von", "Elternteil von": "Kind von", "Kind von": "Elternteil von", "kennt": "kennt", "Kollege von": "Kollege von"}.get(relationship_type, "Beziehung zu")
+    inverse = inverse_relationship_type or {"Tochter von": "Vater von", "Sohn von": "Vater von", "Vater von": "Tochter von", "Mutter von": "Tochter von", "Elternteil von": "Kind von", "Kind von": "Elternteil von", "kennt": "kennt", "Kollege von": "Kollege von", "Freunde": "Freunde"}.get(relationship_type, "Beziehung zu")
     existing = db.scalar(select(Relationship).where(Relationship.owner_id == owner.id, or_(and_(Relationship.source_person_id == source_id, Relationship.target_person_id == target_id, Relationship.relationship_type == relationship_type), and_(Relationship.source_person_id == target_id, Relationship.target_person_id == source_id, Relationship.relationship_type == inverse))))
     if existing is not None: raise HTTPException(status_code=409, detail="Diese Beziehung ist bereits gespeichert")
     row = Relationship(owner_id=owner.id, source_person_id=source_id, target_person_id=target_id, relationship_type=relationship_type, inverse_relationship_type=inverse, source_memory_id=source_memory_id, confirmed=confirmed)

@@ -71,6 +71,26 @@ def test_two_named_parents_and_sons_create_parent_and_sibling_edges(monkeypatch)
     }
 
 
+def test_explicit_friendship_is_normalized_to_one_symmetric_relationship(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "qwen/qwen3.5-9b")
+    model_output = {
+        "suggestions": [
+            {"kind": "relationship", "title": "Hanna und Vincent sind Freunde", "content": "Hanna Hering und Vincent Hering sind Freunde.", "person_name": None, "related_person_name": "Vincent Hering", "relationship_type": "Freunde", "inverse_relationship_type": "Freunde"},
+        ]
+    }
+    payload = {"choices": [{"message": {"content": json.dumps(model_output, ensure_ascii=False)}}]}
+    monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(json.dumps(payload).encode()))
+
+    suggestions = extract_facts("Hanna Hering und Vincent Hering sind Freunde.", CAPTURED_AT)
+
+    assert suggestions is not None
+    friendships = [item for item in suggestions if item.kind == "relationship" and item.relationship_type == "Freunde"]
+    assert [(item.person_name, item.related_person_name, item.inverse_relationship_type, item.confirmation_required) for item in friendships] == [
+        ("Hanna Hering", "Vincent Hering", "Freunde", True),
+    ]
+
+
 def test_extractor_turns_family_meeting_and_indefinite_loan_into_reviewable_suggestions(monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "qwen/qwen3.5-9b")

@@ -46,6 +46,27 @@ test.afterEach(async ({ request }) => {
   await deleteCreatedPeople(request);
 });
 
+test("Freunde-Beziehungen sind im Personenprofil sichtbar", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await expect(page.getByRole("button", { name: new RegExp(parentName) })).toBeVisible();
+  await page.locator("#people input[name=first_name]").fill(childName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await expect(page.getByRole("button", { name: new RegExp(childName) })).toBeVisible();
+
+  await page.getByRole("button", { name: new RegExp(parentName) }).click();
+  await page.locator(".relationship-form select[name=target_id]").selectOption({ label: childName });
+  await page.locator(".relationship-form select[name=relationship_type]").selectOption({ label: "Freunde" });
+  await page.getByRole("button", { name: "Beziehung hinzufügen" }).click();
+  await expect(page.locator(".person-profile")).toContainText(`${parentName} und ${childName} sind befreundet`);
+
+  await page.goto("/people");
+  await page.getByRole("button", { name: new RegExp(childName) }).click();
+  await expect(page.locator(".person-profile")).toContainText(`${parentName} und ${childName} sind befreundet`);
+});
+
 test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funktionieren", async ({ page }) => {
   await login(page);
 

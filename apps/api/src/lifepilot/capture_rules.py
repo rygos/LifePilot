@@ -20,6 +20,7 @@ def apply_family_meeting_and_loan_rules(
     spouse_match = re.search(r"(?i:\bseine)\s+Frau\s+([A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)", original_text)
     spouse = spouse_match.group(1).strip() if spouse_match else None
     explicit_edges, explicit_owner_edges, explicit_children, explicit_parents = _explicit_child_parent_edges(original_text)
+    friendship_edges = _explicit_friendship_edges(original_text)
     parent_statement = re.search(r"(?P<parents>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?\s+und\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)\s+haben\s+(?:zwei|drei|vier|ihre|gemeinsame[nr]?)\s+(?:Söhne|Töchter|Kinder)", original_text)
     extra_parents = _name_list(parent_statement.group("parents")) if parent_statement else []
     children = _children_from_text(original_text)
@@ -42,14 +43,19 @@ def apply_family_meeting_and_loan_rules(
     parents = list(dict.fromkeys([name for name in (subject, spouse, *extra_parents) if name]))
     family_people.update(parents)
     family_people.update(explicit_parents)
-    has_family = bool((subject and (spouse or children or extra_parents)) or explicit_edges or explicit_owner_edges)
     meeting = _meeting_suggestion(subject, original_text, captured_at) if subject and meeting_is_explicit else None
     family_edges = (_family_relationships(subject, spouse, children, parents) if subject else []) + explicit_edges
     loan = _loan_suggestion(subject, original_text, captured_at) if subject else None
-    if meeting is None and not family_edges and loan is None:
+    if meeting is None and not family_edges and not explicit_owner_edges and not friendship_edges and loan is None:
         return suggestions
 
     family_first_names = {name.split()[0].casefold() for name in family_people}
+    friendship_first_names = {
+        name.split()[0].casefold()
+        for edge in friendship_edges
+        for name in (edge.person_name, edge.related_person_name)
+        if name
+    }
     kept: list[CaptureSuggestion] = []
     for item in suggestions:
         match item.kind:
@@ -57,7 +63,9 @@ def apply_family_meeting_and_loan_rules(
                 if meeting is None:
                     kept.append(item)
             case "relationship":
-                if not family_edges or not _mentions_family(item, family_first_names):
+                is_family_duplicate = family_edges and _mentions_family(item, family_first_names) and _describes_family_relationship(item)
+                is_friendship_duplicate = friendship_edges and _mentions_named_people(item, friendship_first_names) and _describes_friendship(item)
+                if not is_family_duplicate and not is_friendship_duplicate:
                     kept.append(item)
             case "loan":
                 if loan is None:
@@ -65,7 +73,7 @@ def apply_family_meeting_and_loan_rules(
             case "fact":
                 if not _duplicates_meeting_or_loan(item, family_first_names, loan) and not (
                     family_edges and _mentions_family(item, family_first_names) and _describes_family_relationship(item)
-                ):
+                ) and not (friendship_edges and _mentions_named_people(item, friendship_first_names) and _describes_friendship(item)):
                     kept.append(item)
             case "owner_relationship":
                 if not (explicit_owner_edges and _mentions_family(item, family_first_names)):
@@ -76,6 +84,7 @@ def apply_family_meeting_and_loan_rules(
         kept.insert(0, meeting)
     kept.extend(family_edges)
     kept.extend(explicit_owner_edges)
+    kept.extend(friendship_edges)
     if loan is not None:
         kept.append(loan)
     return kept
@@ -146,6 +155,27 @@ def _explicit_child_parent_edges(original_text: str) -> tuple[list[CaptureSugges
                 confirmation_required=True,
             ))
     return relation_edges, owner_edges, list(dict.fromkeys(children)), list(dict.fromkeys(parents))
+
+
+def _explicit_friendship_edges(original_text: str) -> list[CaptureSuggestion]:
+    name = r"[A-ZÄÖÜ][\wÄÖÜäöüß'-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]*){0,2}"
+    statement = re.compile(
+        rf"(?P<first>{name})\s+und\s+(?P<second>{name})\s+(?:sind|waren)\s+(?:gute\s+)?(?:Freunde|befreundet)\b",
+        re.IGNORECASE,
+    )
+    return [
+        CaptureSuggestion(
+            kind="relationship",
+            title=f"Freunde: {match.group('first').strip()} ↔ {match.group('second').strip()}",
+            content=f"{match.group('first').strip()} und {match.group('second').strip()} sind befreundet.",
+            person_name=match.group("first").strip(),
+            related_person_name=match.group("second").strip(),
+            relationship_type="Freunde",
+            inverse_relationship_type="Freunde",
+            confirmation_required=True,
+        )
+        for match in statement.finditer(original_text)
+    ]
 
 
 def _name_list(value: str) -> list[str]:
@@ -243,3 +273,13 @@ def _duplicates_meeting_or_loan(
 def _describes_family_relationship(suggestion: CaptureSuggestion) -> bool:
     text = f"{suggestion.title} {suggestion.content} {suggestion.relationship_type or ''}".casefold()
     return bool(re.search(r"\b(vater|mutter|tochter|sohn|ehefrau|ehemann|ehepartner|geschwister|elternteil|verheiratet|frau|mann)\b", text))
+
+
+def _mentions_named_people(suggestion: CaptureSuggestion, first_names: set[str]) -> bool:
+    text = f"{suggestion.title} {suggestion.content} {suggestion.person_name or ''} {suggestion.related_person_name or ''}".casefold()
+    return all(re.search(rf"\b{re.escape(name)}\b", text) for name in first_names)
+
+
+def _describes_friendship(suggestion: CaptureSuggestion) -> bool:
+    text = f"{suggestion.title} {suggestion.content} {suggestion.relationship_type or ''}".casefold()
+    return bool(re.search(r"\b(freund(?:e|in|en)?|befreundet|freundschaft)\b", text))
