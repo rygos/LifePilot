@@ -71,6 +71,62 @@ def test_two_named_parents_and_sons_create_parent_and_sibling_edges(monkeypatch)
     }
 
 
+def test_listed_couple_and_three_children_produce_complete_reviewable_family_graph(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "qwen/qwen3.5-9b")
+    text = "Marco Valder hat eine Frau. Sina. Und die beiden haben 3 Kinder Emily, Max und Fiona. Alle heißen Valder mit Nachnamen. Bitte füge alle hinzu."
+    model_output = {
+        "suggestions": [
+            {"kind": "relationship", "title": "Ehepaar", "content": "Marco Valder und Sina Valder sind verheiratet.", "person_name": None, "related_person_name": "Sina Valder", "relationship_type": "Ehepartner", "inverse_relationship_type": "Ehepartner"},
+            *[
+                {"kind": "relationship", "title": "Eltern", "content": f"Marco und Sina haben drei Kinder: {child}.", "person_name": None, "related_person_name": f"{child} Valder", "relationship_type": "Kind von", "inverse_relationship_type": "Eltern von"}
+                for child in ("Emily", "Max", "Fiona")
+            ],
+        ]
+    }
+    payload = {"choices": [{"message": {"content": json.dumps(model_output, ensure_ascii=False)}}]}
+    monkeypatch.setattr("lifepilot.capture_ai.urlopen", lambda request, timeout: BytesIO(json.dumps(payload).encode()))
+
+    suggestions = extract_facts(text, CAPTURED_AT)
+
+    assert suggestions is not None
+    edges = {(item.person_name, item.relationship_type, item.related_person_name, item.inverse_relationship_type) for item in suggestions if item.kind == "relationship"}
+    assert edges == {
+        ("Marco Valder", "Ehepartner von", "Sina Valder", "Ehepartner von"),
+        ("Marco Valder", "Elternteil von", "Emily Valder", "Kind von"),
+        ("Marco Valder", "Elternteil von", "Max Valder", "Kind von"),
+        ("Marco Valder", "Elternteil von", "Fiona Valder", "Kind von"),
+        ("Sina Valder", "Elternteil von", "Emily Valder", "Kind von"),
+        ("Sina Valder", "Elternteil von", "Max Valder", "Kind von"),
+        ("Sina Valder", "Elternteil von", "Fiona Valder", "Kind von"),
+        ("Emily Valder", "Geschwister von", "Max Valder", "Geschwister von"),
+        ("Emily Valder", "Geschwister von", "Fiona Valder", "Geschwister von"),
+        ("Max Valder", "Geschwister von", "Fiona Valder", "Geschwister von"),
+    }
+    assert all(item.confirmation_required and item.person_name and item.related_person_name for item in suggestions if item.kind == "relationship")
+
+    capture = client.post("/api/captures", headers=auth, json={"original_text": text}).json()
+    with Session(engine) as db:
+        stored = db.get(Capture, capture["id"])
+        assert stored is not None
+        stored.status = "ready"
+        stored.suggestions_json = json.dumps([item.model_dump(mode="json") for item in suggestions], ensure_ascii=False)
+        db.commit()
+    indices = list(range(len(suggestions)))
+    accepted = client.post(
+        f"/api/captures/{capture['id']}/review",
+        headers=auth,
+        json={"accepted_indices": indices, "create_people": indices, "create_related_people": indices, "confirmations": indices},
+    )
+
+    assert accepted.status_code == 201, accepted.text
+    assert len(accepted.json()) == 10
+    people = client.get("/api/people", headers=auth).json()
+    assert {(person["first_name"], person["last_name"]) for person in people if person["last_name"] == "Valder"} == {
+        ("Marco", "Valder"), ("Sina", "Valder"), ("Emily", "Valder"), ("Max", "Valder"), ("Fiona", "Valder"),
+    }
+
+
 def test_explicit_friendship_is_normalized_to_one_symmetric_relationship(monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "qwen/qwen3.5-9b")

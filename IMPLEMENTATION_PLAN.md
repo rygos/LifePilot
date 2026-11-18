@@ -209,6 +209,9 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Ausdrückliche Sätze wie „Hanna Hering und Vincent Hering sind Freunde“ werden unabhängig von unvollständiger Modellausgabe als bestätigungspflichtige, beidseitig sichtbare Graphbeziehung vorbereitet.
 - [x] API-Suite: 56 bestanden, 2 übersprungen; Next.js-Produktionsbuild und Playwright-Test für beide Personenprofile erfolgreich.
 - [x] Live-Extraktion mit `qwen/qwen3.5-9b` erzeugt für „Hanna Hering und Vincent Hering sind Freunde“ genau einen vollständigen, beidseitigen und bestätigungspflichtigen Beziehungsvorschlag.
+- [x] Die Formulierung mit einer separat genannten Ehefrau, drei Kindern und gemeinsamem Nachnamen erzeugt zehn vollständige Kanten: Ehepartner, sechs Eltern-Kind-Verbindungen und drei Geschwisterbeziehungen.
+- [x] Integrationstest übernimmt alle fünf neuen Personen und zehn Beziehungen über die Bestätigungsstrecke; Live-Extraktion mit `qwen/qwen3.5-9b` liefert ebenfalls zehn vollständige Vorschläge.
+- [x] API-Suite nach Familienverbesserung: 57 bestanden, 2 übersprungen.
 - [ ] Playwright-E2E erreicht Chat-Erfassung, Folgeerfassung und Suche; der abschließende Offline-Shell-Schritt schlägt fehl und zeigt die Anmeldeseite mit „Failed to fetch“.
 - [x] Playwright-Ansicht bei 390 und 1440 Pixeln in Hell- und Dunkelmodus geprüft; Moduswechsel und Bestätigungshinweis sichtbar, kein horizontales Overflow.
 

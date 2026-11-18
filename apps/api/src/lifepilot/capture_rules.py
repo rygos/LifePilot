@@ -17,13 +17,18 @@ def apply_family_meeting_and_loan_rules(
     meeting_day = next((day for day in ("heute", "gestern") if re.search(rf"\b{day}\b", original_text, re.IGNORECASE)), None)
     meeting_is_explicit = bool(meeting_day and re.search(r"\b(getroffen|gequatscht|gesprochen)\b", original_text, re.IGNORECASE))
     subject = _canonical_person(subject_match.group("person")) if subject_match else None
+    explicit_couple = _explicit_couple_with_children(original_text)
+    if explicit_couple:
+        subject = explicit_couple[0]
     spouse_match = re.search(r"(?i:\bseine)\s+Frau\s+([A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)", original_text)
     spouse = spouse_match.group(1).strip() if spouse_match else None
+    if explicit_couple:
+        spouse = explicit_couple[1]
     explicit_edges, explicit_owner_edges, explicit_children, explicit_parents = _explicit_child_parent_edges(original_text)
     friendship_edges = _explicit_friendship_edges(original_text)
     parent_statement = re.search(r"(?P<parents>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?\s+und\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)?)\s+haben\s+(?:zwei|drei|vier|ihre|gemeinsame[nr]?)\s+(?:Söhne|Töchter|Kinder)", original_text)
     extra_parents = _name_list(parent_statement.group("parents")) if parent_statement else []
-    children = _children_from_text(original_text)
+    children = explicit_couple[2] if explicit_couple else _children_from_text(original_text)
     if not children and parent_statement:
         children = _name_list(original_text[parent_statement.end():])
     if subject is None and extra_parents:
@@ -101,6 +106,48 @@ def _canonical_person(name: str) -> str:
 def _children_from_text(original_text: str) -> list[str]:
     matches = re.finditer(r"\bseine\s+(?:Kinder|Söhne|Töchter|Sohn|Tochter)\s+(.+?)(?=\s+sowie\s+seine\s+(?:Frau|Kinder|Söhne|Töchter|Sohn|Tochter)|\s+und\s+seine\s+(?:Frau|Kinder|Söhne|Töchter|Sohn|Tochter)|\s+getroffen\b|[.!?]|$)", original_text, re.IGNORECASE)
     return list(dict.fromkeys(name for match in matches for name in _name_list(match.group(1))))
+
+
+def _explicit_couple_with_children(original_text: str) -> tuple[str, str, list[str]] | None:
+    name = r"[A-ZÄÖÜ][\wÄÖÜäöüß'-]*(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]*){0,2}"
+    start = re.search(rf"(?P<subject>{name})\s+hat\s+eine\s+Frau", original_text, re.IGNORECASE)
+    if start is None:
+        return None
+
+    suffix = original_text[start.end():]
+    direct_spouse = re.match(rf"\s+(?:namens\s+)?(?P<spouse>{name})", suffix)
+    spouse = direct_spouse.group("spouse").strip() if direct_spouse else None
+    if spouse is None:
+        spouse_after_period = re.match(
+            rf"\s*[.!?]\s*(?P<spouse>{name})\s*[.!?]\s*(?:und\s+)?die beiden haben\b",
+            suffix,
+            re.IGNORECASE,
+        )
+        if spouse_after_period is None:
+            return None
+        spouse = spouse_after_period.group("spouse").strip()
+
+    children_match = re.search(
+        r"\bdie beiden haben\s+(?P<count>\d+|eins?|eine|einen|zwei|drei|vier|fünf)\s+Kinder\s+(?P<names>[^.!?\n]+)",
+        original_text,
+        re.IGNORECASE,
+    )
+    if children_match is None:
+        return None
+    count_by_word = {"ein": 1, "eins": 1, "eine": 1, "einen": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5}
+    count_text = children_match.group("count").casefold()
+    count = int(count_text) if count_text.isdecimal() else count_by_word.get(count_text)
+    children = _name_list(children_match.group("names"))
+    if count is None or len(children) != count:
+        return None
+
+    subject = start.group("subject").strip()
+    surname_match = re.search(r"\bAlle heißen\s+(?P<surname>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+)\s+mit Nachnamen\b", original_text, re.IGNORECASE)
+    surname = surname_match.group("surname") if surname_match else subject.split()[-1]
+    subject = subject if len(subject.split()) > 1 else f"{subject} {surname}"
+    spouse = spouse if len(spouse.split()) > 1 else f"{spouse} {surname}"
+    children = [child if len(child.split()) > 1 else f"{child} {surname}" for child in children]
+    return subject, spouse, children
 
 
 def _explicit_child_parent_edges(original_text: str) -> tuple[list[CaptureSuggestion], list[CaptureSuggestion], list[str], list[str]]:
@@ -272,7 +319,7 @@ def _duplicates_meeting_or_loan(
 
 def _describes_family_relationship(suggestion: CaptureSuggestion) -> bool:
     text = f"{suggestion.title} {suggestion.content} {suggestion.relationship_type or ''}".casefold()
-    return bool(re.search(r"\b(vater|mutter|tochter|sohn|ehefrau|ehemann|ehepartner|geschwister|elternteil|verheiratet|frau|mann)\b", text))
+    return bool(re.search(r"\b(vater|mutter|tochter|sohn|kind|eltern|ehefrau|ehemann|ehepartner|geschwister|elternteil|verheiratet|frau|mann)\b", text))
 
 
 def _mentions_named_people(suggestion: CaptureSuggestion, first_names: set[str]) -> bool:
