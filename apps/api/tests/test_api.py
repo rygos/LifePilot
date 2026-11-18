@@ -48,6 +48,31 @@ def test_relationships_and_profile_fields_are_readable_and_editable(client, auth
     assert client.delete(f"/api/relationships/{relation.json()['id']}", headers=auth).status_code == 204
     assert client.get(f"/api/relationships?person_id={lea['id']}", headers=auth).json() == []
 
+def test_user_has_a_persistent_person_profile_usable_in_the_relationship_graph(client, auth):
+    client.patch("/api/profile", headers=auth, json={"full_name": ""})
+    profile = client.get("/api/profile", headers=auth).json()
+    people = client.get("/api/people", headers=auth).json()
+    self_person = next(person for person in people if person["is_self"])
+    assert self_person["id"] == profile["self_person_id"]
+    assert self_person["first_name"] == "testuser"
+
+    saved_profile = client.patch("/api/profile", headers=auth, json={"full_name": "Alex Beispiel", "nickname": "Alex", "email": "alex@example.org"}).json()
+    self_person = client.get(f"/api/people/{saved_profile['self_person_id']}", headers=auth).json()
+    assert (self_person["first_name"], self_person["last_name"], self_person["nickname"], self_person["email"]) == ("Alex", "Beispiel", "Alex", "alex@example.org")
+
+    colleague = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "Kollegin"}).json()
+    relationship = client.post("/api/relationships", headers=auth, json={"source_person_id": self_person["id"], "target_person_id": colleague["id"], "relationship_type": "Arbeitskollegin von", "inverse_relationship_type": "Arbeitskollege von"})
+    assert relationship.status_code == 201
+    visible = client.get(f"/api/relationships?person_id={self_person['id']}", headers=auth).json()
+    assert any(item["source_person_id"] == self_person["id"] and item["target_person_id"] == colleague["id"] for item in visible)
+    assert client.delete(f"/api/people/{self_person['id']}", headers=auth).status_code == 409
+
+    updated_self = client.patch(f"/api/people/{self_person['id']}", headers=auth, json={"first_name": "Alexandra", "last_name": "Beispiel", "nickname": "Alex", "birthday": None, "email": "alexandra@example.org", "phone": None, "address": "Parkweg 1", "website": None, "job_title": None, "organization": None, "notes": ""})
+    assert updated_self.status_code == 200
+    updated_account = client.get("/api/profile", headers=auth).json()
+    assert updated_account["full_name"] == "Alexandra Beispiel"
+    assert updated_account["email"] == "alexandra@example.org"
+
 def test_owner_relationships_can_be_managed_without_ai_and_stay_private(client, auth):
     person = client.post("/api/people", headers=auth, json={"first_name": "Kristin", "last_name": "OwnerRelation"}).json()
     created = client.post(f"/api/people/{person['id']}/owner-relationships", headers=auth, json={"relationship_type": "Arbeitskollegin", "valid_from": "2026-01-01T00:00:00Z"})

@@ -201,3 +201,9 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Live-Test mit `qwen/qwen3.5-9b`: erster Capture mit Ehebeziehung, Nachtrag mit zwei Söhnen; im Nachtrag erschienen nur vier neue Eltern-Kind-Kanten und eine Geschwisterkante, die Ehebeziehung und das Treffen wurden nicht wiederholt.
 - [ ] Playwright-E2E erreicht Chat-Erfassung, Folgeerfassung und Suche; der abschließende Offline-Shell-Schritt schlägt fehl und zeigt die Anmeldeseite mit „Failed to fetch“.
 - [x] Playwright-Ansicht bei 390 und 1440 Pixeln in Hell- und Dunkelmodus geprüft; Moduswechsel und Bestätigungshinweis sichtbar, kein horizontales Overflow.
+
+## Eigenes Personenprofil
+
+- [x] Jedes Konto erhält genau ein geschütztes Personenprofil; die Migration übernimmt Name, Spitzname, Geburtstag und Kontaktdaten aus dem bisherigen Kontoprofil.
+- [x] Kontoprofil und eigenes Personenprofil bleiben synchron; das Profil erscheint unter Menschen, kann Beziehungen im Graphen eingehen und ist nicht löschbar.
+- [x] API-Regressionstest deckt Profilanlage, Bearbeitung in beide Richtungen, Graphverknüpfung und Löschschutz ab; Backend-Suite: 51 bestanden, 2 übersprungen. Next.js-Produktionsbuild erfolgreich.

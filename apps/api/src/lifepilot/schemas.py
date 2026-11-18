@@ -64,6 +64,7 @@ class PersonIn(BaseModel):
 class PersonOut(PersonIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    is_self: bool = False
 class MemoryIn(BaseModel):
     title: str
     content: str
@@ -146,6 +147,7 @@ class ProfileOut(BaseModel):
     timezone_name: str
     quiet_hours_start: time | None
     quiet_hours_end: time | None
+    self_person_id: str = ""
 
 class ProfileUpdate(BaseModel):
     full_name: str = ""

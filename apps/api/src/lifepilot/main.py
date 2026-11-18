@@ -14,7 +14,7 @@ from lifepilot.audit import AuditEventView
 from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship
 from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
-from lifepilot.services import owned_person, relationship_create, search
+from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.planner import router as planner_router
 from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
@@ -31,7 +31,11 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     with Session(engine) as db:
         if db.scalar(select(User).where(User.username == settings.life_pilot_bootstrap_username)) is None:
-            db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password))); db.commit()
+            db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password)))
+            db.flush()
+        for owner in db.scalars(select(User)).all():
+            ensure_self_person(db, owner)
+        db.commit()
     yield
 
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
@@ -56,18 +60,21 @@ def health(): return {"status": "ok"}
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == form.username))
     if user is None or not verify_password(form.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id)}
 
 @app.post("/api/auth/login", response_model=Token)
 def login_json(data: Credentials, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == data.username))
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id)}
 
 @app.post("/api/auth/mcp-token", response_model=Token)
 def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == data.username))
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    ensure_self_person(db, user); db.commit()
     scopes = ["memory:read"]
     if data.access == "read_write": scopes.append("memory:write")
     return {"access_token": create_token(user.id, scopes, token_use="mcp")}
@@ -76,21 +83,27 @@ def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
 def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username}
 
 @app.get("/api/profile", response_model=ProfileOut)
-def profile_get(user: User = Depends(current_user)):
-    return ProfileOut.model_validate(user)
+def profile_get(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = ensure_self_person(db, user)
+    db.commit()
+    return ProfileOut.model_validate(user).model_copy(update={"self_person_id": person.id})
 
 @app.patch("/api/profile", response_model=ProfileOut)
 def profile_update(data: ProfileUpdate, db: Session = Depends(get_db), user: User = Depends(current_user)):
     for key, value in data.model_dump(exclude_unset=True).items(): setattr(user, key, value)
-    db.commit(); db.refresh(user); return ProfileOut.model_validate(user)
+    person = ensure_self_person(db, user)
+    sync_self_person_from_account(person, user)
+    db.commit(); db.refresh(user); return ProfileOut.model_validate(user).model_copy(update={"self_person_id": person.id})
 
 @app.get("/api/people", response_model=list[PersonOut])
 def people_list(db: Session = Depends(get_db), user: User = Depends(current_user), q: str = ""):
+    ensure_self_person(db, user)
+    db.commit()
     stmt = select(Person).where(Person.owner_id == user.id)
     if q:
         alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
         stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.id.in_(alias_ids)))
-    return db.scalars(stmt.order_by(Person.first_name, Person.last_name)).all()
+    return db.scalars(stmt.order_by(Person.is_self.desc(), Person.first_name, Person.last_name)).all()
 
 @app.post("/api/people", response_model=PersonOut, status_code=201)
 def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -116,6 +129,8 @@ def person_life_events(person_id: str, db: Session = Depends(get_db), user: User
 def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
     for key, value in data.model_dump().items(): setattr(person, key, value)
+    if person.is_self:
+        sync_account_from_self_person(person, user)
     db.commit(); db.refresh(person)
     enqueue_person_context_embeddings(db, person.id, user.id)
     return person
@@ -123,6 +138,8 @@ def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db),
 @app.delete("/api/people/{person_id}", status_code=204)
 def person_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
+    if person.is_self:
+        raise HTTPException(status_code=409, detail="Das eigene Personenprofil kann nicht gelöscht werden")
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people", resource_id=person.id, source="web"))
     db.delete(person); db.commit()
 

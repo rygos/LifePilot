@@ -47,6 +47,46 @@ def owned_person(db: Session, person_id: str | None, owner: User):
     if person is None: raise HTTPException(status_code=404, detail="Person nicht gefunden")
     return person
 
+def ensure_self_person(db: Session, owner: User) -> Person:
+    person = db.scalar(select(Person).where(Person.owner_id == owner.id, Person.is_self.is_(True)))
+    if person is not None:
+        return person
+    full_name = owner.full_name.strip()
+    first_name, separator, last_name = full_name.partition(" ")
+    person = Person(
+        owner_id=owner.id,
+        first_name=first_name or owner.username,
+        last_name=last_name if separator else "",
+        nickname=owner.nickname,
+        birthday=owner.birthday,
+        email=owner.email,
+        phone=owner.phone,
+        address=owner.address,
+        is_self=True,
+    )
+    db.add(person)
+    db.flush()
+    return person
+
+def sync_self_person_from_account(person: Person, owner: User) -> None:
+    full_name = owner.full_name.strip()
+    first_name, separator, last_name = full_name.partition(" ")
+    person.first_name = first_name or owner.username
+    person.last_name = last_name if separator else ""
+    person.nickname = owner.nickname
+    person.birthday = owner.birthday
+    person.email = owner.email
+    person.phone = owner.phone
+    person.address = owner.address
+
+def sync_account_from_self_person(person: Person, owner: User) -> None:
+    owner.full_name = " ".join(part for part in (person.first_name.strip(), person.last_name.strip()) if part)
+    owner.nickname = person.nickname
+    owner.birthday = person.birthday
+    owner.email = person.email
+    owner.phone = person.phone
+    owner.address = person.address
+
 def search(db: Session, owner: User, query: str) -> SearchResults:
     term = f"%{query.strip()}%"
     alias_person_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == owner.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(term))

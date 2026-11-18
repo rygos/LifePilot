@@ -49,6 +49,13 @@ test.afterEach(async ({ request }) => {
 test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funktionieren", async ({ page }) => {
   await login(page);
 
+  await page.goto("/people");
+  const selfPerson = page.locator(".person-button").filter({ hasText: "Du · eigenes Profil" });
+  await expect(selfPerson).toBeVisible();
+  await selfPerson.click();
+  await expect(page).toHaveURL(/\/people\/.+/);
+  await page.goto("/");
+
   const manifest = await page.request.get(new URL("/manifest.webmanifest", page.url()).toString());
   expect(manifest.ok()).toBeTruthy();
   const manifestBody = await manifest.json();

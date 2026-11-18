@@ -1,6 +1,6 @@
 from datetime import datetime, time, timezone
 from uuid import uuid4
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 from lifepilot.db import Base
@@ -27,6 +27,7 @@ class User(Base):
 
 class Person(Base):
     __tablename__ = "people"
+    __table_args__ = (Index("uq_people_one_self_profile_per_owner", "owner_id", unique=True, postgresql_where=text("is_self = true"), sqlite_where=text("is_self = true")),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     first_name: Mapped[str] = mapped_column(String(120))
@@ -40,6 +41,7 @@ class Person(Base):
     job_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
     organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    is_self: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
