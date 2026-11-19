@@ -301,7 +301,12 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   const eventForm = page.locator(".events-panel .event-form");
   await eventForm.locator("input[name=title]").fill(`E2E-Termin-${suffix}`);
   await eventForm.locator("input[name=starts_at]").fill("2027-04-01T14:30");
-  await eventForm.locator("select[name=participant_ids]").selectOption([{ label: parentName }, { label: childName }]);
+  const appointmentParticipants = eventForm.getByRole("combobox", { name: "Teilnehmende" });
+  await appointmentParticipants.fill(parentName);
+  await eventForm.getByRole("option", { name: parentName }).click();
+  await appointmentParticipants.fill(childName);
+  await eventForm.getByRole("option", { name: childName }).click();
+  await expect(eventForm.locator(".person-picker-chip")).toHaveCount(2);
   await eventForm.getByRole("button", { name: "Termin speichern" }).click();
   const eventRow = page.locator(".event-item").filter({ hasText: `E2E-Termin-${suffix}` });
   await expect(eventRow).toContainText(parentName);

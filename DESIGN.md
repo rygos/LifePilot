@@ -34,7 +34,7 @@ Layout: Event archive - scan a month, select a date, then inspect an event's con
 
 - Primary action: save a task, appointment, or personal schedule preference.
 - Content priority: task title and deadline; appointment title and local start time; profile time zone and quiet-hours range.
-- Interaction: optional repeat interval for dated tasks; appointment changes preserve duration and update their reminder.
+- Interaction: optional repeat interval for dated tasks; appointments use a searchable autocomplete with removable participant chips; appointment changes preserve duration and update their reminder.
 - Excluded: calendar views, notification delivery preferences, and event recurrence.
 
 ## Screen briefs: Navigation update
@@ -51,14 +51,14 @@ Layout: Event archive - scan a month, select a date, then inspect an event's con
 - Information priorities: upcoming appointments; participants; open tasks and deadlines.
 - Left out on purpose: contact editing and unrelated capture review.
 - Required content: task title, due time, repetition, appointment title, start, location, zero or more people, appointment edit/delete, task complete/delete.
-- Data shape -> component: appointments and tasks are chronological/action lists; appointment participants use a multi-select.
+- Data shape -> component: appointments and tasks are chronological/action lists; appointment participants use an autocomplete and removable chips.
 
 ### Events
 
 - Primary action: capture a past event with its date and context, then find and open it from the calendar.
 - Information priorities: selected date and event title; participant cards; place; contextual notes and event photos.
 - Left out on purpose: future task/reminder management, which stays under Planning.
-- Required content: past event creation from a reviewed chat capture, month navigation, date selection, event detail, participant cards linking to profiles, place name/address, photo upload and deletion.
+- Required content: past event creation from a reviewed chat capture, month navigation, date selection, event detail, searchable participant autocomplete with removable chips, participant cards linking to profiles, place name/address, photo upload and deletion.
 - Data shape -> component: one month grid groups events by local date; selecting a calendar entry reveals a single detail surface with reusable people cards and an image grid.
 
 ### Memories, things, and inbox

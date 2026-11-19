@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Person } from "../page";
+import { PersonPicker } from "../people/person-picker";
 
 type EventRecord = { id: string; title: string; record_type: "appointment" | "experience"; starts_at: string; ends_at?: string | null; description?: string | null; location: string; location_address: string; source_memory_id: string | null; participant_ids: string[] };
 type EventPhoto = { id: string; event_id: string; caption: string; created_at: string };
@@ -51,6 +52,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
   const [day, setDay] = useState(() => dateKey(new Date()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<EventPhoto[]>([]);
+  const [participantResetKey, setParticipantResetKey] = useState(0);
   const selected = experiences.find(event => event.id === selectedId) ?? experiences.find(event => dateKey(new Date(event.starts_at)) === day) ?? null;
   const monthEvents = useMemo(() => experiences.filter(event => new Date(event.starts_at).getFullYear() === month.getFullYear() && new Date(event.starts_at).getMonth() === month.getMonth()), [experiences, month]);
   const dayEvents = experiences.filter(event => dateKey(new Date(event.starts_at)) === day).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
@@ -74,7 +76,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
     const payload = { title: data.get("title"), record_type: "experience", starts_at: new Date(String(data.get("starts_at"))).toISOString(), ends_at: data.get("ends_at") ? new Date(String(data.get("ends_at"))).toISOString() : null, description: data.get("description") || "", location: data.get("location") || "", location_address: data.get("location_address") || "", participant_ids: data.getAll("participant_ids").map(String) };
     try {
       const saved = await request<EventRecord>(id ? `/api/events/${id}` : "/api/events", { method: id ? "PATCH" : "POST", body: JSON.stringify(payload) });
-      if (!id) form.reset();
+      if (!id) { form.reset(); setParticipantResetKey(current => current + 1); }
       setSelectedId(saved.id); setDay(dateKey(new Date(saved.starts_at))); setMonth(new Date(new Date(saved.starts_at).getFullYear(), new Date(saved.starts_at).getMonth(), 1)); await onRefresh();
     } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
   }
@@ -97,7 +99,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
     <details className="event-create"><summary>Ereignis manuell festhalten</summary><form className="event-edit-form" onSubmit={event => void save(event)}>
       <label>Titel<input name="title" required placeholder="Zum Beispiel: Lego-Nachmittag bei Christian" /></label><label>Beginn<input name="starts_at" type="datetime-local" required defaultValue={localInput(new Date().toISOString())} /></label>
       <label>Ende (optional)<input name="ends_at" type="datetime-local" /></label><label>Ort<input name="location" placeholder="Name des Ortes" /></label><label>Adresse (optional)<input name="location_address" placeholder="Straße, Ort" /></label>
-      <label className="event-participants">Teilnehmende<select name="participant_ids" multiple size={Math.min(Math.max(people.length, 3), 6)}>{people.map(person => <option key={person.id} value={person.id}>{person.first_name} {person.last_name}</option>)}</select><small>Mehrere Personen mit Strg oder ⌘ auswählen.</small></label>
+      <div className="event-participants"><label htmlFor="new-event-participants">Teilnehmende</label><PersonPicker key={participantResetKey} id="new-event-participants" people={people} /></div>
       <label className="event-context">Kontext und Notizen<textarea name="description" rows={3} placeholder="Was ist passiert? Worüber habt ihr gesprochen?" /></label><button>Ereignis speichern</button>
     </form></details>
     <div className="event-archive-layout">
@@ -116,7 +118,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
           <div className="panel-head"><div><span className="eyebrow">EREIGNISDETAILS</span><h3>{selected.title}</h3></div><button type="button" className="quiet danger-text" onClick={() => void onDelete(selected.id)}>Löschen</button></div>
           <form className="event-edit-form" onSubmit={event => void save(event, selected.id)}>
             <label>Titel<input name="title" required defaultValue={selected.title} /></label><label>Beginn<input name="starts_at" type="datetime-local" required defaultValue={localInput(selected.starts_at)} /></label><label>Ende (optional)<input name="ends_at" type="datetime-local" defaultValue={selected.ends_at ? localInput(selected.ends_at) : ""} /></label><label>Ort<input name="location" defaultValue={selected.location} placeholder="Name des Ortes" /></label><label>Adresse<input name="location_address" defaultValue={selected.location_address} placeholder="Straße, Ort" /></label>
-            <label className="event-participants">Teilnehmende<select name="participant_ids" multiple defaultValue={selected.participant_ids} size={Math.min(Math.max(people.length, 3), 6)}>{people.map(person => <option key={person.id} value={person.id}>{person.first_name} {person.last_name}</option>)}</select></label><label className="event-context">Kontext und Notizen<textarea name="description" rows={4} defaultValue={selected.description ?? ""} placeholder="Was ist passiert?" /></label><button>Änderungen speichern</button>
+            <div className="event-participants"><label htmlFor={`edit-event-participants-${selected.id}`}>Teilnehmende</label><PersonPicker key={`${selected.id}-${selected.participant_ids.join(",")}`} id={`edit-event-participants-${selected.id}`} people={people} initialIds={selected.participant_ids} /></div><label className="event-context">Kontext und Notizen<textarea name="description" rows={4} defaultValue={selected.description ?? ""} placeholder="Was ist passiert?" /></label><button>Änderungen speichern</button>
           </form>
           <h4>Teilnehmende</h4>{selected.participant_ids.length ? <div className="event-participant-cards">{selected.participant_ids.map(id => people.find(person => person.id === id)).filter((person): person is Person => Boolean(person)).map(person => <a className="event-participant-card" href={`/people/${person.id}`} key={person.id}><ParticipantPhoto person={person} token={token} api={api} /><strong>{person.first_name} {person.last_name}</strong>{person.nickname && <small>{person.nickname}</small>}</a>)}</div> : <p className="muted">Noch keine Teilnehmenden zugeordnet.</p>}
           {(selected.location || selected.location_address) && <div className="event-place"><h4>Ort</h4><p>{selected.location || "Ort ohne Namen"}</p>{selected.location_address && <small>{selected.location_address}</small>}</div>}

@@ -53,7 +53,15 @@ test("past event can be selected from the calendar with participants, place and 
   await form.locator("input[name=starts_at]").fill(localNow);
   await form.locator("input[name=location]").fill("Bei Freunden");
   await form.locator("input[name=location_address]").fill("Beispielweg 7");
-  await form.locator("select[name=participant_ids]").selectOption({ label: personName });
+  const participantPicker = form.getByRole("combobox", { name: "Teilnehmende" });
+  await participantPicker.fill(personName);
+  await form.getByRole("option", { name: personName }).click();
+  await expect(form.locator(".person-picker-chip")).toContainText(personName);
+  await form.getByRole("button", { name: `${personName} entfernen` }).click();
+  await expect(form.locator(".person-picker-chip")).toHaveCount(0);
+  await participantPicker.fill(personName);
+  await participantPicker.press("ArrowDown");
+  await participantPicker.press("Enter");
   await form.locator("textarea[name=description]").fill("Wir haben gemeinsam Lego gebaut.");
   await form.getByRole("button", { name: "Ereignis speichern" }).click();
 

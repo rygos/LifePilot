@@ -244,6 +244,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 
 ## Ereignisarchiv
 
+- [x] Teilnehmende in manuellen Ereignis- und Terminformularen per Autocomplete hinzufügen, als Chips anzeigen und einzeln entfernen; Browserprüfung mit Auswahl, Entfernen und erneutem Hinzufügen bestanden.
 - [x] Vergangene Ereignisse getrennt von zukünftigen Terminen speichern und beim Bestätigen einer datierten Gesprächserfassung anlegen; Teilnehmernamen und Ort gehen aus der strukturierten Erfassung in den Ereigniseintrag über.
 - [x] Monatliche Kalenderansicht mit Monatswechsel, Datumsauswahl und auswählbaren Ereignissen.
 - [x] Ereignisdetails mit bearbeitbarem Kontext, Ort/Adresse, Originaleingabe und anklickbaren Profilbildkarten der Teilnehmenden.
