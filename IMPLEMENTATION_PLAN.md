@@ -201,6 +201,9 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Ausgewählte Vorschläge werden beim nächsten Chatbeitrag automatisch übernommen; der Chatverlauf wird nach dem Neuladen aus gespeicherten Erfassungen wiederhergestellt.
 - [x] Regressionstest für partielle Bestätigung, Datenbankspeicherung und Folgekontext; Backend-Suite: 52 bestanden, 2 übersprungen. Next.js-Produktionsbuild und PostgreSQL-Migration bis Head erfolgreich.
 - [x] Playwright-E2E durchlief Chat, Ausschluss aus dem Eingang, Verlaufsladen und Folgeeingabe; es scheitert anschließend unverändert am Offline-Shell-Schritt mit „Failed to fetch“.
+- [x] Auswahlfeld „Beziehung zu dir“ im dunklen Design an die übrigen Formularfelder angeglichen.
+- [x] Chatverläufe nach „Festhalten“ und „Fragen“ getrennt; je Modus werden maximal 40 Nachrichten angezeigt, ältere gespeicherte Erfassungen bleiben erhalten.
+- [x] Playwright-E2E prüft Feldgestaltung, Moduswechsel und dass Chatverläufe nicht in den jeweils anderen Modus durchsickern.
 
 ## Capture-Verläufe und Dublettenprüfung
 

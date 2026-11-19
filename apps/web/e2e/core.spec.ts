@@ -11,6 +11,7 @@ const childName = `E2E-Kind-${suffix}`;
 const captureText = `E2E-Original-${suffix}`;
 const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
+const chatQuestionText = `Was weißt du über ${parentName}?`;
 const organizationName = `E2E-Verein-${suffix}`;
 
 async function login(page: Page): Promise<void> {
@@ -103,6 +104,33 @@ test("Profilgeschlecht bestimmt Beziehungsnamen und das X entfernt die Karte obe
   await expect(page.locator(".relationship-card")).toHaveCount(0);
 });
 
+test("Beziehungsmenü ist gestaltet und Chatverläufe bleiben getrennt", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await page.getByRole("button", { name: new RegExp(parentName) }).click();
+
+  const relationshipSelect = page.locator(".owner-relationship-form select[name=relationship_type]");
+  const relationshipInput = page.locator(".owner-relationship-form input[name=valid_from]");
+  await expect(relationshipSelect).toBeVisible();
+  const selectStyle = await relationshipSelect.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color, padding: getComputedStyle(element).padding }));
+  const inputStyle = await relationshipInput.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color, padding: getComputedStyle(element).padding }));
+  expect(selectStyle).toEqual(inputStyle);
+
+  await page.goto("/chat");
+  await page.getByLabel("Was möchtest du festhalten?").fill(chatCaptureText);
+  await page.getByRole("button", { name: "Nachricht senden" }).click();
+  await expect(page.locator(".chat-transcript")).toContainText(chatCaptureText);
+  await page.getByRole("button", { name: "Fragen" }).click();
+  await expect(page.locator(".chat-transcript")).not.toContainText(chatCaptureText);
+  await expect(page.locator(".chat-history-note")).toContainText("40 Nachrichten");
+  await page.getByRole("button", { name: "Festhalten" }).click();
+  await expect(page.locator(".chat-transcript")).toContainText(chatCaptureText);
+  await page.getByRole("button", { name: "Fragen" }).click();
+  await expect(page.locator(".chat-transcript")).not.toContainText(chatCaptureText);
+});
+
 test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch für das eigene Profil", async ({ page }) => {
   await login(page);
   await page.goto("/people");
@@ -150,7 +178,7 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await login(page);
 
   await page.goto("/people");
-  const selfPerson = page.locator(".person-button").filter({ hasText: "Du · eigenes Profil" });
+  const selfPerson = page.locator(".person-card").filter({ hasText: "Du · eigenes Profil" });
   await expect(selfPerson).toBeVisible();
   await selfPerson.click();
   await expect(page).toHaveURL(/\/people\/.+/);
@@ -172,8 +200,10 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await expect(page.locator(".inbox-panel")).toContainText(captureText);
 
   await page.goto("/people");
+  await page.locator("#people select[name=gender]").selectOption("male");
   await page.locator("#people input[name=first_name]").fill(parentName);
   await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await page.locator("#people select[name=gender]").selectOption("female");
   await expect(page.getByRole("button", { name: new RegExp(parentName) })).toBeVisible();
   await page.locator("#people input[name=first_name]").fill(childName);
   await page.getByRole("button", { name: "Person hinzufügen" }).click();
@@ -182,7 +212,7 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await page.getByRole("button", { name: new RegExp(childName) }).click();
   await expect(page).toHaveURL(/\/people\/.+/);
   await page.locator(".relationship-form select[name=target_id]").selectOption({ label: parentName });
-  await page.locator(".relationship-form select[name=relationship_type]").selectOption({ label: "Diese Person ist Tochter von / andere ist Vater" });
+  await page.locator(".relationship-form select[name=relationship_type]").selectOption("child");
   await page.getByRole("button", { name: "Beziehung hinzufügen" }).click();
   await expect(page.locator(".person-profile")).toContainText(`${childName} ist Tochter von`);
   await expect(page.locator(".person-profile")).toContainText(`${parentName} ist Vater von`);
@@ -190,9 +220,9 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
   await page.goto("/people");
   await page.getByRole("button", { name: new RegExp(parentName) }).click();
   await expect(page).toHaveURL(/\/people\/.+/);
-  await page.locator(".owner-relationship-form input[name=relationship_type]").fill("Arbeitskollegin");
+  await page.locator(".owner-relationship-form select[name=relationship_type]").selectOption("colleague");
   await page.locator(".owner-relationship-form").getByRole("button", { name: "Beziehung speichern" }).click();
-  await expect(page.locator(".person-profile")).toContainText(`Du kennst ${parentName} als Arbeitskollegin`);
+  await expect(page.locator(".person-profile")).toContainText(`Du kennst ${parentName} als Arbeitskollege`);
 
   await page.goto("/chat");
   await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
@@ -210,10 +240,18 @@ test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funkt
 
   await page.goto("/chat");
   await page.getByRole("button", { name: "Fragen" }).click();
-  await page.getByLabel("Deine Frage").fill(`Was weißt du über ${parentName}?`);
+  await expect(page.locator(".chat-transcript")).not.toContainText(chatCaptureText);
+  await page.getByLabel("Deine Frage").fill(chatQuestionText);
   await page.getByRole("button", { name: "Frage stellen" }).click();
   await expect(page.locator(".chat-entry.assistant").last()).toBeVisible();
   await expect(page.locator(".chat-source").filter({ hasText: parentName }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Festhalten" }).click();
+  await expect(page.locator(".chat-transcript")).toContainText(chatCaptureText);
+  await expect(page.locator(".chat-transcript")).not.toContainText(chatQuestionText);
+  await page.getByRole("button", { name: "Fragen" }).click();
+  await expect(page.locator(".chat-transcript")).toContainText(chatQuestionText);
+  await expect(page.locator(".chat-transcript")).not.toContainText(chatCaptureText);
+  await expect(page.locator(".chat-history-note")).toContainText("40 Nachrichten");
 
   await page.goto("/planning");
   const eventForm = page.locator(".events-panel .event-form");

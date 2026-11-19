@@ -8,7 +8,7 @@ import { CaptureChatReview } from "./chat/capture-chat-review";
 
 export type Person = { id: string; first_name: string; last_name: string; nickname?: string | null; birthday?: string | null; gender: "female" | "male" | "diverse" | "unspecified"; email?: string | null; phone?: string | null; address: string; website?: string | null; job_title?: string | null; organization?: string | null; notes: string; is_self: boolean; photo_key?: string | null; created_at: string };
 type ChatSource = { id: string; kind: string; title: string; excerpt: string; href: string };
-type ChatEntry = { id: string; role: "user" | "assistant"; text: string; sources?: ChatSource[]; captureId?: string };
+type ChatEntry = { id: string; mode: "capture" | "ask"; role: "user" | "assistant"; text: string; sources?: ChatSource[]; captureId?: string };
 type PersonName = { id: string; name: string; name_type: string; valid_until?: string | null; confirmed: boolean; source_capture_id?: string | null };
 type Organization = { id: string; name: string; organization_type: "club" | "company" | "school" | "other"; notes: string; members: Membership[] };
 type Membership = { id: string; person_id: string; person_name: string; person_photo_key: string | null; person_birthday: string | null; organization_id: string; organization_name: string; organization_type: string; role: string; valid_from: string | null; valid_until: string | null };
@@ -27,6 +27,8 @@ type Approval = { id: string; operation: string; resource_id: string; resource_l
 type DailyBriefing = { date: string; timezone: string; open_tasks: Task[]; today_events: Event[]; upcoming_reminders: { id: string; title: string; due_at: string; source_type: string; source_id: string }[] };
 type PersonBriefing = { memories: Memory[]; conversations: Conversation[]; open_tasks: Task[]; open_loans: Loan[]; gift_ideas: Gift[]; upcoming_events: Event[]; owner_relationships: { id: string; relationship_type: string; valid_from?: string | null; valid_until?: string | null; source_capture_id?: string | null }[]; former_names: { id: string; name: string; valid_until?: string | null; source_capture_id?: string | null }[]; life_events: { id: string; title: string; details: string; occurred_at?: string | null; date_precision: string; source_capture_id?: string | null }[] };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const MAX_CHAT_HISTORY_ENTRIES = 40;
+const MAX_CHAT_CAPTURE_THREADS = MAX_CHAT_HISTORY_ENTRIES / 2;
 const ownerRelationshipDateFormatter = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" });
 function calculateAge(birthday?: string | null): number | null {
   if (!birthday) return null;
@@ -108,6 +110,14 @@ export default function Home() {
   const [chatBusy, setChatBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  function appendChatEntry(entry: ChatEntry) {
+    setChatEntries(entries => {
+      const next = [...entries, entry];
+      const modeEntries = next.filter(item => item.mode === entry.mode).slice(-MAX_CHAT_HISTORY_ENTRIES);
+      return [...next.filter(item => item.mode !== entry.mode), ...modeEntries];
+    });
+  }
+
   useEffect(() => {
     if ("serviceWorker" in navigator && window.isSecureContext) {
       void navigator.serviceWorker.register("/sw.js").catch(() => setMessage("Offline-Speicherung konnte nicht aktiviert werden."));
@@ -140,18 +150,18 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [captures, token]);
   useEffect(() => {
-    if (currentView !== "chat" || chatEntries.length > 0) return;
-    const history = captures.filter(item => item.source === "chat").sort((left, right) => left.created_at.localeCompare(right.created_at));
+    if (currentView !== "chat" || chatEntries.some(entry => entry.mode === "capture")) return;
+    const history = captures.filter(item => item.source === "chat").sort((left, right) => left.created_at.localeCompare(right.created_at)).slice(-MAX_CHAT_CAPTURE_THREADS);
     if (history.length === 0) {
       setActiveCaptureId(null);
       return;
     }
-    setChatEntries(history.flatMap(item => [
-      { id: `${item.id}-user`, role: "user" as const, text: item.original_text },
-      { id: `${item.id}-assistant`, role: "assistant" as const, text: item.status === "pending" ? "Die Analyse läuft …" : item.status === "ready" ? "Hier sind die noch offenen Vorschläge." : item.status === "reviewed" ? "Alle Vorschläge aus dieser Eingabe wurden umgesetzt." : item.processing_error || "Originaltext gespeichert.", captureId: item.id },
-    ]));
+    setChatEntries(entries => [...entries.filter(entry => entry.mode !== "capture"), ...history.flatMap(item => [
+      { id: `${item.id}-user`, mode: "capture" as const, role: "user" as const, text: item.original_text },
+      { id: `${item.id}-assistant`, mode: "capture" as const, role: "assistant" as const, text: item.status === "pending" ? "Die Analyse läuft …" : item.status === "ready" ? "Hier sind die noch offenen Vorschläge." : item.status === "reviewed" ? "Alle Vorschläge aus dieser Eingabe wurden umgesetzt." : item.processing_error || "Originaltext gespeichert.", captureId: item.id },
+    ])]);
     setActiveCaptureId(history.at(-1)?.id ?? null);
-  }, [currentView, captures, chatEntries.length]);
+  }, [currentView, captures, chatEntries]);
 
   async function selectPerson(person: Person) {
     if (currentView !== "person") { window.location.assign(`/people/${person.id}`); return; }
@@ -337,7 +347,7 @@ export default function Home() {
     const text = String(form.get("chat_message") ?? "").trim();
     if (!text || chatBusy) return;
     setChatBusy(true);
-    setChatEntries(entries => [...entries, { id: crypto.randomUUID(), role: "user", text }]);
+    appendChatEntry({ id: crypto.randomUUID(), mode: chatMode, role: "user", text });
     formElement.reset();
     try {
       if (chatMode === "capture") {
@@ -351,13 +361,13 @@ export default function Home() {
         setActiveCaptureId(saved.id);
         setCaptures(current => [saved, ...current.filter(item => item.id !== saved.id)]);
         const status = saved.status === "pending" ? "Dein Text ist gespeichert. Ich prüfe jetzt, welche offenen Punkte deine Nachricht ergänzt." : saved.processing_error || "Dein Originaltext wurde gespeichert. Die offenen Vorschläge bleiben hier im Chat.";
-        setChatEntries(entries => [...entries, { id: crypto.randomUUID(), role: "assistant", text: status, captureId: saved.id }]);
+        appendChatEntry({ id: crypto.randomUUID(), mode: "capture", role: "assistant", text: status, captureId: saved.id });
       } else {
         const response = await request<{ answer: string; sources: ChatSource[] }>("/api/chat/ask", { method: "POST", body: JSON.stringify({ question: text }) });
-        setChatEntries(entries => [...entries, { id: crypto.randomUUID(), role: "assistant", text: response.answer, sources: response.sources }]);
+        appendChatEntry({ id: crypto.randomUUID(), mode: "ask", role: "assistant", text: response.answer, sources: response.sources });
       }
     } catch (error) {
-      setChatEntries(entries => [...entries, { id: crypto.randomUUID(), role: "assistant", text: `Das hat nicht funktioniert: ${String(error)}` }]);
+      appendChatEntry({ id: crypto.randomUUID(), mode: chatMode, role: "assistant", text: `Das hat nicht funktioniert: ${String(error)}` });
     } finally {
       setChatBusy(false);
     }
@@ -396,7 +406,7 @@ export default function Home() {
   ].filter(group => group.items.length > 0);
   return <main className="shell" data-view={currentView}><aside className="sidebar"><a className="brand" href="/">L<span>·</span>P</a><p className="eyebrow">LIFEPILOT</p><nav aria-label="Hauptnavigation">{navItems.map(([href, label]) => <a key={href} href={href} className={currentView === (href === "/" ? "dashboard" : href.slice(1)) || (currentView === "person" && href === "/people") ? "active" : undefined}>{label}</a>)}</nav><div className="profile"><div className="avatar">{username[0]?.toUpperCase()}</div><div>{profile?.full_name || username}<small>Persönlicher Bereich</small></div><button className="quiet" onClick={() => clearSession()}>Abmelden</button></div></aside>
     <section className="content"><header><div><p className="eyebrow">DEIN ZWEITGEDÄCHTNIS</p><h1>{pageTitle}</h1><p className="muted">{currentView === "chat" ? "Erfasse Gedanken oder frage dein gespeichertes Gedächtnis." : currentView === "people" ? "Kontakte und ihre Beziehungen" : currentView === "planning" ? "Aufgaben und Termine" : currentView === "memory" ? "Gespräche, Ereignisse und Notizen" : currentView === "things" ? "Leihgaben und Geschenkideen" : currentView === "inbox" ? "Eingaben prüfen und zuordnen" : currentView === "settings" ? "Dein persönliches Profil" : "Was möchtest du heute festhalten?"}</p></div><div className="header-actions"><span className="date">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full" }).format(new Date())}</span><button type="button" onClick={() => setCaptureOpen(true)}>Schnellerfassung</button>{selectedPerson && !selectedPerson.is_self && currentView === "person" && <button type="button" className="danger-button" onClick={() => void deleteRecord(`/api/people/${selectedPerson.id}`, "Person")}>Person löschen</button>}<a className="quiet profile-toggle" href="/settings">{profile?.full_name || profile?.username || "Mein Profil"}</a></div></header>
-      {currentView === "chat" && <section className="card panel chat-panel"><div className="chat-modes" role="group" aria-label="Chat-Modus"><button type="button" className={chatMode === "capture" ? "selected" : "quiet"} aria-pressed={chatMode === "capture"} onClick={() => setChatMode("capture")}>Festhalten</button><button type="button" className={chatMode === "ask" ? "selected" : "quiet"} aria-pressed={chatMode === "ask"} onClick={() => setChatMode("ask")}>Fragen</button></div><p className="chat-guidance">{chatMode === "capture" ? "Schreib frei, was du festhalten möchtest. Du entscheidest direkt hier, welche Vorschläge gespeichert werden." : "Frage nach Personen, Gesprächen, Aufgaben, Terminen, Leihgaben und anderen gespeicherten Informationen. Antworten stützen sich auf angezeigte Datenbankquellen."}</p>{chatMode === "capture" && <div className="chat-review-note">Hake passende Vorschläge ab und übernimm sie hier. Beim nächsten Chatbeitrag werden ausgewählte Punkte zuerst gespeichert; offene Vorschläge bleiben sichtbar.</div>}<div className="chat-transcript" aria-live="polite">{chatEntries.length === 0 ? <p className="empty">{chatMode === "capture" ? "Zum Beispiel: „Ich habe Anna heute getroffen und wir haben über ihren Umzug gesprochen.“" : "Zum Beispiel: „Wem habe ich meine Bohrmaschine geliehen?“"}</p> : chatEntries.map(entry => <article className={`chat-entry ${entry.role}`} key={entry.id}><p>{entry.text}</p>{entry.sources?.map(source => <a className="chat-source" key={`${source.kind}-${source.id}`} href={source.href}><strong>{source.title}</strong><small>{source.kind} · {source.excerpt || "Gespeicherter Datensatz"}</small></a>)}{entry.captureId && (() => { const capture = captures.find(item => item.id === entry.captureId); if (!capture) return <p>Vorschläge werden geladen.</p>; return <CaptureChatReview capture={capture} people={people} projects={projects} selectedIndices={selectedSuggestions[capture.id] ?? []} busy={chatBusy} onToggle={(index, checked) => setSelectedSuggestions(current => { const selected = current[capture.id] ?? []; return { ...current, [capture.id]: checked ? [...selected, index] : selected.filter(value => value !== index) }; })} onApply={() => void reviewCapture(capture, selectedSuggestions[capture.id] ?? [])} />; })()}</article>)}</div><form className="chat-composer" onSubmit={event => void sendChatMessage(event)}><label htmlFor="chat-message">{chatMode === "capture" ? "Was möchtest du festhalten?" : "Deine Frage"}</label><textarea id="chat-message" name="chat_message" rows={3} maxLength={2000} required placeholder={chatMode === "capture" ? "Schreib einfach los …" : "Frag dein persönliches Gedächtnis …"} /><button disabled={chatBusy}>{chatBusy ? "Wird verarbeitet …" : chatMode === "capture" ? "Nachricht senden" : "Frage stellen"}</button></form></section>}
+      {currentView === "chat" && <section className="card panel chat-panel"><div className="chat-modes" role="group" aria-label="Chat-Modus"><button type="button" className={chatMode === "capture" ? "selected" : "quiet"} aria-pressed={chatMode === "capture"} onClick={() => setChatMode("capture")}>Festhalten</button><button type="button" className={chatMode === "ask" ? "selected" : "quiet"} aria-pressed={chatMode === "ask"} onClick={() => setChatMode("ask")}>Fragen</button></div><p className="chat-guidance">{chatMode === "capture" ? "Schreib frei, was du festhalten möchtest. Du entscheidest direkt hier, welche Vorschläge gespeichert werden." : "Frage nach Personen, Gesprächen, Aufgaben, Terminen, Leihgaben und anderen gespeicherten Informationen. Antworten stützen sich auf angezeigte Datenbankquellen."}</p>{chatMode === "capture" && <div className="chat-review-note">Hake passende Vorschläge ab und übernimm sie hier. Beim nächsten Chatbeitrag werden ausgewählte Punkte zuerst gespeichert; offene Vorschläge bleiben sichtbar.</div>}<p className="chat-history-note">Es werden höchstens die letzten {MAX_CHAT_HISTORY_ENTRIES} Nachrichten dieses Modus angezeigt. Ältere Festhalten-Eingaben bleiben gespeichert.</p><div className="chat-transcript" aria-live="polite">{chatEntries.filter(entry => entry.mode === chatMode).length === 0 ? <p className="empty">{chatMode === "capture" ? "Zum Beispiel: „Ich habe Anna heute getroffen und wir haben über ihren Umzug gesprochen.“" : "Zum Beispiel: „Wem habe ich meine Bohrmaschine geliehen?“"}</p> : chatEntries.filter(entry => entry.mode === chatMode).slice(-MAX_CHAT_HISTORY_ENTRIES).map(entry => <article className={`chat-entry ${entry.role}`} key={entry.id}><p>{entry.text}</p>{entry.sources?.map(source => <a className="chat-source" key={`${source.kind}-${source.id}`} href={source.href}><strong>{source.title}</strong><small>{source.kind} · {source.excerpt || "Gespeicherter Datensatz"}</small></a>)}{entry.captureId && (() => { const capture = captures.find(item => item.id === entry.captureId); if (!capture) return <p>Vorschläge werden geladen.</p>; return <CaptureChatReview capture={capture} people={people} projects={projects} selectedIndices={selectedSuggestions[capture.id] ?? []} busy={chatBusy} onToggle={(index, checked) => setSelectedSuggestions(current => { const selected = current[capture.id] ?? []; return { ...current, [capture.id]: checked ? [...selected, index] : selected.filter(value => value !== index) }; })} onApply={() => void reviewCapture(capture, selectedSuggestions[capture.id] ?? [])} />; })()}</article>)}</div><form className="chat-composer" onSubmit={event => void sendChatMessage(event)}><label htmlFor="chat-message">{chatMode === "capture" ? "Was möchtest du festhalten?" : "Deine Frage"}</label><textarea id="chat-message" name="chat_message" rows={3} maxLength={2000} required placeholder={chatMode === "capture" ? "Schreib einfach los …" : "Frag dein persönliches Gedächtnis …"} /><button disabled={chatBusy}>{chatBusy ? "Wird verarbeitet …" : chatMode === "capture" ? "Nachricht senden" : "Frage stellen"}</button></form></section>}
       {currentView === "people" && <div className="people-toolbar"><label>Personen suchen<input type="search" value={personFilter} onChange={event => setPersonFilter(event.target.value)} placeholder="Name, Spitzname, Verein oder Kontakt …" /></label><label>Filtern<select value={personKindFilter} onChange={event => setPersonKindFilter(event.target.value)}><option value="all">Alle Personen</option><option value="birthday">Mit Geburtstag</option><option value="photo">Mit Profilbild</option><option value="organization">Mit Verein/Organisation</option></select></label><label>Sortieren<select value={personSort} onChange={event => setPersonSort(event.target.value)}><option value="name">Name</option><option value="age">Alter</option><option value="birthday">Nächster Geburtstag</option><option value="recent">Zuletzt hinzugefügt</option></select></label></div>}
       {captureOpen && <dialog open className="capture-dialog"><div className="panel-head"><h2>Schnellerfassung</h2><button type="button" className="quiet" onClick={() => setCaptureOpen(false)}>Schließen</button></div><form onSubmit={event => { setCaptureOpen(false); void capture(event); }}><label>Gedanke oder Gespräch<textarea name="content" autoFocus required placeholder="Schreib einfach los …" /></label><button>Speichern</button></form></dialog>}
       {showProfile && profile && <AccountSettingsPanel profile={profile} request={request} onClose={() => setShowProfile(false)} onMessage={setMessage} onProfileSaved={saved => { setProfile(saved); void refresh(); }} />}
