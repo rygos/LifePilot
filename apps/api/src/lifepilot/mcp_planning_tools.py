@@ -76,9 +76,9 @@ def register_planning_tools(mcp: FastMCP) -> None:
             return TaskOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="event_update")
-    def event_update_mcp(event_id: str, title: str | None = None, description: str | None = None, location: str | None = None, starts_at: str | None = None, ends_at: str | None = None, participant_ids: list[str] | None = None) -> dict:
+    def event_update_mcp(event_id: str, title: str | None = None, record_type: str | None = None, description: str | None = None, location: str | None = None, location_address: str | None = None, starts_at: str | None = None, ends_at: str | None = None, participant_ids: list[str] | None = None) -> dict:
         owner_id = mcp_user("memory:write")
-        changes = {key: value for key, value in (("title", title), ("description", description), ("location", location), ("starts_at", _parse_datetime(starts_at)), ("ends_at", _parse_datetime(ends_at)), ("participant_ids", participant_ids)) if value is not None}
+        changes = {key: value for key, value in (("title", title), ("record_type", record_type), ("description", description), ("location", location), ("location_address", location_address), ("starts_at", _parse_datetime(starts_at)), ("ends_at", _parse_datetime(ends_at)), ("participant_ids", participant_ids)) if value is not None}
         with mcp_session(owner_id) as db:
             return event_update(event_id, EventPatch.model_validate(changes), db, db.get(User, owner_id)).model_dump(mode="json")
 

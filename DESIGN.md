@@ -28,6 +28,8 @@ Layout: LifePilot Chat - switch between capturing an original note and asking qu
 
 Layout: Dashboard scheduling controls - create tasks and appointments, adjust a saved appointment, and set personal quiet hours -> existing dashboard cards with compact labeled forms and inline appointment details; scroll owner: document; anti-patterns: hidden required fields, nested scroll areas, horizontal overflow at mobile width.
 
+Layout: Event archive - scan a month, select a date, then inspect an event's context, participant cards, place and photos -> calendar grid with one selected-event detail region below it; scroll owner: document; anti-patterns: mixing future reminders into past memories, unattached attendee names, photos without owner-scoped access, nested scroll areas.
+
 ## Screen brief: Dashboard scheduling controls
 
 - Primary action: save a task, appointment, or personal schedule preference.
@@ -51,6 +53,14 @@ Layout: Dashboard scheduling controls - create tasks and appointments, adjust a 
 - Required content: task title, due time, repetition, appointment title, start, location, zero or more people, appointment edit/delete, task complete/delete.
 - Data shape -> component: appointments and tasks are chronological/action lists; appointment participants use a multi-select.
 
+### Events
+
+- Primary action: capture a past event with its date and context, then find and open it from the calendar.
+- Information priorities: selected date and event title; participant cards; place; contextual notes and event photos.
+- Left out on purpose: future task/reminder management, which stays under Planning.
+- Required content: past event creation from a reviewed chat capture, month navigation, date selection, event detail, participant cards linking to profiles, place name/address, photo upload and deletion.
+- Data shape -> component: one month grid groups events by local date; selecting a calendar entry reveals a single detail surface with reusable people cards and an image grid.
+
 ### Memories, things, and inbox
 - Primary action: save or review the record native to the current section.
 - Information priorities: original notes and conversations; active loans and gift ideas; unreviewed captures and approvals.
@@ -71,3 +81,4 @@ Layout: Dashboard scheduling controls - create tasks and appointments, adjust a 
 - User profile is an editable settings route linked from the application header.
 - Relationship rows identify both people and preserve the entered direction and relationship type.
 - Forms use the existing two-column `.person-form`, collapsing to one column on narrow screens; labels remain visible.
+- Events use a month grid and a selected-event detail surface. Participant cards link to person profiles; venue details and authorized photos stay with the event record.

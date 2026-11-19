@@ -39,6 +39,9 @@ class CaptureSuggestion(BaseModel):
     related_person_gender_basis: GenderBasis | None = None
     related_person_id: str | None = Field(default=None, max_length=36)
     related_person_candidates: list[str] = Field(default_factory=list, max_length=5)
+    participant_names: list[str] = Field(default_factory=list, max_length=30)
+    location: str | None = Field(default=None, max_length=240)
+    location_address: str | None = Field(default=None, max_length=500)
     due_at: datetime | None = None
     loan_direction: LoanDirection | None = None
     occurred_at: datetime | None = None

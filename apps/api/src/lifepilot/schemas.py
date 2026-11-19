@@ -309,8 +309,10 @@ class GiftOut(GiftIn):
 
 class EventIn(BaseModel):
     title: str
+    record_type: Literal["appointment", "experience"] = "appointment"
     description: str = ""
     location: str = ""
+    location_address: str = ""
     starts_at: datetime
     ends_at: datetime | None = None
     participant_ids: list[str] = Field(default_factory=list)
@@ -318,8 +320,10 @@ class EventIn(BaseModel):
 
 class EventPatch(BaseModel):
     title: str | None = None
+    record_type: Literal["appointment", "experience"] | None = None
     description: str | None = None
     location: str | None = None
+    location_address: str | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     participant_ids: list[str] | None = None
@@ -327,7 +331,7 @@ class EventPatch(BaseModel):
 
     @model_validator(mode="after")
     def required_fields_cannot_be_cleared(self) -> Self:
-        required_fields = {"title", "description", "location", "starts_at", "participant_ids"}
+        required_fields = {"title", "record_type", "description", "location", "location_address", "starts_at", "participant_ids"}
         if any(getattr(self, field) is None for field in required_fields & self.model_fields_set):
             raise ValueError("Pflichtfelder eines Termins dürfen nicht geleert werden")
         return self
@@ -336,8 +340,10 @@ class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     title: str
+    record_type: Literal["appointment", "experience"]
     description: str
     location: str
+    location_address: str
     starts_at: datetime
     ends_at: datetime | None
     source_memory_id: str | None
@@ -346,6 +352,13 @@ class EventOut(BaseModel):
     @field_serializer("starts_at", "ends_at")
     def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
         return as_utc(value)
+
+class EventPhotoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    event_id: str
+    caption: str
+    created_at: datetime
 
 class ReminderIn(BaseModel):
     title: str

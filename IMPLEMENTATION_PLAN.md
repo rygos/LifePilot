@@ -241,3 +241,12 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Live-Aufruf mit `qwen/qwen3.5-9b` ordnet „Ich habe Martin meine Bohrmaschine geliehen“ als `lent` mit Martin als Entleiher ein.
 - [x] API- und Capture-Tests prüfen beide Richtungen, offene Leihgaben und optionale Fristen; 4 gezielte Backend-Tests bestanden.
 - [x] Next.js-Produktionsbuild und Playwright-E2E durch beide Formularvarianten mit und ohne Rückgabedatum bestanden.
+
+## Ereignisarchiv
+
+- [x] Vergangene Ereignisse getrennt von zukünftigen Terminen speichern und beim Bestätigen einer datierten Gesprächserfassung anlegen; Teilnehmernamen und Ort gehen aus der strukturierten Erfassung in den Ereigniseintrag über.
+- [x] Monatliche Kalenderansicht mit Monatswechsel, Datumsauswahl und auswählbaren Ereignissen.
+- [x] Ereignisdetails mit bearbeitbarem Kontext, Ort/Adresse, Originaleingabe und anklickbaren Profilbildkarten der Teilnehmenden.
+- [x] Ereignisbilder sicher hochladen, anzeigen und löschen; API beschränkt Bildformat, Größe, Auflösung und Zugriff auf den Dateneigentümer.
+- [x] API-Tests für Ereignisfotos und Fremdnutzerzugriff; Capture-Test prüft getrennte Erlebnisdatensätze, alle genannten Teilnehmenden und fehlende Termin-Erinnerung; Playwright prüft Anlegen, Auswahl, Ort, Kontext, Foto und mobile Breite.
+- [x] PostgreSQL-Migration 0021 auf der laufenden Compose-Instanz ausgeführt; Backend-Suite: 69 bestanden, 2 übersprungen; Frontend-Build und Ereignis-Playwright-Test erfolgreich.

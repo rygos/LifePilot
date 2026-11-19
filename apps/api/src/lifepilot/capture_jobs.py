@@ -48,9 +48,13 @@ def process_capture_job(capture_id: str, owner_id: str) -> str:
             prior_context = _format_capture_thread_context(lineage)
             suggestions = extract_facts(capture.original_text, captured_at, prior_context) if prior_context else extract_facts(capture.original_text, captured_at)
         except ProviderError as error:
+            if db.scalar(select(Capture.id).where(Capture.id == capture_id, Capture.owner_id == owner_id)) is None:
+                return "missing"
             capture.status = "failed"
             capture.processing_error = str(error)
         else:
+            if db.scalar(select(Capture.id).where(Capture.id == capture_id, Capture.owner_id == owner_id)) is None:
+                return "missing"
             if suggestions is None:
                 capture.status = "unavailable"
                 capture.processing_error = "KI ist nicht konfiguriert. Der Originaltext wurde gespeichert."

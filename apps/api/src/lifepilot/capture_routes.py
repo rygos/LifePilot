@@ -160,15 +160,37 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                 raise HTTPException(status_code=422, detail="Biografische Angaben müssen ausdrücklich bestätigt werden")
             match suggestion.kind:
                 case "conversation":
-                    conversation = Conversation(owner_id=user.id, title=suggestion.title, original_note=row.original_text, summary=suggestion.content, occurred_at=suggestion.occurred_at)
+                    conversation = Conversation(owner_id=user.id, title=suggestion.title, original_note=row.original_text, summary=suggestion.content, location=suggestion.location or "", occurred_at=suggestion.occurred_at)
                     db.add(conversation)
                     db.flush()
+                    attendees: dict[str, Person] = {}
                     if person:
-                        db.add(ConversationParticipant(conversation_id=conversation.id, person_id=person.id, owner_id=user.id))
+                        attendees[person.id] = person
+                    for attendee_name in suggestion.participant_names:
+                        normalized_name = " ".join(attendee_name.split())
+                        first_name = normalized_name.split(" ", 1)[0]
+                        matches = db.scalars(select(Person).where(Person.owner_id == user.id, or_((Person.first_name + " " + Person.last_name).ilike(normalized_name), Person.first_name.ilike(normalized_name), Person.first_name.ilike(first_name))).limit(2)).all()
+                        attendee = matches[0] if len(matches) == 1 else None
+                        if attendee is None and not matches:
+                            attendee = _create_person_from_explicit_name(db, user, normalized_name, created_people)
+                        if attendee:
+                            attendees[attendee.id] = attendee
+                    for attendee in attendees.values():
+                        db.add(ConversationParticipant(conversation_id=conversation.id, person_id=attendee.id, owner_id=user.id))
                     if project:
                         db.add(ConversationProject(conversation_id=conversation.id, project_id=project.id, owner_id=user.id))
                     record_conversation_revision(db, conversation, "created", "capture")
                     accepted.append(AcceptedMemory(id=conversation.id, title=conversation.title, kind=suggestion.kind, resource_id=conversation.id, resource_type="conversation"))
+                    if suggestion.occurred_at is not None:
+                        event_memory = Memory(owner_id=user.id, title=conversation.title, content=row.original_text, person_id=person.id if person else None, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
+                        db.add(event_memory)
+                        db.flush()
+                        event = Event(owner_id=user.id, record_type="experience", title=suggestion.title, description=suggestion.content or row.original_text, location=suggestion.location or "", location_address=suggestion.location_address or "", starts_at=suggestion.occurred_at, source_memory_id=event_memory.id)
+                        db.add(event)
+                        db.flush()
+                        for attendee in attendees.values():
+                            db.add(EventParticipant(event_id=event.id, person_id=attendee.id, owner_id=user.id))
+                        accepted.append(AcceptedMemory(id=event.id, title=event.title, kind="event", resource_id=event.id, resource_type="event"))
                 case "former_name":
                     if person is None:
                         raise HTTPException(status_code=422, detail="Früherer Name benötigt eine Personenzuordnung")

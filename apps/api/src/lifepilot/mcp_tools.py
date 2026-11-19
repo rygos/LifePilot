@@ -181,11 +181,11 @@ try:
             return TaskOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="event_create")
-    def event_create_mcp(title: str, starts_at: str, description: str = "", location: str = "", ends_at: str | None = None, participant_ids: list[str] | None = None, source_memory_id: str | None = None) -> dict:
+    def event_create_mcp(title: str, starts_at: str, description: str = "", location: str = "", location_address: str = "", record_type: str = "appointment", ends_at: str | None = None, participant_ids: list[str] | None = None, source_memory_id: str | None = None) -> dict:
         from lifepilot.planner import event_create
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            row = event_create(EventIn(title=title, starts_at=starts_at, description=description, location=location, ends_at=ends_at, participant_ids=participant_ids or [], source_memory_id=source_memory_id), db, db.get(User, owner_id))
+            row = event_create(EventIn(title=title, starts_at=starts_at, description=description, location=location, location_address=location_address, record_type=record_type, ends_at=ends_at, participant_ids=participant_ids or [], source_memory_id=source_memory_id), db, db.get(User, owner_id))
             return row.model_dump(mode="json")
 
     @mcp.tool(name="upcoming_events")

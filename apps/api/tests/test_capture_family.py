@@ -10,7 +10,7 @@ from lifepilot.capture_jobs import capture_time_in_timezone, process_capture_job
 from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Capture, Conversation, Event, Loan, Memory, Person, Relationship
+from lifepilot.models import Capture, Conversation, Event, EventParticipant, Loan, Memory, Person, Relationship, Reminder
 
 
 EXAMPLE = "Ich war heute bei Christan Decker und habe dort seine Frau Tanja und seine Kinder Julian, Lukas und seine Tochter Mia getroffen. Dann habe ich mit ihm ein wenig gequatscht, Lego auseinander gebaut und er hat mir einen Supersternenzerstörer geliehen um ihn mal bauen zu können."
@@ -201,7 +201,7 @@ def test_review_saves_family_graph_meeting_and_loans_in_both_directions(client, 
         for name in ("Christian Decker", "Tanja", "Julian", "Lukas", "Mia")
     }
     suggestions = [
-        CaptureSuggestion(kind="conversation", title="Treffen mit Christian Decker · Lego auseinandergebaut", content="Heute getroffen, gequatscht und Lego auseinandergenommen.", person_name="Christian Decker", occurred_at=datetime(2026, 11, 17, 12, tzinfo=timezone.utc), date_precision="day"),
+        CaptureSuggestion(kind="conversation", title="Treffen mit Christian Decker · Lego auseinandergebaut", content="Heute getroffen, gequatscht und Lego auseinandergenommen.", person_name="Christian Decker", participant_names=["Christian Decker", "Tanja", "Julian", "Lukas", "Mia"], occurred_at=datetime(2026, 11, 17, 12, tzinfo=timezone.utc), date_precision="day"),
         CaptureSuggestion(kind="relationship", title="Ehepartner", content="Christian Decker ist mit Tanja verheiratet.", person_name="Christian Decker", related_person_name="Tanja", relationship_type="Ehepartner von", inverse_relationship_type="Ehepartner von", confirmation_required=True),
         CaptureSuggestion(kind="relationship", title="Elternteil", content="Christian Decker ist Elternteil von Julian.", person_name="Christian Decker", related_person_name="Julian", relationship_type="Elternteil von", inverse_relationship_type="Kind von", confirmation_required=True),
         CaptureSuggestion(kind="relationship", title="Elternteil", content="Christian Decker ist Elternteil von Lukas.", person_name="Christian Decker", related_person_name="Lukas", relationship_type="Elternteil von", inverse_relationship_type="Kind von", confirmation_required=True),
@@ -248,7 +248,12 @@ def test_review_saves_family_graph_meeting_and_loans_in_both_directions(client, 
         assert source is not None and source.source_capture_id == capture["id"]
         relations = db.scalars(select(Relationship).where(Relationship.owner_id == owner_id)).all()
         assert sum(1 for row in relations if row.confirmed and row.source_memory_id) >= 10
-        assert db.scalar(select(Event.id).where(Event.owner_id == owner_id, Event.title.like("Treffen mit Christian Decker%"))) is None
+        event = db.scalar(select(Event).where(Event.owner_id == owner_id, Event.title.like("Treffen mit Christian Decker%")))
+        assert event is not None and event.record_type == "experience"
+        assert event.description == suggestions[0].content
+        event_participants = set(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id)).all())
+        assert event_participants == {person["id"] for person in people.values()}
+        assert db.scalar(select(Reminder.id).where(Reminder.event_id == event.id)) is None
 
 
 def test_capture_hides_a_saved_spouse_edge_but_keeps_new_children(client, auth, monkeypatch) -> None:

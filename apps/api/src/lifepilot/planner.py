@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, or_, select
@@ -6,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import AuditEvent, Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
+from lifepilot.models import AuditEvent, Event, EventParticipant, EventPhoto, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
 from lifepilot.revisions import history, record_task_revision
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
+from lifepilot.config import settings
 from lifepilot.security import current_user
 from lifepilot.services import is_quiet_hours, owned_person
 
@@ -18,7 +20,7 @@ router = APIRouter()
 
 def event_output(db: Session, event: Event, owner_id: str) -> EventOut:
     participant_ids = list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == owner_id)).all())
-    return EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
+    return EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
 
 
 def utc_datetime(value: datetime) -> datetime:
@@ -141,7 +143,7 @@ def event_create(data: EventIn, db: Session = Depends(get_db), user: User = Depe
     db.add_all(EventParticipant(event_id=event.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
     db.commit()
     db.refresh(event)
-    return EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
+    return EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=participant_ids)
 
 
 @router.get("/api/events", response_model=list[EventOut])
@@ -186,8 +188,11 @@ def event_update(event_id: str, data: EventPatch, db: Session = Depends(get_db),
         db.add_all(EventParticipant(event_id=event.id, person_id=person_id, owner_id=user.id) for person_id in participant_ids)
     reminder = db.scalar(select(Reminder).where(Reminder.event_id == event.id, Reminder.owner_id == user.id))
     if reminder is not None:
-        reminder.title = event.title
-        if utc_datetime(starts_at) != utc_datetime(previous_start):
+        if event.record_type == "experience":
+            reminder.state = "done"
+        else:
+            reminder.title = event.title
+        if event.record_type == "appointment" and utc_datetime(starts_at) != utc_datetime(previous_start):
             reminder.due_at = starts_at
             reminder.state = "scheduled"
             reminder.snoozed_until = None
@@ -201,6 +206,10 @@ def event_delete(event_id: str, db: Session = Depends(get_db), user: User = Depe
     event = db.scalar(select(Event).where(Event.id == event_id, Event.owner_id == user.id))
     if event is None:
         raise HTTPException(status_code=404, detail="Termin nicht gefunden")
+    photo_rows = db.scalars(select(EventPhoto).where(EventPhoto.event_id == event.id, EventPhoto.owner_id == user.id)).all()
+    photo_directory = Path(settings.data_dir) / "event-photos"
+    for photo in photo_rows:
+        (photo_directory / photo.file_key).unlink(missing_ok=True)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="events", resource_id=event.id, source="web"))
     db.delete(event)
     db.commit()

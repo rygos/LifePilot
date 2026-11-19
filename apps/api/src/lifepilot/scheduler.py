@@ -1,6 +1,7 @@
 import time
 import logging
 from typing import Final
+from datetime import datetime, timezone
 from redis import Redis
 from rq import Queue, Retry
 from sqlalchemy import select
@@ -22,7 +23,7 @@ def schedule_due_items(db: Session) -> int:
         if existing is None:
             db.add(Reminder(owner_id=task.owner_id, title=task.title, due_at=task.due_at, task_id=task.id))
             created += 1
-    events = db.scalars(select(Event)).all()
+    events = db.scalars(select(Event).where(Event.record_type == "appointment", Event.starts_at >= datetime.now(timezone.utc))).all()
     for event in events:
         existing = db.scalar(select(Reminder.id).where(Reminder.event_id == event.id))
         if existing is None:

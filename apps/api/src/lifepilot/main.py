@@ -20,6 +20,7 @@ from lifepilot.security import create_token, current_user, hash_password, verify
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
 from lifepilot.planner import router as planner_router
+from lifepilot.event_media import router as event_media_router
 from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
 from lifepilot.approval_routes import router as approval_router
@@ -50,6 +51,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(planner_router)
+app.include_router(event_media_router)
 app.include_router(capture_router)
 app.include_router(project_router)
 app.include_router(approval_router)
@@ -472,7 +474,7 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
         "date": local_now.date().isoformat(),
         "timezone": user.timezone_name,
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
-        "today_events": [EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in events],
+        "today_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in events],
         "upcoming_reminders": [{"id": reminder.id, "title": reminder.title, "due_at": reminder.due_at, "state": reminder.state, "source_type": "task" if reminder.task_id else "event" if reminder.event_id else "reminder", "source_id": reminder.task_id or reminder.event_id or reminder.id} for reminder in reminders],
     }
 
@@ -504,7 +506,7 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
         "relationships": [{"id": row.id, "source_person_id": row.source_person_id, "target_person_id": row.target_person_id, "relationship_type": row.relationship_type, "inverse_relationship_type": row.inverse_relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_memory_id": row.source_memory_id} for row in links],
         "open_loans": [LoanOut.model_validate(loan).model_dump(mode="json") for loan in loans],
         "gift_ideas": [GiftOut.model_validate(gift).model_dump(mode="json") for gift in gifts],
-        "upcoming_events": [EventOut(id=event.id, title=event.title, description=event.description, location=event.location, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in upcoming_events],
+        "upcoming_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in upcoming_events],
     }
 
 try:

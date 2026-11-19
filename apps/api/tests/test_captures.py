@@ -73,6 +73,27 @@ def test_follow_up_capture_is_linked_and_receives_the_previous_context(client, a
     assert "Die Kinder Julian und Lukas fehlten." == child["original_text"]
 
 
+def test_deleted_capture_during_model_processing_is_not_updated(client, auth, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
+    monkeypatch.setattr(settings, "llm_model", "small-local-model")
+    monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
+    monkeypatch.setattr("lifepilot.capture_routes.enqueue_capture_job", lambda capture_id, owner_id: None)
+    capture = client.post("/api/captures", headers=auth, json={"original_text": "Ein Ereignis zum Löschen"}).json()
+
+    def delete_during_extraction(text: str, captured_at=None, prior_context: str = "") -> list[CaptureSuggestion]:
+        with Session(engine) as concurrent_db:
+            row = concurrent_db.get(Capture, capture["id"])
+            assert row is not None
+            concurrent_db.delete(row)
+            concurrent_db.commit()
+        return []
+
+    monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", delete_during_extraction)
+    owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
+
+    assert process_capture_job(capture["id"], owner_id) == "missing"
+
+
 def test_follow_up_hides_unchanged_parent_suggestions_but_keeps_new_facts(client, auth, monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "small-local-model")

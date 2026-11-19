@@ -1,7 +1,10 @@
 import os
+from io import BytesIO
 import pytest
+from PIL import Image
+from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Gift, Loan, Memory, Person, Task, User
+from lifepilot.models import EventPhoto, Gift, Loan, Memory, Person, Task, User
 from lifepilot.services import owner_relationship_types
 from lifepilot.security import hash_password
 from sqlalchemy.orm import Session
@@ -173,6 +176,36 @@ def test_event_multiple_participants_and_web_deletes_are_owner_scoped(client, au
 
     assert client.delete(f"/api/people/{first['id']}", headers=other_auth).status_code == 404
     assert client.delete(f"/api/people/{first['id']}", headers=auth).status_code == 204
+
+def test_experience_event_images_are_private_and_deletable(client, auth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    event = client.post("/api/events", headers=auth, json={
+        "title": "Lego-Nachmittag", "record_type": "experience", "description": "Wir haben zusammen gebaut.",
+        "location": "Bei Christian", "location_address": "Beispielstraße 4", "starts_at": "2026-11-18T15:00:00Z",
+    })
+    assert event.status_code == 201
+    assert event.json()["record_type"] == "experience"
+    assert event.json()["location_address"] == "Beispielstraße 4"
+
+    image_data = BytesIO()
+    Image.new("RGB", (32, 32), color="green").save(image_data, format="PNG")
+    uploaded = client.post(f"/api/events/{event.json()['id']}/photos", headers=auth, data={"caption": "Der fertige Sternenzerstörer"}, files={"file": ("lego.png", image_data.getvalue(), "image/png")})
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["caption"] == "Der fertige Sternenzerstörer"
+    assert client.get(f"/api/events/{event.json()['id']}/photos", headers=auth).json()[0]["id"] == uploaded.json()["id"]
+    image_response = client.get(f"/api/events/{event.json()['id']}/photos/{uploaded.json()['id']}/image", headers=auth)
+    assert image_response.status_code == 200 and image_response.headers["content-type"] == "image/jpeg"
+
+    other_username = "event-photo-other"
+    other_user = User(username=other_username, password_hash=hash_password("event-photo-password"))
+    with Session(engine) as db:
+        db.add(other_user)
+        db.commit()
+    token = client.post("/api/auth/login", json={"username": other_username, "password": "event-photo-password"}).json()["access_token"]
+    other_auth = {"Authorization": f"Bearer {token}"}
+    assert client.get(f"/api/events/{event.json()['id']}/photos", headers=other_auth).status_code == 404
+    assert client.get(f"/api/events/{event.json()['id']}/photos/{uploaded.json()['id']}/image", headers=other_auth).status_code == 404
+    assert client.delete(f"/api/events/{event.json()['id']}/photos/{uploaded.json()['id']}", headers=auth).status_code == 204
 
 
 def test_chat_answers_with_owner_scoped_database_sources_when_model_is_unavailable(client, auth, monkeypatch):
