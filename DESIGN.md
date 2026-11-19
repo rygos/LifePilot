@@ -28,7 +28,7 @@ Layout: LifePilot Chat - switch between capturing an original note and asking qu
 
 Layout: Dashboard scheduling controls - create tasks and appointments, adjust a saved appointment, and set personal quiet hours -> existing dashboard cards with compact labeled forms and inline appointment details; scroll owner: document; anti-patterns: hidden required fields, nested scroll areas, horizontal overflow at mobile width.
 
-Layout: Event archive - scan a month, select a date, then inspect an event's context, participant cards, place and photos -> calendar grid with one selected-event detail region below it; scroll owner: document; anti-patterns: mixing future reminders into past memories, unattached attendee names, photos without owner-scoped access, nested scroll areas.
+Layout: Event archive - scan a month, select a date, then inspect an event's context, participant cards, place and photos -> calendar grid with one selected-event detail region below it; the detail region switches between a read view and an edit form without repeating fields; scroll owner: document; anti-patterns: mixing future reminders into past memories, unattached attendee names, photos without owner-scoped access, nested scroll areas.
 
 ## Screen brief: Dashboard scheduling controls
 
@@ -59,6 +59,7 @@ Layout: Event archive - scan a month, select a date, then inspect an event's con
 - Information priorities: selected date and event title; participant cards; place; contextual notes and event photos.
 - Left out on purpose: future task/reminder management, which stays under Planning.
 - Required content: past event creation from a reviewed chat capture, month navigation, date selection, event detail, searchable participant autocomplete with removable chips, participant cards linking to profiles, place name/address, photo upload and deletion.
+- Interaction: event details are read-only by default; Bearbeiten replaces the summary with one edit form, Speichern returns to the detail view, and Abbrechen discards unsaved edits.
 - Data shape -> component: one month grid groups events by local date; selecting a calendar entry reveals a single detail surface with reusable people cards and an image grid.
 
 ### Memories, things, and inbox

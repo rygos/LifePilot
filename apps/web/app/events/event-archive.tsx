@@ -51,6 +51,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [day, setDay] = useState(() => dateKey(new Date()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [photos, setPhotos] = useState<EventPhoto[]>([]);
   const [participantResetKey, setParticipantResetKey] = useState(0);
   const selected = experiences.find(event => event.id === selectedId) ?? experiences.find(event => dateKey(new Date(event.starts_at)) === day) ?? null;
@@ -77,7 +78,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
     try {
       const saved = await request<EventRecord>(id ? `/api/events/${id}` : "/api/events", { method: id ? "PATCH" : "POST", body: JSON.stringify(payload) });
       if (!id) { form.reset(); setParticipantResetKey(current => current + 1); }
-      setSelectedId(saved.id); setDay(dateKey(new Date(saved.starts_at))); setMonth(new Date(new Date(saved.starts_at).getFullYear(), new Date(saved.starts_at).getMonth(), 1)); await onRefresh();
+      setSelectedId(saved.id); setIsEditing(false); setDay(dateKey(new Date(saved.starts_at))); setMonth(new Date(new Date(saved.starts_at).getFullYear(), new Date(saved.starts_at).getMonth(), 1)); await onRefresh();
     } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
   }
   async function upload(event: FormEvent<HTMLFormElement>, id: string) {
@@ -108,20 +109,23 @@ export function EventArchive({ events, people, memories, token, api, request, on
         <div className="event-calendar-grid">{["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(name => <span className="event-weekday" key={name}>{name}</span>)}{calendarCells.map((cell, index) => {
           if (cell === null) return <span key={`blank-${index}`} />;
           const key = dateKey(new Date(month.getFullYear(), month.getMonth(), cell)); const hasEvents = monthEvents.some(event => dateKey(new Date(event.starts_at)) === key);
-          return <button type="button" key={key} className={`event-day${day === key ? " selected" : ""}${hasEvents ? " has-events" : ""}`} aria-pressed={day === key} onClick={() => { setDay(key); setSelectedId(null); }}>{cell}{hasEvents && <i aria-label="Ereignisse vorhanden" />}</button>;
+          return <button type="button" key={key} className={`event-day${day === key ? " selected" : ""}${hasEvents ? " has-events" : ""}`} aria-pressed={day === key} onClick={() => { setDay(key); setSelectedId(null); setIsEditing(false); }}>{cell}{hasEvents && <i aria-label="Ereignisse vorhanden" />}</button>;
         })}</div>
         <h3 className="event-day-heading">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full" }).format(new Date(`${day}T12:00:00`))}</h3>
-        {dayEvents.length ? <div className="event-day-list">{dayEvents.map(item => <button key={item.id} type="button" className={`event-day-item${selected?.id === item.id ? " active" : ""}`} onClick={() => setSelectedId(item.id)}><strong>{item.title}</strong><small>{new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(new Date(item.starts_at))}{item.location ? ` · ${item.location}` : ""}</small></button>)}</div> : <p className="empty">Für diesen Tag sind keine Ereignisse gespeichert.</p>}
+        {dayEvents.length ? <div className="event-day-list">{dayEvents.map(item => <button key={item.id} type="button" className={`event-day-item${selected?.id === item.id ? " active" : ""}`} onClick={() => { setSelectedId(item.id); setIsEditing(false); }}><strong>{item.title}</strong><small>{new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(new Date(item.starts_at))}{item.location ? ` · ${item.location}` : ""}</small></button>)}</div> : <p className="empty">Für diesen Tag sind keine Ereignisse gespeichert.</p>}
       </section>
       <section className="event-detail" aria-label="Ereignisdetails">
         {!selected ? <p className="empty">Wähle ein Ereignis im Kalender aus oder halte ein neues fest.</p> : <>
-          <div className="panel-head"><div><span className="eyebrow">EREIGNISDETAILS</span><h3>{selected.title}</h3></div><button type="button" className="quiet danger-text" onClick={() => void onDelete(selected.id)}>Löschen</button></div>
-          <form className="event-edit-form" onSubmit={event => void save(event, selected.id)}>
+          <div className="panel-head"><div><span className="eyebrow">EREIGNISDETAILS</span><h3>{selected.title}</h3></div><div className="event-detail-actions">{isEditing ? <button type="button" className="quiet" onClick={() => setIsEditing(false)}>Abbrechen</button> : <><button type="button" className="quiet" onClick={() => setIsEditing(true)}>Bearbeiten</button><button type="button" className="quiet danger-text" onClick={() => void onDelete(selected.id)}>Löschen</button></>}</div></div>
+          {isEditing ? <form className="event-edit-form" onSubmit={event => void save(event, selected.id)}>
             <label>Titel<input name="title" required defaultValue={selected.title} /></label><label>Beginn<input name="starts_at" type="datetime-local" required defaultValue={localInput(selected.starts_at)} /></label><label>Ende (optional)<input name="ends_at" type="datetime-local" defaultValue={selected.ends_at ? localInput(selected.ends_at) : ""} /></label><label>Ort<input name="location" defaultValue={selected.location} placeholder="Name des Ortes" /></label><label>Adresse<input name="location_address" defaultValue={selected.location_address} placeholder="Straße, Ort" /></label>
             <div className="event-participants"><label htmlFor={`edit-event-participants-${selected.id}`}>Teilnehmende</label><PersonPicker key={`${selected.id}-${selected.participant_ids.join(",")}`} id={`edit-event-participants-${selected.id}`} people={people} initialIds={selected.participant_ids} /></div><label className="event-context">Kontext und Notizen<textarea name="description" rows={4} defaultValue={selected.description ?? ""} placeholder="Was ist passiert?" /></label><button>Änderungen speichern</button>
-          </form>
-          <h4>Teilnehmende</h4>{selected.participant_ids.length ? <div className="event-participant-cards">{selected.participant_ids.map(id => people.find(person => person.id === id)).filter((person): person is Person => Boolean(person)).map(person => <a className="event-participant-card" href={`/people/${person.id}`} key={person.id}><ParticipantPhoto person={person} token={token} api={api} /><strong>{person.first_name} {person.last_name}</strong>{person.nickname && <small>{person.nickname}</small>}</a>)}</div> : <p className="muted">Noch keine Teilnehmenden zugeordnet.</p>}
-          {(selected.location || selected.location_address) && <div className="event-place"><h4>Ort</h4><p>{selected.location || "Ort ohne Namen"}</p>{selected.location_address && <small>{selected.location_address}</small>}</div>}
+          </form> : <div className="event-summary">
+            <p className="event-summary-date">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full", timeStyle: "short" }).format(new Date(selected.starts_at))}{selected.ends_at ? ` bis ${new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(new Date(selected.ends_at))}` : ""}</p>
+            {selected.description && <section className="event-summary-context"><h4>Kontext</h4><p>{selected.description}</p></section>}
+            {(selected.location || selected.location_address) && <div className="event-place"><h4>Ort</h4><p>{selected.location || "Ort ohne Namen"}</p>{selected.location_address && <small>{selected.location_address}</small>}</div>}
+            <h4>Teilnehmende</h4>{selected.participant_ids.length ? <div className="event-participant-cards">{selected.participant_ids.map(id => people.find(person => person.id === id)).filter((person): person is Person => Boolean(person)).map(person => <a className="event-participant-card" href={`/people/${person.id}`} key={person.id}><ParticipantPhoto person={person} token={token} api={api} /><strong>{person.first_name} {person.last_name}</strong>{person.nickname && <small>{person.nickname}</small>}</a>)}</div> : <p className="muted">Noch keine Teilnehmenden zugeordnet.</p>}
+          </div>}
           <div className="event-image-section"><div className="panel-head"><h4>Bilder</h4><span className="count">{photos.length}</span></div><form className="event-photo-upload" onSubmit={event => void upload(event, selected.id)}><label>Bild hinzufügen<input name="file" type="file" accept="image/jpeg,image/png,image/webp" required /></label><label>Bildbeschreibung (optional)<input name="caption" maxLength={240} /></label><button>Hochladen</button></form>{photos.length ? <div className="event-photo-grid">{photos.map(photo => <Photo key={photo.id} eventId={selected.id} photo={photo} token={token} api={api} onDelete={() => void deletePhoto(selected.id, photo.id)} />)}</div> : <p className="empty">Zu diesem Ereignis wurden noch keine Bilder hinzugefügt.</p>}</div>
           {selected.source_memory_id && memories.find(memory => memory.id === selected.source_memory_id) && <details className="event-source"><summary>Ursprüngliche Eingabe</summary><p>{memories.find(memory => memory.id === selected.source_memory_id)?.content}</p></details>}
         </>}

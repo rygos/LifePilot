@@ -248,6 +248,7 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Vergangene Ereignisse getrennt von zukünftigen Terminen speichern und beim Bestätigen einer datierten Gesprächserfassung anlegen; Teilnehmernamen und Ort gehen aus der strukturierten Erfassung in den Ereigniseintrag über.
 - [x] Monatliche Kalenderansicht mit Monatswechsel, Datumsauswahl und auswählbaren Ereignissen.
 - [x] Ereignisdetails mit bearbeitbarem Kontext, Ort/Adresse, Originaleingabe und anklickbaren Profilbildkarten der Teilnehmenden.
+- [x] Monatsnavigation gleichmäßig ausrichten; Ereignisse standardmäßig als Details anzeigen und nur nach Wahl von „Bearbeiten“ als Formular öffnen, sodass dieselben Angaben nie doppelt erscheinen.
 - [x] Ereignisbilder sicher hochladen, anzeigen und löschen; API beschränkt Bildformat, Größe, Auflösung und Zugriff auf den Dateneigentümer.
 - [x] API-Tests für Ereignisfotos und Fremdnutzerzugriff; Capture-Test prüft getrennte Erlebnisdatensätze, alle genannten Teilnehmenden und fehlende Termin-Erinnerung; Playwright prüft Anlegen, Auswahl, Ort, Kontext, Foto und mobile Breite.
 - [x] PostgreSQL-Migration 0021 auf der laufenden Compose-Instanz ausgeführt; Backend-Suite: 69 bestanden, 2 übersprungen; Frontend-Build und Ereignis-Playwright-Test erfolgreich.
