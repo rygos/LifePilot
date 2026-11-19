@@ -75,8 +75,9 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         person_id = json.loads(created.content[0].text)["id"]
                         searched = await session.call_tool("person_search_tool", {"query": "MCP"})
                         assert not searched.isError and "MCP" in str(searched.content)
-                        child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind"})
+                        child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind", "gender": "female"})
                         child_id = json.loads(child.content[0].text)["id"]
+                        assert json.loads(child.content[0].text)["gender"] == "female"
                         deleted_person["id"] = child_id
                         project = await session.call_tool("project_create", {"name": "MCP-Projekt", "description": "Nur für den Benutzer"})
                         project_id = json.loads(project.content[0].text)["id"]
@@ -110,6 +111,10 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         relation_id = json.loads(relation.content[0].text)["id"]
                         updated_relation = await session.call_tool("relationship_update", {"relationship_id": relation_id, "relationship_type": "Elternteil von", "inverse_relationship_type": "Kind von"})
                         assert not updated_relation.isError and "Elternteil von" in str(updated_relation.content)
+                        updated_child = await session.call_tool("person_update", {"person_id": child_id, "gender": "male"})
+                        assert not updated_child.isError and '"gender": "male"' in str(updated_child.content)
+                        updated_relation = await session.call_tool("relationship_search", {"person_id": person_id})
+                        assert not updated_relation.isError and "Sohn von" in str(updated_relation.content)
                         owner_relationship = await session.call_tool("memory_review", {"capture_id": owner_relationship_capture_id, "accepted_indices": [0], "person_assignments": {"0": person_id}, "confirmations": [0]})
                         assert not owner_relationship.isError and "owner_relationship" in str(owner_relationship.content)
                         context = await session.call_tool("person_context", {"person_id": person_id})

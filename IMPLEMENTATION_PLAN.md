@@ -99,6 +99,15 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Browser-Test: „Tochter von“ speichert und zeigt „Vater von“, Formularwerte werden zurückgesetzt, Wechsel des Personenprofils lädt die passenden Felder.
 - [x] Weitere Create-Formulare greifen nach asynchronem Speichern nicht mehr auf das geleerte Event-Target zu.
 
+## Geschlechtsbewusste Personenbeziehungen und Profilkarten
+
+- [x] Personenprofile (einschließlich des eigenen Profils) speichern validierte Angaben `female`, `male`, `diverse` oder `unspecified`; bestehende Datensätze erhalten bei Migration den neutralen Wert.
+- [x] Beziehungsauswahl nutzt neutrale Kategorien und leitet gerichtete Bezeichnungen wie „Mutter von“ / „Sohn von“ aus den Profilen beider Personen ab. Explizite Beziehungsbegriffe können eine noch unbekannte Geschlechtsangabe ergänzen; gespeicherte Angaben werden nicht überschrieben.
+- [x] KI-Extraktion kennt explizite Geschlechtsbelege sowie vorsichtige Namensvermutungen. Vermutungen aus Vornamen müssen vor dem Speichern ausdrücklich bestätigt werden.
+- [x] Änderung eines Profilgeschlechts benennt die vorhandenen gerichteten Beziehungen anhand beider Profile neu; MCP unterstützt Geschlecht beim Erstellen und Bearbeiten von Personen.
+- [x] Beziehungsprofilkarten zeigen Entfernen als zugängliches X oben rechts statt als abgesetzten Textknopf.
+- [x] Migration `0020_person_gender`, 66 Backend-Tests (2 übersprungen), Next.js-Produktionsbuild und Playwright-Profilablauf im laufenden Compose-Stack geprüft.
+
 ## Ruhezeiten, Wiederholungen und Terminänderungen
 
 - [x] Benutzerprofil speichert IANA-Zeitzone und optionales Ruhezeitfenster; Ruhezeiten blenden fällige In-App-Benachrichtigungen aus.

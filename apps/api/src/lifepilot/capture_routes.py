@@ -135,6 +135,15 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
         raise HTTPException(status_code=422, detail="Neue Personen müssen ausdrücklich bestätigt werden")
     if any(suggestions[index].confirmation_required and index not in data.confirmations for index in accepted_indices):
         raise HTTPException(status_code=422, detail="Mindestens ein Vorschlag benötigt eine ausdrückliche Bestätigung")
+    if any(
+        (
+            suggestions[index].person_gender_basis == "name_inference"
+            or suggestions[index].related_person_gender_basis == "name_inference"
+        )
+        and index not in data.confirmations
+        for index in accepted_indices
+    ):
+        raise HTTPException(status_code=422, detail="Geschlechtsvermutungen müssen ausdrücklich bestätigt werden")
     accepted: list[AcceptedMemory] = []
     memory_rows: list[Memory] = []
     created_people: dict[str, Person] = {}
@@ -145,6 +154,8 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
             project = _resolve_project(db, user, suggestion, data.project_assignments.get(index))
             if suggestion.person_name and person is None:
                 raise HTTPException(status_code=422, detail=f"Person für Vorschlag {index + 1} ist nicht eindeutig zugeordnet")
+            if person and person.gender == "unspecified" and suggestion.person_gender:
+                person.gender = suggestion.person_gender
             if suggestion.kind in {"former_name", "life_event"} and index not in data.confirmations:
                 raise HTTPException(status_code=422, detail="Biografische Angaben müssen ausdrücklich bestätigt werden")
             match suggestion.kind:
@@ -183,6 +194,8 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                         related = matches[0] if len(matches) == 1 else None
                     if related is None:
                         raise HTTPException(status_code=422, detail="Zweite Person der Beziehung ist nicht eindeutig zugeordnet")
+                    if related.gender == "unspecified" and suggestion.related_person_gender:
+                        related.gender = suggestion.related_person_gender
                     memory = Memory(owner_id=user.id, title=suggestion.title, content=row.original_text, person_id=person.id, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
                     db.add(memory)
                     db.flush()

@@ -19,6 +19,10 @@ function suggestionLabel(suggestion: CaptureSuggestion): string {
   return suggestion.title;
 }
 
+function genderName(gender: "female" | "male" | "diverse"): string {
+  return { female: "weiblich", male: "männlich", diverse: "divers" }[gender];
+}
+
 export function CaptureChatReview({ capture, people, projects, selectedIndices, busy, onToggle, onApply }: Props) {
   return <section className="capture-chat-result">
     <strong>Vorschläge aus deiner Eingabe</strong>
@@ -27,13 +31,13 @@ export function CaptureChatReview({ capture, people, projects, selectedIndices, 
     {capture.status === "ready" && capture.suggestions.length > 0 && <>
       <p className="chat-review-hint">Hake ab, was ich übernehmen soll. Offene Punkte bleiben für deine nächste Nachricht im Gespräch.</p>
       <ul className="chat-suggestion-list">{capture.suggestions.map((suggestion, index) => <li className="chat-suggestion" key={`${capture.id}-${index}`}>
-        <label className="suggestion"><input type="checkbox" checked={selectedIndices.includes(index)} onChange={event => onToggle(index, event.target.checked)} /><span><strong>{suggestionLabel(suggestion)}</strong><small>{suggestion.content}</small></span></label>
+        <label className="suggestion"><input type="checkbox" checked={selectedIndices.includes(index)} onChange={event => onToggle(index, event.target.checked)} /><span><strong>{suggestionLabel(suggestion)}</strong><small>{suggestion.content}</small>{suggestion.person_gender && <small>Geschlecht für {suggestion.person_name}: {genderName(suggestion.person_gender)}{suggestion.person_gender_basis === "name_inference" ? " (aus dem Namen vermutet)" : ""}</small>}{suggestion.related_person_gender && <small>Geschlecht für {suggestion.related_person_name}: {genderName(suggestion.related_person_gender)}{suggestion.related_person_gender_basis === "name_inference" ? " (aus dem Namen vermutet)" : ""}</small>}</span></label>
         {suggestion.person_name && (suggestion.person_candidates.length !== 1 || !suggestion.person_id) && <label>Person zuordnen<select name={`capture-person-${capture.id}-${index}`} defaultValue=""><option value="">Bitte zuordnen: {suggestion.person_name}</option>{people.map(person => <option key={person.id} value={person.id}>{person.first_name} {person.last_name}</option>)}</select></label>}
         {suggestion.person_name && !suggestion.person_id && <label className="suggestion-confirm"><input type="checkbox" name={`capture-create-person-${capture.id}-${index}`} /> Als neue Person anlegen</label>}
         {suggestion.kind === "relationship" && suggestion.related_person_name && (suggestion.related_person_candidates.length !== 1 || !suggestion.related_person_id) && <label>Zweite Person zuordnen<select name={`capture-related-person-${capture.id}-${index}`} defaultValue=""><option value="">Bitte zuordnen: {suggestion.related_person_name}</option>{people.map(person => <option key={person.id} value={person.id}>{person.first_name} {person.last_name}</option>)}</select></label>}
         {suggestion.kind === "relationship" && suggestion.related_person_name && !suggestion.related_person_id && <label className="suggestion-confirm"><input type="checkbox" name={`capture-create-related-${capture.id}-${index}`} /> Zweite Person neu anlegen</label>}
         {suggestion.project_name && (suggestion.project_candidates.length !== 1 || !suggestion.project_id) && <label>Projekt zuordnen<select name={`capture-project-${capture.id}-${index}`} defaultValue=""><option value="">Bitte zuordnen: {suggestion.project_name}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>}
-        {suggestion.confirmation_required && <label className="suggestion-confirm"><input type="checkbox" name={`capture-confirm-${capture.id}-${index}`} /> Unsichere Zuordnung ausdrücklich bestätigen</label>}
+        {suggestion.confirmation_required && <label className="suggestion-confirm"><input type="checkbox" name={`capture-confirm-${capture.id}-${index}`} /> {suggestion.person_gender_basis === "name_inference" || suggestion.related_person_gender_basis === "name_inference" ? "Geschlechtsvermutung aus dem Namen ausdrücklich bestätigen" : "Unsichere Zuordnung ausdrücklich bestätigen"}</label>}
       </li>)}</ul>
       <button type="button" disabled={busy || selectedIndices.length === 0} onClick={onApply}>{busy ? "Wird übernommen …" : `Auswahl übernehmen (${selectedIndices.length})`}</button>
     </>}

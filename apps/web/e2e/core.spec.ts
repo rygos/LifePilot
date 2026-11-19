@@ -76,6 +76,33 @@ test("Freunde-Beziehungen sind im Personenprofil sichtbar", async ({ page }) => 
   await expect(page.locator(".person-profile")).toContainText(`${parentName} und ${childName} sind befreundet`);
 });
 
+test("Profilgeschlecht bestimmt Beziehungsnamen und das X entfernt die Karte oben rechts", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people select[name=gender]").selectOption("female");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await page.locator("#people select[name=gender]").selectOption("male");
+  await page.locator("#people input[name=first_name]").fill(childName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+
+  await page.locator(".person-card").filter({ hasText: parentName }).click();
+  await page.locator(".relationship-form select[name=target_id]").selectOption({ label: childName });
+  await page.locator(".relationship-form select[name=relationship_type]").selectOption("parent");
+  await page.getByRole("button", { name: "Beziehung hinzufügen" }).click();
+  const relationCard = page.locator(".relationship-card");
+  await expect(relationCard).toContainText("Mutter von");
+  const remove = page.getByRole("button", { name: `Beziehung zu ${childName} entfernen` });
+  const cardBox = await relationCard.boundingBox();
+  const removeBox = await remove.boundingBox();
+  if (!cardBox || !removeBox) throw new Error("Beziehungskarte oder Entfernen-Schaltfläche hat keine sichtbare Position.");
+  expect(removeBox.y - cardBox.y).toBeLessThan(16);
+  expect(removeBox.width).toBeGreaterThanOrEqual(44);
+  expect(removeBox.height).toBeGreaterThanOrEqual(44);
+  await remove.click();
+  await expect(page.locator(".relationship-card")).toHaveCount(0);
+});
+
 test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch für das eigene Profil", async ({ page }) => {
   await login(page);
   await page.goto("/people");

@@ -13,6 +13,7 @@ from lifepilot.entity_embedding_jobs import EntityMatches, semantic_entity_match
 from lifepilot.entity_types import EntityType
 from lifepilot.models import Conversation, Gift, Loan, Memory, MemoryEmbedding, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User, UserPersonRelationship
 from lifepilot.schemas import ProjectIn, ProjectPatch, RelationshipOut
+from lifepilot.relationship_language import apply_relationship_gender
 
 class SearchInfo(TypedDict):
     semantic_available: bool
@@ -275,10 +276,11 @@ def _semantic_memory_ids(db: Session, owner_id: str, query_vector: list[float]) 
 
 def relationship_create(db: Session, owner: User, source_id: str, target_id: str, relationship_type: str, source_memory_id: str | None, confirmed: bool, inverse_relationship_type: str | None = None, commit: bool = True):
     if source_id == target_id: raise HTTPException(status_code=422, detail="Eine Person kann nicht mit sich selbst verknüpft werden")
-    owned_person(db, source_id, owner); owned_person(db, target_id, owner)
+    source = owned_person(db, source_id, owner)
+    target = owned_person(db, target_id, owner)
     if source_memory_id is not None and db.scalar(select(Memory.id).where(Memory.id == source_memory_id, Memory.owner_id == owner.id)) is None:
         raise HTTPException(status_code=404, detail="Quelle nicht gefunden")
-    inverse = inverse_relationship_type or {"Tochter von": "Vater von", "Sohn von": "Vater von", "Vater von": "Tochter von", "Mutter von": "Tochter von", "Elternteil von": "Kind von", "Kind von": "Elternteil von", "kennt": "kennt", "Kollege von": "Kollege von", "Freunde": "Freunde"}.get(relationship_type, "Beziehung zu")
+    relationship_type, inverse = apply_relationship_gender(source, target, relationship_type, inverse_relationship_type)
     existing = db.scalar(select(Relationship).where(Relationship.owner_id == owner.id, or_(and_(Relationship.source_person_id == source_id, Relationship.target_person_id == target_id, Relationship.relationship_type == relationship_type), and_(Relationship.source_person_id == target_id, Relationship.target_person_id == source_id, Relationship.relationship_type == inverse))))
     if existing is not None: raise HTTPException(status_code=409, detail="Diese Beziehung ist bereits gespeichert")
     row = Relationship(owner_id=owner.id, source_person_id=source_id, target_person_id=target_id, relationship_type=relationship_type, inverse_relationship_type=inverse, source_memory_id=source_memory_id, confirmed=confirmed)

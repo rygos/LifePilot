@@ -1,5 +1,5 @@
 from datetime import datetime, time, timezone
-from typing import Self
+from typing import Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
@@ -49,11 +49,15 @@ class ReindexOut(BaseModel):
     queued: int
     failed: int
     semantic_enabled: bool
+Gender = Literal["female", "male", "diverse", "unspecified"]
+
+
 class PersonIn(BaseModel):
     first_name: str
     last_name: str = ""
     nickname: str | None = None
     birthday: str | None = None
+    gender: Gender | None = None
     email: str | None = None
     phone: str | None = None
     address: str = ""
@@ -67,6 +71,7 @@ class PersonOut(PersonIn):
     is_self: bool = False
     photo_key: str | None = None
     created_at: datetime
+    gender: Gender = "unspecified"
 
 class OrganizationIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)

@@ -318,10 +318,15 @@ def test_family_statements_link_named_parent_and_user_profile_to_each_child(clie
     accepted = client.post(f"/api/captures/{capture['id']}/review", headers=auth, json={"accepted_indices": relation_indices + owner_indices, "person_assignments": person_assignments, "related_person_assignments": related_assignments, "confirmations": relation_indices + owner_indices})
 
     assert accepted.status_code == 201, accepted.text
+    self_gender = client.get(f"/api/people/{self_id}", headers=auth).json()["gender"]
+    owner_parent_label = {
+        "female": "Mutter von",
+        "male": "Vater von",
+    }.get(self_gender, "Elternteil von")
     for child in (hanna, vincent):
         links = client.get(f"/api/relationships?person_id={child['id']}", headers=auth).json()
         assert any(link["source_person_id"] == ramona["id"] and link["target_person_id"] == child["id"] and link["relationship_type"] == "Elternteil von" for link in links)
-        assert any(link["source_person_id"] == child["id"] and link["target_person_id"] == self_id and link["inverse_relationship_type"] == "Elternteil von" for link in links)
+        assert any(link["source_person_id"] == child["id"] and link["target_person_id"] == self_id and link["inverse_relationship_type"] == owner_parent_label for link in links)
 
 
 def test_review_stores_former_name_with_original_source_after_explicit_confirmation(client, auth, monkeypatch) -> None:

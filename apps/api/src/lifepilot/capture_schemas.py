@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 CaptureKind = Literal["fact", "conversation", "relationship", "owner_relationship", "former_name", "life_event", "task", "event", "project_link", "loan"]
 DatePrecision = Literal["exact", "day", "month", "year", "approximate", "unknown"]
+Gender = Literal["female", "male", "diverse"]
+GenderBasis = Literal["explicit", "name_inference"]
 
 
 class CaptureIn(BaseModel):
@@ -21,6 +23,8 @@ class CaptureSuggestion(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     content: str = Field(min_length=1, max_length=4000)
     person_name: str | None = Field(default=None, max_length=240)
+    person_gender: Gender | None = None
+    person_gender_basis: GenderBasis | None = None
     person_id: str | None = Field(default=None, max_length=36)
     person_candidates: list[str] = Field(default_factory=list, max_length=5)
     former_name: str | None = Field(default=None, max_length=240)
@@ -30,6 +34,8 @@ class CaptureSuggestion(BaseModel):
     relationship_type: str | None = Field(default=None, max_length=100)
     inverse_relationship_type: str | None = Field(default=None, max_length=100)
     related_person_name: str | None = Field(default=None, max_length=240)
+    related_person_gender: Gender | None = None
+    related_person_gender_basis: GenderBasis | None = None
     related_person_id: str | None = Field(default=None, max_length=36)
     related_person_candidates: list[str] = Field(default_factory=list, max_length=5)
     due_at: datetime | None = None

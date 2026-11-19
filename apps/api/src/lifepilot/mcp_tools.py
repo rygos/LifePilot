@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, 
 from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
 from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
 from lifepilot.services import owned_person, search
+from lifepilot.relationship_language import refresh_relationship_labels
 from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_get, relationship_add, relationship_list
 
 try:
@@ -50,10 +52,10 @@ try:
         db.refresh(row)
         return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
     @mcp.tool()
-    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str = "") -> dict:
+    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, notes=notes); db.add(row); db.commit(); db.refresh(row)
+            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, notes=notes); db.add(row); db.commit(); db.refresh(row)
             return PersonOut.model_validate(row).model_dump(mode="json")
     @mcp.tool()
     def person_search_tool(query: str) -> list[dict]:
@@ -83,12 +85,14 @@ try:
             return PersonOut.model_validate(person_get(person_id, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="person_update")
-    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str | None = None) -> dict:
+    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str | None = None) -> dict:
         owner_id = mcp_user("memory:write")
         changes = {key: value for key, value in locals().copy().items() if key in PersonIn.model_fields and value is not None}
         with mcp_session(owner_id) as db:
             person = owned_person(db, person_id, db.get(User, owner_id))
             for key, value in changes.items(): setattr(person, key, value)
+            if "gender" in changes:
+                refresh_relationship_labels(db, owner_id, person)
             db.commit(); db.refresh(person)
             enqueue_person_context_embeddings(db, person.id, owner_id)
             return PersonOut.model_validate(person).model_dump(mode="json")

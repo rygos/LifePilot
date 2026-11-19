@@ -18,6 +18,7 @@ from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, 
 from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
+from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
 from lifepilot.planner import router as planner_router
 from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
@@ -223,7 +224,7 @@ def organization_membership_delete(organization_id: str, person_id: str, db: Ses
 
 @app.post("/api/people", response_model=PersonOut, status_code=201)
 def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    person = Person(owner_id=user.id, **data.model_dump()); db.add(person); db.commit(); db.refresh(person); return person
+    person = Person(owner_id=user.id, **data.model_dump(exclude_none=True)); db.add(person); db.commit(); db.refresh(person); return person
 
 @app.get("/api/people/{person_id}", response_model=PersonOut)
 def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -244,7 +245,10 @@ def person_life_events(person_id: str, db: Session = Depends(get_db), user: User
 @app.patch("/api/people/{person_id}", response_model=PersonOut)
 def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
-    for key, value in data.model_dump().items(): setattr(person, key, value)
+    for key, value in data.model_dump(exclude={"gender"}).items(): setattr(person, key, value)
+    if data.gender is not None:
+        person.gender = data.gender
+        refresh_relationship_labels(db, user.id, person)
     if person.is_self:
         sync_account_from_self_person(person, user)
     db.commit(); db.refresh(person)
@@ -261,8 +265,8 @@ def person_delete(person_id: str, db: Session = Depends(get_db), user: User = De
 
 @app.post("/api/people/{person_id}/owner-relationships", response_model=UserPersonRelationshipOut, status_code=201)
 def owner_relationship_add(person_id: str, data: UserPersonRelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    owned_person(db, person_id, user)
-    relationship_type = data.relationship_type.strip()
+    person = owned_person(db, person_id, user)
+    relationship_type = owner_relationship_label(data.relationship_type.strip(), person.gender)
     if not relationship_type:
         raise HTTPException(status_code=422, detail="Bitte eine Beziehung angeben")
     if data.valid_until is None:

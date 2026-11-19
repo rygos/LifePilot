@@ -34,6 +34,7 @@ class Person(Base):
     last_name: Mapped[str] = mapped_column(String(120), default="")
     nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
     birthday: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    gender: Mapped[str] = mapped_column(String(20), default="unspecified", server_default="unspecified", nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
     address: Mapped[str] = mapped_column(Text, default="")
