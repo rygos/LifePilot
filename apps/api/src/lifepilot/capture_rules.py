@@ -50,7 +50,7 @@ def apply_family_meeting_and_loan_rules(
     family_people.update(explicit_parents)
     meeting = _meeting_suggestion(subject, original_text, captured_at) if subject and meeting_is_explicit else None
     family_edges = (_family_relationships(subject, spouse, children, parents) if subject else []) + explicit_edges
-    loan = _loan_suggestion(subject, original_text, captured_at) if subject else None
+    loan = _loan_suggestion(subject, original_text, captured_at)
     if meeting is None and not family_edges and not explicit_owner_edges and not friendship_edges and loan is None:
         return suggestions
 
@@ -279,21 +279,42 @@ def _family_relationships(subject: str, spouse: str | None, children: list[str],
     ]
 
 
-def _loan_suggestion(subject: str, original_text: str, captured_at: datetime) -> CaptureSuggestion | None:
-    match = re.search(r"\bhat\s+mir\s+(?:einen|ein|eine|den|das|die)\s+(.+?)\s+geliehen\b", original_text, re.IGNORECASE)
-    if match is None:
+def _loan_suggestion(subject: str | None, original_text: str, captured_at: datetime) -> CaptureSuggestion | None:
+    direction = "borrowed"
+    person = subject
+    item: str | None = None
+    incoming = re.search(r"(?P<person>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+){0,2})\s+hat\s+mir\s+(?:einen|ein|eine|den|das|die)?\s*(?P<item>.+?)\s+geliehen\b", original_text)
+    incoming_pronoun = re.search(r"\ber\s+hat\s+mir\s+(?:einen|ein|eine|den|das|die)?\s*(?P<item>.+?)\s+geliehen\b", original_text, re.IGNORECASE)
+    outgoing_to = re.search(r"\bich\s+habe\s+(?P<item>.+?)\s+(?:an|für)\s+(?P<person>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+){0,2})\s+(?:geliehen|verliehen)\b", original_text, re.IGNORECASE)
+    outgoing_direct = re.search(r"\bich\s+habe\s+(?P<person>[A-ZÄÖÜ][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜ][\wÄÖÜäöüß'-]+){0,2})\s+(?:heute\s+|gestern\s+)?(?:meine[nr]?|mein|einen|ein|eine|den|das|die)\s+(?P<item>[\wÄÖÜäöüß'-]+(?:\s+[\wÄÖÜäöüß'-]+){0,3})\s+(?:geliehen|verliehen)\b", original_text, re.IGNORECASE)
+    if incoming is not None:
+        person = _canonical_person(incoming.group("person"))
+        item = incoming.group("item")
+    elif incoming_pronoun is not None:
+        item = incoming_pronoun.group("item")
+    elif outgoing_to is not None:
+        person = _canonical_person(outgoing_to.group("person"))
+        item = outgoing_to.group("item")
+        direction = "lent"
+    elif outgoing_direct is not None:
+        person = _canonical_person(outgoing_direct.group("person"))
+        item = outgoing_direct.group("item")
+        direction = "lent"
+    if person is None or item is None:
         return None
-    item = match.group(1).strip()
+    item = re.sub(r"^(?:mein|meine|meinen|meinem|meiner|ein|eine|einen|einem|einer|der|die|das|den)\s+", "", item, flags=re.IGNORECASE).strip()
     if not item:
         return None
+    phrase = f"{person} hat mir {item} geliehen." if direction == "borrowed" else f"Ich habe {item} an {person} verliehen."
     return CaptureSuggestion(
         kind="loan",
         title=item,
-        content=f"{subject} hat mir {item} geliehen. Kein Rückgabetermin wurde genannt.",
-        person_name=subject,
+        content=f"{phrase} Kein Rückgabetermin wurde genannt.",
+        person_name=person,
         occurred_at=captured_at.replace(hour=12, minute=0, second=0, microsecond=0) if re.search(r"\bheute\b", original_text, re.IGNORECASE) else None,
         date_precision="day" if re.search(r"\bheute\b", original_text, re.IGNORECASE) else "unknown",
         due_at=None,
+        loan_direction=direction,
     )
 
 

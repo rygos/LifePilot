@@ -13,6 +13,8 @@ const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
 const chatQuestionText = `Was weißt du über ${parentName}?`;
 const organizationName = `E2E-Verein-${suffix}`;
+const lentItemName = `E2E-Leihgabe-${suffix}`;
+const borrowedItemName = `E2E-Rueckgabe-${suffix}`;
 
 async function login(page: Page): Promise<void> {
   if (!username || !password) {
@@ -48,6 +50,13 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
     const captures = (await capturesResponse.json()) as { id: string; original_text: string }[];
     for (const capture of captures.filter(({ original_text }) => original_text === captureText || original_text === chatCaptureText || original_text === chatFollowUpText)) {
       await request.delete(`${apiUrl}/api/captures/${capture.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    }
+  }
+  const loansResponse = await request.get(`${apiUrl}/api/loans?open_only=false`, { headers: { Authorization: `Bearer ${token}` } });
+  if (loansResponse.ok()) {
+    const loans = (await loansResponse.json()) as { id: string; item_name: string }[];
+    for (const loan of loans.filter(({ item_name }) => item_name === lentItemName || item_name === borrowedItemName)) {
+      await request.delete(`${apiUrl}/api/loans/${loan.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
 }
@@ -129,6 +138,41 @@ test("Beziehungsmenü ist gestaltet und Chatverläufe bleiben getrennt", async (
   await expect(page.locator(".chat-transcript")).toContainText(chatCaptureText);
   await page.getByRole("button", { name: "Fragen" }).click();
   await expect(page.locator(".chat-transcript")).not.toContainText(chatCaptureText);
+});
+
+test("Leihgaben lassen sich in beide Richtungen mit optionalem Rückgabedatum erfassen", async ({ page, request }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.locator("#people input[name=last_name]").fill("Leih-Test");
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  const person = page.locator(".person-card").filter({ hasText: parentName });
+  await expect(person).toBeVisible();
+  await page.goto("/things");
+  const loanForm = page.locator(".loan-form");
+  await loanForm.locator("input[name=item_name]").fill(lentItemName);
+  await loanForm.locator("select[name=direction]").selectOption("lent");
+  await loanForm.locator("select[name=person_id]").selectOption({ label: `${parentName} Leih-Test` });
+  await loanForm.locator("input[name=due_at]").fill("2026-12-01");
+  await loanForm.getByRole("button", { name: "Leihgabe speichern" }).click();
+  await expect(page.locator(".panel").filter({ hasText: "Leihgaben" })).toContainText("Rückgabe bis 01.12.2026");
+  await loanForm.locator("input[name=item_name]").fill(borrowedItemName);
+  await loanForm.locator("select[name=direction]").selectOption("borrowed");
+  await loanForm.locator("select[name=person_id]").selectOption({ label: `${parentName} Leih-Test` });
+  await loanForm.getByRole("button", { name: "Leihgabe speichern" }).click();
+  await expect(page.locator(".panel").filter({ hasText: "Leihgaben" })).toContainText("Ohne Rückgabedatum");
+  const loginResponse = await request.post(`${apiUrl}/api/auth/login`, { data: { username, password } });
+  const token = (await loginResponse.json()).access_token as string;
+  const loansResponse = await request.get(`${apiUrl}/api/loans`, { headers: { Authorization: `Bearer ${token}` } });
+  const records = (await loansResponse.json()) as { item_name: string; lender_person_id: string | null; borrower_person_id: string | null; due_at: string | null }[];
+  const lent = records.find(loan => loan.item_name === lentItemName);
+  const borrowed = records.find(loan => loan.item_name === borrowedItemName);
+  expect(lent?.lender_person_id).toBeNull();
+  expect(lent?.borrower_person_id).not.toBeNull();
+  expect(lent?.due_at).toContain("2026-12-01");
+  expect(borrowed?.lender_person_id).not.toBeNull();
+  expect(borrowed?.borrower_person_id).toBeNull();
+  expect(borrowed?.due_at).toBeNull();
 });
 
 test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch für das eigene Profil", async ({ page }) => {

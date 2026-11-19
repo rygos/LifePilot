@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 
 CaptureKind = Literal["fact", "conversation", "relationship", "owner_relationship", "former_name", "life_event", "task", "event", "project_link", "loan"]
+LoanDirection = Literal["borrowed", "lent"]
 DatePrecision = Literal["exact", "day", "month", "year", "approximate", "unknown"]
 Gender = Literal["female", "male", "diverse"]
 GenderBasis = Literal["explicit", "name_inference"]
@@ -39,6 +40,7 @@ class CaptureSuggestion(BaseModel):
     related_person_id: str | None = Field(default=None, max_length=36)
     related_person_candidates: list[str] = Field(default_factory=list, max_length=5)
     due_at: datetime | None = None
+    loan_direction: LoanDirection | None = None
     occurred_at: datetime | None = None
     date_precision: DatePrecision = "unknown"
     confirmation_required: bool = False

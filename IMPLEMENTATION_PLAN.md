@@ -232,3 +232,12 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Jedes Konto erhält genau ein geschütztes Personenprofil; die Migration übernimmt Name, Spitzname, Geburtstag und Kontaktdaten aus dem bisherigen Kontoprofil.
 - [x] Kontoprofil und eigenes Personenprofil bleiben synchron; das Profil erscheint unter Menschen, kann Beziehungen im Graphen eingehen und ist nicht löschbar.
 - [x] API-Regressionstest deckt Profilanlage, Bearbeitung in beide Richtungen, Graphverknüpfung und Löschschutz ab; Backend-Suite: 51 bestanden, 2 übersprungen. Next.js-Produktionsbuild erfolgreich.
+
+## Leihgaben in beide Richtungen
+
+- [x] Formular auf „Gegenstände“ erfasst jetzt sowohl „von jemandem geliehen“ als auch „an jemanden verliehen“.
+- [x] Rückgabedatum ist optional, wird im Eintrag angezeigt und bleibt ohne Eingabe leer.
+- [x] Capture-Schema, Qwen-Anweisungen und deterministische Erkennung unterscheiden beide Richtungen; bestätigte Vorschläge werden mit Verleiher und Entleiher korrekt gespeichert.
+- [x] Live-Aufruf mit `qwen/qwen3.5-9b` ordnet „Ich habe Martin meine Bohrmaschine geliehen“ als `lent` mit Martin als Entleiher ein.
+- [x] API- und Capture-Tests prüfen beide Richtungen, offene Leihgaben und optionale Fristen; 4 gezielte Backend-Tests bestanden.
+- [x] Next.js-Produktionsbuild und Playwright-E2E durch beide Formularvarianten mit und ohne Rückgabedatum bestanden.

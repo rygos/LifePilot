@@ -175,7 +175,7 @@ def _suggestion_key(suggestion: CaptureSuggestion) -> tuple[str, str, str, str]:
             date = suggestion.occurred_at.date().isoformat() if suggestion.occurred_at else ""
             return suggestion.kind, person, " ".join(suggestion.title.casefold().split()), date
         case "loan":
-            return suggestion.kind, person, " ".join(suggestion.title.casefold().split()), ""
+            return suggestion.kind, person, suggestion.loan_direction or "borrowed", " ".join(suggestion.title.casefold().split())
         case "life_event":
             return suggestion.kind, person, " ".join(suggestion.title.casefold().split()), ""
         case _:
@@ -232,7 +232,8 @@ def _already_saved(suggestion: CaptureSuggestion, db: Session, owner_id: str) ->
             end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
             return bool(db.scalar(select(Conversation.id).join(ConversationParticipant, ConversationParticipant.conversation_id == Conversation.id).where(Conversation.owner_id == owner_id, ConversationParticipant.person_id == person_id, Conversation.occurred_at >= start, Conversation.occurred_at <= end, func.lower(Conversation.title) == normalized_title)))
         case "loan":
-            return bool(person_id and db.scalar(select(Loan.id).where(Loan.owner_id == owner_id, Loan.lender_person_id == person_id, func.lower(Loan.item_name) == normalized_title, Loan.returned_at.is_(None))))
+            person_column = Loan.borrower_person_id if suggestion.loan_direction == "lent" else Loan.lender_person_id
+            return bool(person_id and db.scalar(select(Loan.id).where(Loan.owner_id == owner_id, person_column == person_id, func.lower(Loan.item_name) == normalized_title, Loan.returned_at.is_(None))))
         case "task":
             return bool(db.scalar(select(Task.id).where(Task.owner_id == owner_id, func.lower(Task.title) == normalized_title, Task.status == "open", Task.person_id == person_id)))
         case "event":

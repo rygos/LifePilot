@@ -191,7 +191,7 @@ def test_extractor_turns_family_meeting_and_indefinite_loan_into_reviewable_sugg
     assert loans[0].due_at is None, "Ohne Rückgabetermin bleibt die Leihgabe unbefristet offen."
 
 
-def test_review_saves_family_graph_meeting_and_open_loan_with_original_source(client, auth, monkeypatch) -> None:
+def test_review_saves_family_graph_meeting_and_loans_in_both_directions(client, auth, monkeypatch) -> None:
     monkeypatch.setattr(settings, "llm_base_url", "http://local-model/v1")
     monkeypatch.setattr(settings, "llm_model", "qwen/qwen3.5-9b")
     monkeypatch.setattr(settings, "redis_url", "redis://unused/0")
@@ -213,6 +213,7 @@ def test_review_saves_family_graph_meeting_and_open_loan_with_original_source(cl
         CaptureSuggestion(kind="relationship", title="Geschwister", content="Julian und Mia sind Geschwister.", person_name="Julian", related_person_name="Mia", relationship_type="Geschwister von", inverse_relationship_type="Geschwister von", confirmation_required=True),
         CaptureSuggestion(kind="relationship", title="Geschwister", content="Lukas und Mia sind Geschwister.", person_name="Lukas", related_person_name="Mia", relationship_type="Geschwister von", inverse_relationship_type="Geschwister von", confirmation_required=True),
         CaptureSuggestion(kind="loan", title="Supersternenzerstörer", content="Christian hat mir den Supersternenzerstörer geliehen, damit ich ihn bauen kann.", person_name="Christian Decker", occurred_at=datetime(2026, 11, 17, 12, tzinfo=timezone.utc), date_precision="day"),
+        CaptureSuggestion(kind="loan", title="Lego-Kiste", content="Ich habe Christian Decker die Lego-Kiste geliehen.", person_name="Christian Decker", loan_direction="lent", due_at=datetime(2026, 12, 1, 12, tzinfo=timezone.utc)),
     ]
     monkeypatch.setattr("lifepilot.capture_jobs.extract_facts", lambda text, captured_at=None: suggestions)
     capture = client.post("/api/captures", headers=auth, json={"original_text": EXAMPLE}).json()
@@ -230,15 +231,19 @@ def test_review_saves_family_graph_meeting_and_open_loan_with_original_source(cl
     assert accepted.status_code == 201, accepted.text
     assert len([item for item in accepted.json() if item["resource_type"] == "relationship"]) == 10
     assert len([item for item in accepted.json() if item["resource_type"] == "conversation"]) == 1
-    assert len([item for item in accepted.json() if item["resource_type"] == "loan"]) == 1
+    assert len([item for item in accepted.json() if item["resource_type"] == "loan"]) == 2
     assert stored["original_text"] == EXAMPLE
     with Session(engine) as db:
         conversation = db.get(Conversation, next(item["resource_id"] for item in accepted.json() if item["resource_type"] == "conversation"))
         loan = db.scalar(select(Loan).where(Loan.owner_id == owner_id, Loan.item_name == "Supersternenzerstörer"))
+        lent_loan = db.scalar(select(Loan).where(Loan.owner_id == owner_id, Loan.item_name == "Lego-Kiste"))
         assert conversation is not None and conversation.original_note == EXAMPLE
         assert conversation.occurred_at.replace(tzinfo=timezone.utc) == datetime(2026, 11, 17, 12, tzinfo=timezone.utc)
         assert loan is not None and loan.lender_person_id == people["Christian Decker"]["id"]
         assert loan.borrower_person_id is None and loan.due_at is None and loan.returned_at is None
+        assert lent_loan is not None and lent_loan.lender_person_id is None
+        assert lent_loan.borrower_person_id == people["Christian Decker"]["id"]
+        assert lent_loan.due_at.replace(tzinfo=timezone.utc) == datetime(2026, 12, 1, 12, tzinfo=timezone.utc)
         source = db.get(Memory, loan.source_memory_id)
         assert source is not None and source.source_capture_id == capture["id"]
         relations = db.scalars(select(Relationship).where(Relationship.owner_id == owner_id)).all()

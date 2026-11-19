@@ -129,11 +129,15 @@ def test_conversations_loans_gifts_and_owner_boundaries(client, auth):
     assert set(client.get(f"/api/conversations?person_id={lea['id']}", headers=auth).json()[0]["participant_ids"]) == {martin["id"], lea["id"]}
     assert client.get("/api/search?q=Vereinsheim", headers=auth).json()["conversations"][0]["id"] == conversation.json()["id"]
     assert client.post("/api/conversations", headers=auth, json={"title": "Fremd", "original_note": "x", "participant_ids": ["foreign-id"]}).status_code == 404
-    loan = client.post("/api/loans", headers=auth, json={"item_name": "Bohrmaschine", "lender_person_id": martin["id"], "borrower_person_id": lea["id"], "source_memory_id": note["id"]})
+    loan = client.post("/api/loans", headers=auth, json={"item_name": "Bohrmaschine", "lender_person_id": martin["id"], "borrower_person_id": lea["id"], "due_at": "2026-12-01T12:00:00Z", "source_memory_id": note["id"]})
     assert loan.status_code == 201
-    assert len(client.get("/api/loans", headers=auth).json()) == 1
+    assert loan.json()["due_at"].startswith("2026-12-01")
+    incoming_loan = client.post("/api/loans", headers=auth, json={"item_name": "Geliehener Akkuschrauber", "lender_person_id": martin["id"]})
+    assert incoming_loan.status_code == 201
+    assert incoming_loan.json()["borrower_person_id"] is None and incoming_loan.json()["due_at"] is None
+    assert len(client.get("/api/loans", headers=auth).json()) == 2
     assert client.patch(f"/api/loans/{loan.json()['id']}/return", headers=auth).json()["returned_at"] is not None
-    assert client.get("/api/loans", headers=auth).json() == []
+    assert [row["id"] for row in client.get("/api/loans", headers=auth).json()] == [incoming_loan.json()["id"]]
     gift = client.post("/api/gifts", headers=auth, json={"person_id": martin["id"], "title": "Roman", "occasion": "Geburtstag", "budget": 25, "source_memory_id": note["id"]})
     assert gift.status_code == 201
     assert client.get(f"/api/gifts?person_id={martin['id']}", headers=auth).json()[0]["id"] == gift.json()["id"]

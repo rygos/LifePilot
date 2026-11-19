@@ -237,7 +237,8 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
                     memory = Memory(owner_id=user.id, title=f"Leihgabe: {suggestion.title}", content=row.original_text, person_id=person.id, source="capture", source_capture_id=row.id, occurred_at=suggestion.occurred_at)
                     db.add(memory)
                     db.flush()
-                    loan = Loan(owner_id=user.id, item_name=suggestion.title, lender_person_id=person.id, borrower_person_id=None, lent_at=suggestion.occurred_at or row.created_at, due_at=suggestion.due_at, condition_note=suggestion.content, source_memory_id=memory.id)
+                    borrowed = suggestion.loan_direction != "lent"
+                    loan = Loan(owner_id=user.id, item_name=suggestion.title, lender_person_id=person.id if borrowed else None, borrower_person_id=person.id if not borrowed else None, lent_at=suggestion.occurred_at or row.created_at, due_at=suggestion.due_at, condition_note=suggestion.content, source_memory_id=memory.id)
                     db.add(loan)
                     db.flush()
                     memory_rows.append(memory)

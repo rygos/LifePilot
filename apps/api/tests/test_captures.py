@@ -7,6 +7,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from lifepilot.capture_ai import ProviderError, extract_facts
+from lifepilot.capture_rules import apply_family_meeting_and_loan_rules
 from lifepilot.capture_jobs import process_capture_job
 from lifepilot.capture_schemas import CaptureSuggestion
 from lifepilot.config import settings
@@ -15,6 +16,24 @@ from lifepilot.models import Capture, Conversation, ConversationParticipant, Con
 from lifepilot.security import create_token
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+
+@pytest.mark.parametrize(
+    ("text", "person_name", "item_name", "direction"),
+    [
+        ("Ich habe Martin meine Bohrmaschine geliehen.", "Martin", "Bohrmaschine", "lent"),
+        ("Ich war bei Christian Decker, er hat mir einen Supersternenzerstörer geliehen.", "Christian Decker", "Supersternenzerstörer", "borrowed"),
+    ],
+    ids=("user-lent-item", "user-borrowed-item"),
+)
+def test_capture_rules_keep_both_loan_directions(text, person_name, item_name, direction) -> None:
+    suggestions = apply_family_meeting_and_loan_rules(text, datetime(2026, 11, 18, 12, tzinfo=timezone.utc), [])
+
+    loan = next(item for item in suggestions if item.kind == "loan")
+    assert loan.person_name == person_name
+    assert loan.title == item_name
+    assert loan.loan_direction == direction
+    assert loan.due_at is None
 
 
 def test_capture_persists_original_when_ai_is_not_configured(client, auth, monkeypatch) -> None:
