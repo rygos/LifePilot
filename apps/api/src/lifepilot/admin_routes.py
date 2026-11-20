@@ -1,12 +1,10 @@
 import logging
-import re
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,6 +13,7 @@ from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.models import AuditEvent, User
 from lifepilot.security import current_user
+from lifepilot.update_state import COMMIT_PATTERN, clear_pending_update, current_commit_sha, mark_update_pending, read_update_state
 
 router = APIRouter(prefix="/api/admin", tags=["Administration"])
 logger = logging.getLogger(__name__)
@@ -65,6 +64,8 @@ class AppUpdateStatus(GitUpdateComparison):
     configured: bool
     source: str
     current_commit: str | None
+    pending_update: bool
+    pending_commit: str | None
 
 
 def call_portainer_webhook(webhook_url: str) -> int:
@@ -78,16 +79,6 @@ def call_portainer_webhook(webhook_url: str) -> int:
         return exc.code
     except (URLError, TimeoutError, OSError, ValueError):
         raise
-
-
-def current_commit_sha() -> str:
-    configured_sha = settings.life_pilot_commit_sha.strip()
-    if configured_sha:
-        return configured_sha[:40]
-    try:
-        return Path("/app/version-commit").read_text(encoding="ascii").strip()[:40]
-    except OSError:
-        return ""
 
 
 def compare_github_commits(current_sha: str) -> GitUpdateComparison:
@@ -173,13 +164,20 @@ def update_user_role(
 
 
 @router.get("/app-update")
-def app_update_status(_: User = Depends(require_admin)) -> AppUpdateStatus:
+def app_update_status(progress_only: bool = Query(default=False), _: User = Depends(require_admin)) -> AppUpdateStatus:
     current_sha = current_commit_sha()
-    comparison = compare_github_commits(current_sha) if re.fullmatch(r"[0-9a-fA-F]{40}", current_sha) else GitUpdateComparison(available=False, update_available=False, ahead_by=0, latest_commit=None, commits=[])
+    comparison = (
+        compare_github_commits(current_sha)
+        if not progress_only and COMMIT_PATTERN.fullmatch(current_sha)
+        else GitUpdateComparison(available=False, update_available=False, ahead_by=0, latest_commit=None, commits=[])
+    )
+    update_state = read_update_state()
     return AppUpdateStatus(
         configured=bool(settings.portainer_webhook_url.strip()),
         source="main",
         current_commit=current_sha[:12] or None,
+        pending_update=bool(update_state.pending_commit),
+        pending_commit=update_state.pending_commit[:12] if update_state.pending_commit else None,
         **comparison.model_dump(),
     )
 
@@ -191,14 +189,27 @@ def request_app_update(db: Session = Depends(get_db), actor: User = Depends(requ
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Der Portainer-Git-Webhook ist nicht konfiguriert")
     if not webhook_url.startswith(("https://", "http://")):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Die Portainer-Webhook-Adresse ist ungültig")
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "LifePilot"}
+    try:
+        latest_request = Request(GITHUB_BRANCH_URL, headers=headers)
+        with build_opener(ProxyHandler({})).open(latest_request, timeout=8) as response:
+            latest = GitHubCommit.model_validate_json(response.read())
+    except (HTTPError, URLError, TimeoutError, OSError, ValidationError) as exc:
+        logger.warning("GitHub-Zielversion konnte nicht gelesen werden (%s)", type(exc).__name__)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Die Zielversion konnte bei GitHub nicht ermittelt werden") from None
+    if not COMMIT_PATTERN.fullmatch(latest.sha):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub hat eine ungültige Zielversion geliefert")
+    mark_update_pending(latest.sha)
     try:
         response_status = call_portainer_webhook(webhook_url)
     except (URLError, TimeoutError, OSError, ValueError) as exc:
+        clear_pending_update()
         logger.warning("Portainer-Webhook konnte nicht erreicht werden (%s)", type(exc).__name__)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Portainer konnte nicht erreicht werden") from None
     if not 200 <= response_status < 300:
+        clear_pending_update()
         logger.warning("Portainer-Webhook antwortete mit HTTP %s", response_status)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Portainer hat die Aktualisierung nicht angenommen")
     db.add(AuditEvent(owner_id=actor.id, action="update", resource_type="application_update", resource_id="main", source="web"))
     db.commit()
-    return {"status": "triggered", "message": "Portainer hat die Git-Aktualisierung gestartet. Die Datenbankmigrationen laufen beim App-Start."}
+    return {"status": "triggered", "target_commit": latest.sha[:12], "message": "Portainer hat das Update angenommen. Der neue Stand wird beim Neustart geprüft."}

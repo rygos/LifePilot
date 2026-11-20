@@ -18,9 +18,11 @@ type UpdateStatus = {
   current_commit: string | null;
   latest_commit: string | null;
   ahead_by: number;
+  pending_update: boolean;
+  pending_commit: string | null;
   commits: { sha: string; message: string; date: string | null }[];
 };
-type UpdateResponse = { status: string; message: string };
+type UpdateResponse = { status: string; message: string; target_commit: string };
 type AdminRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 type AdminPanelProps = {
@@ -81,14 +83,45 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
     setUpdating(true);
     setError("");
     setMessage("");
+    let targetCommit = "";
     try {
       const result = await request<UpdateResponse>("/api/admin/app-update", { method: "POST" });
-      setMessage(result.message);
+      targetCommit = result.target_commit;
+      setMessage(`${result.message} Zielversion: ${targetCommit}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setUpdating(false);
       return;
     }
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => window.setTimeout(resolve, 5000));
+      try {
+        const progress = await request<UpdateStatus>("/api/admin/app-update?progress_only=true");
+        setUpdateStatus(previous => previous ? { ...previous, current_commit: progress.current_commit, pending_update: progress.pending_update, pending_commit: progress.pending_commit } : progress);
+        setUpdateConfigured(progress.configured);
+        if (!progress.pending_update && progress.current_commit === targetCommit) {
+          setMessage(`LifePilot wurde erfolgreich auf ${targetCommit} aktualisiert.`);
+          setUpdating(false);
+          return;
+        }
+        if (!progress.pending_update && progress.current_commit !== targetCommit) {
+          setError("Portainer hat den Updateauftrag angenommen, aber die Zielversion wurde nicht gestartet. Prüfe die Portainer-Stackprotokolle und versuche es erneut.");
+          setUpdating(false);
+          return;
+        }
+      } catch (caught) {
+        if (caught instanceof TypeError) {
+          setMessage("LifePilot startet gerade neu. Die Verbindung wird weiter geprüft …");
+          continue;
+        }
+        setError(caught instanceof Error ? caught.message : String(caught));
+        setUpdating(false);
+        return;
+      }
+    }
+    setError("Das Update wurde von Portainer angenommen, aber LifePilot hat den erfolgreichen Neustart nicht innerhalb von fünf Minuten bestätigt. Prüfe die Portainer-Stackprotokolle.");
+    setUpdating(false);
   }
 
   return <div className="admin-page">
@@ -97,7 +130,8 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       <p>Portainer lädt den aktuellen Stand des Git-Hauptbranches, baut die Dienste neu und startet LifePilot. Datenbankmigrationen laufen kontrolliert vor dem API-Start.</p>
       {updateLoading ? <p className="form-hint">Git-Version wird geprüft …</p> : updateStatus?.available ? <div className="update-version-status" role="status"><strong>{updateStatus.update_available ? `${updateStatus.ahead_by} ${updateStatus.ahead_by === 1 ? "Änderung" : "Änderungen"} verfügbar` : "LifePilot ist aktuell"}</strong><span>Installiert: {updateStatus.current_commit ?? "unbekannt"} · Ziel: {updateStatus.latest_commit ?? "unbekannt"}</span>{updateStatus.update_available && updateStatus.commits.length > 0 && <ul className="update-commit-list">{updateStatus.commits.map(commit => <li key={commit.sha}><code>{commit.sha}</code><span>{commit.message}</span></li>)}</ul>}{updateStatus.ahead_by > updateStatus.commits.length && <small>Es werden die letzten {updateStatus.commits.length} von {updateStatus.ahead_by} Änderungen angezeigt.</small>}</div> : <p className="form-hint">{updateStatus?.current_commit ? "GitHub ist momentan nicht erreichbar; der Versionsvergleich ist nicht verfügbar." : "Die laufende Versionsnummer konnte nicht ermittelt werden."}</p>}
       {!updateConfigured && <p className="form-hint">Der Git-Webhook ist nicht konfiguriert. Der Updateknopf wird nach der Portainer-Einrichtung verfügbar.</p>}
-      {updating && <p className="admin-update-progress" role="status">Aktualisierung wurde angefordert. LifePilot wird neu gestartet; lade diese Seite in etwa einer Minute neu.</p>}
+      {updateStatus?.pending_update && !updating && <p className="admin-update-progress" role="status">Ein Update auf {updateStatus.pending_commit} wurde angefordert. LifePilot wartet auf den Neustart.</p>}
+      {updating && <p className="admin-update-progress" role="status">Portainer baut und startet LifePilot neu. Der Abschluss wird automatisch geprüft.</p>}
       <button type="button" onClick={() => void updateApp()} disabled={!updateConfigured || updating}>{updating ? "Update angefordert" : "Jetzt aktualisieren"}</button>
     </section>
 

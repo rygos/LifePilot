@@ -1,10 +1,12 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from threading import Thread
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from lifepilot import admin_routes, update_state
 from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.models import User
@@ -48,12 +50,23 @@ def test_admin_can_promote_user_without_removing_last_admin(client: TestClient) 
     assert last_admin.json()["detail"] == "Mindestens ein Administrator muss bestehen bleiben"
 
 
-def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestClient, monkeypatch) -> None:
+def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestClient, monkeypatch, tmp_path: Path) -> None:
+    import json
+
     _, admin_headers = create_user(client, "admin")
     _, user_headers = create_user(client, "user")
     previous_url = settings.portainer_webhook_url
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            payload = {"sha": "c" * 40, "commit": {"message": "LifePilot-Update", "author": {"date": "2026-11-20T12:00:00Z"}}}
+            body = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_POST(self) -> None:
             self.send_response(204)
             self.end_headers()
@@ -70,9 +83,14 @@ def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestCli
         monkeypatch.setattr(settings, "portainer_webhook_url", "")
         assert client.post("/api/admin/app-update", headers=admin_headers).status_code == 503
         monkeypatch.setattr(settings, "portainer_webhook_url", f"http://127.0.0.1:{server.server_port}/webhook")
+        monkeypatch.setattr(admin_routes, "GITHUB_BRANCH_URL", f"http://127.0.0.1:{server.server_port}/commits/main")
+        monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+        monkeypatch.setattr(update_state, "image_commit_sha", lambda: "b" * 40)
         response = client.post("/api/admin/app-update", headers=admin_headers)
         assert response.status_code == 202
         assert response.json()["status"] == "triggered"
+        assert response.json()["target_commit"] == "c" * 12
+        assert update_state.read_update_state().pending_commit == "c" * 40
     finally:
         server.shutdown()
         thread.join(timeout=2)
@@ -83,8 +101,6 @@ def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestCli
 def test_app_update_status_reports_commit_messages_for_admin(client: TestClient, monkeypatch) -> None:
     _, admin_headers = create_user(client, "admin")
     _, user_headers = create_user(client, "user")
-    from lifepilot import admin_routes
-
     monkeypatch.setattr(admin_routes, "current_commit_sha", lambda: "a" * 40)
     monkeypatch.setattr(admin_routes, "compare_github_commits", lambda _: admin_routes.GitUpdateComparison(
         available=True,
@@ -101,6 +117,7 @@ def test_app_update_status_reports_commit_messages_for_admin(client: TestClient,
     assert response.status_code == 200
     assert response.json()["current_commit"] == "a" * 12
     assert response.json()["update_available"] is True
+    assert response.json()["pending_update"] is False
     assert response.json()["commits"][0]["message"] == "Neue mobile Navigation"
 
 

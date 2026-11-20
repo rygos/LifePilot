@@ -30,8 +30,8 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+      context: ./apps/api
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in Portainer}
@@ -107,8 +107,8 @@ services:
 
   scheduler:
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+      context: ./apps/api
+      dockerfile: Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.scheduler"]
     environment:
@@ -126,8 +126,8 @@ services:
 
   worker:
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+      context: ./apps/api
+      dockerfile: Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.jobs"]
     environment:

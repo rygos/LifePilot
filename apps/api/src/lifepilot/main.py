@@ -31,6 +31,7 @@ from lifepilot.chat_routes import router as chat_router
 from lifepilot.auth_routes import router as auth_router
 from lifepilot.admin_routes import router as admin_router
 from lifepilot.revisions import history, record_conversation_revision
+from lifepilot.update_state import complete_pending_update
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
         for owner in db.scalars(select(User)).all():
             ensure_self_person(db, owner)
         db.commit()
+    complete_pending_update()
     yield
 
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
