@@ -120,6 +120,7 @@ class AdminUserView(BaseModel):
     full_name: str
     role: Literal["user", "admin"]
     created_at: datetime
+    deleted_at: datetime | None
 
 
 class UserRoleUpdate(BaseModel):
@@ -136,7 +137,7 @@ def require_admin(user: User = Depends(current_user)) -> User:
 
 @router.get("/users", response_model=list[AdminUserView])
 def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[AdminUserView]:
-    users = db.scalars(select(User).order_by(User.username)).all()
+    users = db.scalars(select(User).order_by(User.deleted_at.is_not(None), User.username)).all()
     return [AdminUserView.model_validate(user) for user in users]
 
 
@@ -150,6 +151,8 @@ def update_user_role(
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    if target.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Gelöschte Benutzer können keine Rollen ändern")
     if target.role == data.role:
         return AdminUserView.model_validate(target)
     if target.role == "admin" and data.role == "user":
@@ -161,6 +164,55 @@ def update_user_role(
     db.commit()
     db.refresh(target)
     return AdminUserView.model_validate(target)
+
+
+@router.delete("/users/{user_id}", response_model=AdminUserView)
+def soft_delete_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> AdminUserView:
+    target = db.get(User, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aktiver Benutzer nicht gefunden")
+    if target.id == actor.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Das eigene Administratorkonto kann hier nicht gelöscht werden")
+    if target.role == "admin":
+        active_admins = db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.deleted_at.is_(None))) or 0
+        if active_admins <= 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein aktiver Administrator muss bestehen bleiben")
+    target.deleted_at = datetime.now().astimezone()
+    db.add(AuditEvent(owner_id=actor.id, action="soft_delete", resource_type="user", resource_id=target.id, source="admin"))
+    db.commit()
+    db.refresh(target)
+    return AdminUserView.model_validate(target)
+
+
+@router.post("/users/{user_id}/restore", response_model=AdminUserView)
+def restore_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> AdminUserView:
+    target = db.get(User, user_id)
+    if target is None or target.deleted_at is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gelöschter Benutzer nicht gefunden")
+    target.deleted_at = None
+    db.add(AuditEvent(owner_id=actor.id, action="restore", resource_type="user", resource_id=target.id, source="admin"))
+    db.commit()
+    db.refresh(target)
+    return AdminUserView.model_validate(target)
+
+
+@router.delete("/users/{user_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+def permanently_delete_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> None:
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    if target.id == actor.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Das eigene Administratorkonto kann hier nicht gelöscht werden")
+    if target.role == "admin" and target.deleted_at is None:
+        active_admins = db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.deleted_at.is_(None))) or 0
+        if active_admins <= 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein aktiver Administrator muss bestehen bleiben")
+    target_id = target.id
+    audit = AuditEvent(owner_id=actor.id, action="permanent_delete", resource_type="user", resource_id=target_id, source="admin")
+    db.add(audit)
+    db.flush()
+    db.delete(target)
+    db.commit()
 
 
 @router.get("/app-update")

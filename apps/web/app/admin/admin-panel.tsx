@@ -9,6 +9,7 @@ type AdminUser = {
   full_name: string;
   role: "user" | "admin";
   created_at: string;
+  deleted_at: string | null;
 };
 
 type UpdateStatus = {
@@ -41,6 +42,8 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleteMode, setDeleteMode] = useState<"soft" | "permanent">("soft");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -72,6 +75,44 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       });
       setUsers(rows => rows.map(row => row.id === updated.id ? updated : row));
       setMessage(`${updated.username}: ${role === "admin" ? "Administratorrechte vergeben." : "Administratorrechte entzogen."}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setWorkingUserId("");
+    }
+  }
+
+  async function deleteUser(user: AdminUser) {
+    const normalized = deleteMode;
+    setWorkingUserId(user.id);
+    setError("");
+    setMessage("");
+    try {
+      if (normalized === "soft") {
+        const updated = await request<AdminUser>(`/api/admin/users/${user.id}`, { method: "DELETE" });
+        setUsers(rows => rows.map(row => row.id === updated.id ? updated : row));
+        setMessage(`${updated.username} wurde deaktiviert und kann wiederhergestellt werden.`);
+      } else {
+        await request<void>(`/api/admin/users/${user.id}/permanent`, { method: "DELETE" });
+        setUsers(rows => rows.filter(row => row.id !== user.id));
+        setMessage(`${user.username} und alle zugehörigen Daten wurden endgültig gelöscht.`);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setWorkingUserId("");
+      setDeleteTarget(null);
+    }
+  }
+
+  async function restoreUser(user: AdminUser) {
+    setWorkingUserId(user.id);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await request<AdminUser>(`/api/admin/users/${user.id}/restore`, { method: "POST" });
+      setUsers(rows => rows.map(row => row.id === updated.id ? updated : row));
+      setMessage(`${updated.username} wurde wiederhergestellt.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -162,12 +203,24 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
         const isSelf = user.id === currentUserId;
         return <article className="admin-user-row" key={user.id}>
           <div className="admin-user-identity"><strong>{user.full_name || user.username}</strong><small>{user.username}{isSelf ? " · dein Konto" : ""}</small></div>
-          <span className={`role-badge ${user.role === "admin" ? "role-admin" : "role-user"}`}>{user.role === "admin" ? "Administrator" : "Nutzer"}</span>
-          <button type="button" className={user.role === "admin" ? "quiet" : ""} disabled={isSelf || workingUserId === user.id} onClick={() => void changeRole(user)}>{workingUserId === user.id ? "Speichert …" : user.role === "admin" ? "Adminrechte entziehen" : "Zum Admin machen"}</button>
+          <span className={`role-badge ${user.deleted_at ? "role-user" : user.role === "admin" ? "role-admin" : "role-user"}`}>{user.deleted_at ? "Gelöscht" : user.role === "admin" ? "Administrator" : "Nutzer"}</span>
+          {user.deleted_at ? <button type="button" disabled={workingUserId === user.id} onClick={() => void restoreUser(user)}>{workingUserId === user.id ? "Speichert …" : "Wiederherstellen"}</button> : <>
+            <button type="button" className={user.role === "admin" ? "quiet" : ""} disabled={isSelf || workingUserId === user.id} onClick={() => void changeRole(user)}>{workingUserId === user.id ? "Speichert …" : user.role === "admin" ? "Adminrechte entziehen" : "Zum Admin machen"}</button>
+            <button type="button" className="quiet" disabled={isSelf || workingUserId === user.id} onClick={() => { setDeleteTarget(user); setDeleteMode("soft"); }}>{workingUserId === user.id ? "Speichert …" : "Löschen …"}</button>
+          </>}
         </article>;
       })}</div>}
     </section>
     {message && <p className="admin-message" role="status">{message}</p>}
     {error && <p className="error" role="alert">{error}</p>}
+    {deleteTarget && <div className="dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
+      <section className="card delete-user-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
+        <div className="panel-head"><div><span className="eyebrow">BENUTZER ENTFERNEN</span><h2 id="delete-user-title">{deleteTarget.full_name || deleteTarget.username} löschen?</h2></div><button type="button" className="quiet" aria-label="Dialog schließen" onClick={() => setDeleteTarget(null)}>×</button></div>
+        <label className="delete-choice"><input type="radio" name="delete-mode" checked={deleteMode === "soft"} onChange={() => setDeleteMode("soft")} /><span><strong>Wiederherstellbar deaktivieren</strong><small>Der Zugang wird gesperrt. Das Konto bleibt in der Benutzerverwaltung und kann später wiederhergestellt werden.</small></span></label>
+        <label className="delete-choice"><input type="radio" name="delete-mode" checked={deleteMode === "permanent"} onChange={() => setDeleteMode("permanent")} /><span><strong>Dauerhaft löschen</strong><small>Das Konto und alle diesem Benutzer zugeordneten Daten werden unwiderruflich entfernt.</small></span></label>
+        {deleteMode === "permanent" && <p className="error" role="alert">Diese Aktion kann nicht rückgängig gemacht werden.</p>}
+        <div className="dialog-actions"><button type="button" className="quiet" onClick={() => setDeleteTarget(null)}>Abbrechen</button><button type="button" className={deleteMode === "permanent" ? "danger" : ""} disabled={workingUserId === deleteTarget.id} onClick={() => void deleteUser(deleteTarget)}>{workingUserId === deleteTarget.id ? "Wird gelöscht …" : deleteMode === "permanent" ? "Dauerhaft löschen" : "Deaktivieren"}</button></div>
+      </section>
+    </div>}
   </div>;
 }

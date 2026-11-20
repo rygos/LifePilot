@@ -4,6 +4,7 @@ import jwt
 from pwdlib import PasswordHash
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import get_db
@@ -33,7 +34,7 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
         token_use = str(payload.get("token_use", "user"))
-        user = db.get(User, payload.get("sub"))
+        user = db.scalar(select(User).where(User.id == payload.get("sub"), User.deleted_at.is_(None)))
     except (jwt.InvalidTokenError, TypeError):
         user = None
     if user is None: raise HTTPException(status_code=401, detail="Ungültige Anmeldung", headers={"WWW-Authenticate": "Bearer"})
@@ -43,7 +44,7 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
 def resolve_bearer_user(token: str, db: Session) -> User:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
-        user = db.get(User, payload.get("sub"))
+        user = db.scalar(select(User).where(User.id == payload.get("sub"), User.deleted_at.is_(None)))
     except (jwt.InvalidTokenError, TypeError):
         user = None
     if user is None: raise HTTPException(status_code=401, detail="Ungültige Anmeldung")

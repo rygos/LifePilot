@@ -50,6 +50,42 @@ def test_admin_can_promote_user_without_removing_last_admin(client: TestClient) 
     assert last_admin.json()["detail"] == "Mindestens ein Administrator muss bestehen bleiben"
 
 
+def test_admin_can_soft_delete_restore_and_permanently_delete_user(client: TestClient) -> None:
+    admin_id, admin_headers = create_user(client, "admin")
+    target_id, target_headers = create_user(client, "user")
+
+    assert client.delete(f"/api/admin/users/{admin_id}", headers=admin_headers).status_code == 409
+    assert client.delete(f"/api/admin/users/{target_id}").status_code == 401
+    assert client.delete(f"/api/admin/users/{target_id}", headers=target_headers).status_code == 403
+
+    deleted = client.delete(f"/api/admin/users/{target_id}", headers=admin_headers)
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted_at"] is not None
+    assert client.get("/api/auth/me", headers=target_headers).status_code == 401
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    deleted_user = next(user for user in users if user["id"] == target_id)
+    assert deleted_user["deleted_at"]
+    assert client.post("/api/auth/login", json={"username": deleted_user["username"], "password": "test-password-for-admin"}).status_code == 401
+
+    restored = client.post(f"/api/admin/users/{target_id}/restore", headers=admin_headers)
+    assert restored.status_code == 200
+    assert restored.json()["deleted_at"] is None
+    assert client.get("/api/auth/me", headers=target_headers).status_code == 200
+
+    deleted_again = client.delete(f"/api/admin/users/{target_id}", headers=admin_headers)
+    assert deleted_again.status_code == 200
+    permanent = client.delete(f"/api/admin/users/{target_id}/permanent", headers=admin_headers)
+    assert permanent.status_code == 204
+    assert all(user["id"] != target_id for user in client.get("/api/admin/users", headers=admin_headers).json())
+
+
+def test_soft_delete_cannot_remove_last_active_admin(client: TestClient) -> None:
+    admin_id, admin_headers = create_user(client, "admin")
+    other_admin_id, _ = create_user(client, "admin")
+    assert client.delete(f"/api/admin/users/{other_admin_id}", headers=admin_headers).status_code == 200
+    assert client.delete(f"/api/admin/users/{admin_id}", headers=admin_headers).status_code == 409
+
+
 def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestClient, monkeypatch, tmp_path: Path) -> None:
     import json
 

@@ -69,21 +69,21 @@ def health(): return {"status": "ok"}
 
 @app.post("/api/auth/token", response_model=Token)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == form.username))
+    user = db.scalar(select(User).where(User.username == form.username, User.deleted_at.is_(None)))
     if user is None or not verify_password(form.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id)}
 
 @app.post("/api/auth/login", response_model=Token)
 def login_json(data: Credentials, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == data.username))
+    user = db.scalar(select(User).where(User.username == data.username, User.deleted_at.is_(None)))
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id)}
 
 @app.post("/api/auth/mcp-token", response_model=Token)
 def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == data.username))
+    user = db.scalar(select(User).where(User.username == data.username, User.deleted_at.is_(None)))
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     ensure_self_person(db, user); db.commit()
     scopes = ["memory:read"]
