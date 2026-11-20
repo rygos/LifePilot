@@ -209,10 +209,10 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
         return <article className="admin-user-row" key={user.id}>
           <div className="admin-user-identity"><strong>{user.full_name || user.username}</strong><small>{user.username}{isSelf ? " · dein Konto" : ""}</small></div>
           <span className={`role-badge ${user.deleted_at ? "role-user" : user.role === "admin" ? "role-admin" : "role-user"}`}>{user.deleted_at ? "Gelöscht" : user.role === "admin" ? "Administrator" : "Nutzer"}</span>
-          {user.deleted_at ? <button type="button" disabled={workingUserId === user.id} onClick={() => void restoreUser(user)}>{workingUserId === user.id ? "Speichert …" : "Wiederherstellen"}</button> : <>
+          {user.deleted_at ? <div className="admin-user-actions"><button type="button" disabled={workingUserId === user.id} onClick={() => void restoreUser(user)}>{workingUserId === user.id ? "Speichert …" : "Wiederherstellen"}</button></div> : <div className="admin-user-actions">
             <button type="button" className={user.role === "admin" ? "quiet" : ""} disabled={isSelf || workingUserId === user.id} onClick={() => void changeRole(user)}>{workingUserId === user.id ? "Speichert …" : user.role === "admin" ? "Adminrechte entziehen" : "Zum Admin machen"}</button>
-            <button type="button" className="quiet" disabled={isSelf || workingUserId === user.id} onClick={() => { setDeleteTarget(user); setDeleteMode("soft"); }}>{workingUserId === user.id ? "Speichert …" : "Löschen …"}</button>
-          </>}
+            <button type="button" className="danger-button" disabled={isSelf || workingUserId === user.id} onClick={() => { setDeleteTarget(user); setDeleteMode("soft"); }}>{workingUserId === user.id ? "Speichert …" : "Löschen …"}</button>
+          </div>}
         </article>;
       })}</div>}
     </section>
@@ -224,7 +224,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
         <label className="delete-choice"><input type="radio" name="delete-mode" checked={deleteMode === "soft"} onChange={() => setDeleteMode("soft")} /><span><strong>Wiederherstellbar deaktivieren</strong><small>Der Zugang wird gesperrt. Das Konto bleibt in der Benutzerverwaltung und kann später wiederhergestellt werden.</small></span></label>
         <label className="delete-choice"><input type="radio" name="delete-mode" checked={deleteMode === "permanent"} onChange={() => setDeleteMode("permanent")} /><span><strong>Dauerhaft löschen</strong><small>Das Konto und alle diesem Benutzer zugeordneten Daten werden unwiderruflich entfernt.</small></span></label>
         {deleteMode === "permanent" && <p className="error" role="alert">Diese Aktion kann nicht rückgängig gemacht werden.</p>}
-        <div className="dialog-actions"><button type="button" className="quiet" onClick={() => setDeleteTarget(null)}>Abbrechen</button><button type="button" className={deleteMode === "permanent" ? "danger" : ""} disabled={workingUserId === deleteTarget.id} onClick={() => void deleteUser(deleteTarget)}>{workingUserId === deleteTarget.id ? "Wird gelöscht …" : deleteMode === "permanent" ? "Dauerhaft löschen" : "Deaktivieren"}</button></div>
+        <div className="dialog-actions"><button type="button" className="quiet" onClick={() => setDeleteTarget(null)}>Abbrechen</button><button type="button" className={deleteMode === "permanent" ? "danger-button" : ""} disabled={workingUserId === deleteTarget.id} onClick={() => void deleteUser(deleteTarget)}>{workingUserId === deleteTarget.id ? "Wird gelöscht …" : deleteMode === "permanent" ? "Dauerhaft löschen" : "Deaktivieren"}</button></div>
       </section>
     </div>}
   </div>;
