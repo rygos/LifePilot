@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ApiRequestError } from "../use-life-pilot-session";
 
 type AdminUser = {
   id: string;
@@ -89,7 +90,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       targetCommit = result.target_commit;
       setMessage(`${result.message} Zielversion: ${targetCommit}.`);
     } catch (caught) {
-      if (caught instanceof TypeError || caught instanceof SyntaxError) {
+      if (caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError && [502, 503, 504].includes(caught.status)) {
         setMessage("LifePilot startet nach Annahme des Updates neu. Der Abschluss wird geprüft …");
       } else {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -116,7 +117,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
           return;
         }
       } catch (caught) {
-        if (caught instanceof TypeError || caught instanceof SyntaxError) {
+        if (caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError && [502, 503, 504].includes(caught.status)) {
           setMessage("LifePilot startet gerade neu. Die Verbindung wird weiter geprüft …");
           continue;
         }

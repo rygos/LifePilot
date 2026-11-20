@@ -4,6 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 
 export type AuthenticatedUser = { id: string; username: string; role: "user" | "admin" };
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 export function useLifePilotSession(api: string) {
   const [token, setToken] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -58,7 +68,19 @@ export function useLifePilotSession(api: string) {
       clearSession("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
       throw new Error("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
     }
-    if (!response.ok) throw new Error((await response.json()).detail ?? "Anfrage fehlgeschlagen");
+    if (!response.ok) {
+      const body = await response.text();
+      let message = `Anfrage fehlgeschlagen (${response.status})`;
+      if (response.headers.get("content-type")?.includes("application/json")) {
+        try {
+          const parsed: unknown = JSON.parse(body);
+          if (typeof parsed === "object" && parsed !== null && "detail" in parsed && typeof parsed.detail === "string") message = parsed.detail;
+        } catch (caught) {
+          if (!(caught instanceof SyntaxError)) throw caught;
+        }
+      }
+      throw new ApiRequestError(response.status, message);
+    }
     return response.status === 204 ? undefined as T : response.json();
   }, [api, clearSession, token]);
 
