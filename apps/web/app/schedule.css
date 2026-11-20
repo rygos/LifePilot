@@ -38,9 +38,16 @@
 .event-day.selected{border-color:var(--green);font-weight:700}
 .event-day.has-events{font-weight:700}
 .event-day i{position:absolute;inset:auto auto 5px;display:block;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.event-day.has-birthdays i{background:var(--green)}
+.event-calendar-legend{display:flex;justify-content:center;gap:16px;margin:10px 0 4px;color:var(--muted);font-size:11px}
+.event-calendar-legend span{display:inline-flex;align-items:center;gap:6px}
+.event-calendar-legend i{display:block;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.event-calendar-legend .birthday-marker{background:var(--green)}
 .event-day-heading{margin:18px 0 8px;text-transform:capitalize}
 .event-day-list{display:grid;gap:6px}
 .event-day-item{display:grid;gap:3px;text-align:left;padding:10px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.birthday-day-item{text-decoration:none}
+.birthday-day-item:hover{border-color:var(--green);background:var(--pale)}
 .event-day-item.active{border-color:var(--green);background:var(--pale)}
 .event-day-item small,.event-participant-card small{color:var(--muted);font-size:11px}
 .event-detail>.panel-head h3{font:600 21px 'Playfair Display',serif;margin:5px 0 0}
