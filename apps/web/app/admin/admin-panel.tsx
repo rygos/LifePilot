@@ -111,7 +111,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
           return;
         }
       } catch (caught) {
-        if (caught instanceof TypeError) {
+        if (caught instanceof TypeError || caught instanceof SyntaxError) {
           setMessage("LifePilot startet gerade neu. Die Verbindung wird weiter geprüft …");
           continue;
         }
