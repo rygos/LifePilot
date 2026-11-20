@@ -12,6 +12,8 @@ WORKDIR /app
 COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 COPY --from=build /app/version-commit ./version-commit
+COPY --from=build /app/alembic.ini ./alembic.ini
+COPY --from=build /app/migrations ./migrations
 RUN mkdir -p /app/data
 EXPOSE 8000 8002
 COPY entrypoint.sh ./entrypoint.sh
