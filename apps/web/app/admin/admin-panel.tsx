@@ -117,13 +117,17 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
           return;
         }
       } catch (caught) {
-        if (caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError && [404, 500, 502, 503, 504].includes(caught.status)) {
-          setMessage("LifePilot startet gerade neu. Die Verbindung wird weiter geprüft …");
-          continue;
+        if (!(caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError)) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+          setUpdating(false);
+          return;
         }
-        setError(caught instanceof Error ? caught.message : String(caught));
-        setUpdating(false);
-        return;
+        if (caught instanceof ApiRequestError && [401, 403].includes(caught.status)) {
+          setError(caught.message);
+          setUpdating(false);
+          return;
+        }
+        setMessage("LifePilot startet gerade neu. Die Verbindung wird weiter geprüft …");
       }
     }
     setError("Das Update wurde von Portainer angenommen, aber LifePilot hat den erfolgreichen Neustart nicht innerhalb von fünf Minuten bestätigt. Prüfe die Portainer-Stackprotokolle.");
