@@ -32,6 +32,8 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      args:
+        LIFE_PILOT_COMMIT_SHA: ${LIFE_PILOT_COMMIT_SHA:-}
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in Portainer}

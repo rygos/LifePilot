@@ -109,6 +109,12 @@
 .person-facts-grid dt{margin-bottom:4px;color:var(--muted);font-size:11px}
 .person-facts-grid dd{margin:0;overflow-wrap:anywhere;font-size:14px;white-space:pre-wrap}
 .person-facts-grid a{color:var(--green)}
+.person-event-history{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.person-event-history h3{font:600 18px 'Playfair Display',serif;margin:5px 0 0}
+.person-event-item{padding:12px 0;border-top:1px solid var(--line)}
+.person-event-item h4{margin:0 0 5px;font-size:14px}
+.person-event-item p{margin:0 0 7px;color:var(--muted);font-size:13px;line-height:1.55;white-space:pre-wrap}
+.person-event-item time{color:var(--muted);font-size:11px}
 .person-profile:not(.editing) .membership-form,.person-profile:not(.editing) .membership-create-form,.person-profile:not(.editing) .owner-relationship-form,.person-profile:not(.editing) .relationship-form,.person-profile:not(.editing) .relationship-card-remove,.person-profile:not(.editing) .organization-card>button,.person-profile:not(.editing) .relationship-section>.list-item>button{display:none}
 @media(max-width:600px){.person-facts-grid{grid-template-columns:1fr}.person-profile-actions{margin-left:auto}}
 

@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Literal
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -68,7 +69,11 @@ class AppUpdateStatus(GitUpdateComparison):
     pending_commit: str | None
 
 
-def call_portainer_webhook(webhook_url: str) -> int:
+def call_portainer_webhook(webhook_url: str, commit_sha: str) -> int:
+    parsed_url = urlsplit(webhook_url)
+    query = [(key, value) for key, value in parse_qsl(parsed_url.query, keep_blank_values=True) if key != "LIFE_PILOT_COMMIT_SHA"]
+    query.append(("LIFE_PILOT_COMMIT_SHA", commit_sha))
+    webhook_url = urlunsplit(parsed_url._replace(query=urlencode(query)))
     request = Request(webhook_url, data=b"", method="POST")
     try:
         with build_opener(ProxyHandler({})).open(request, timeout=15) as response:
@@ -253,7 +258,7 @@ def request_app_update(db: Session = Depends(get_db), actor: User = Depends(requ
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub hat eine ungültige Zielversion geliefert")
     mark_update_pending(latest.sha)
     try:
-        response_status = call_portainer_webhook(webhook_url)
+        response_status = call_portainer_webhook(webhook_url, latest.sha)
     except (URLError, TimeoutError, OSError, ValueError) as exc:
         clear_pending_update()
         logger.warning("Portainer-Webhook konnte nicht erreicht werden (%s)", type(exc).__name__)

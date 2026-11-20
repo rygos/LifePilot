@@ -498,6 +498,7 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     gifts = db.scalars(select(Gift).where(Gift.owner_id == user.id, Gift.person_id == person_id, Gift.status.in_(["idea", "planned"])).order_by(Gift.created_at.desc()).limit(10)).all()
     life_events = db.scalars(select(PersonLifeEvent).where(PersonLifeEvent.owner_id == user.id, PersonLifeEvent.person_id == person_id, PersonLifeEvent.confirmed.is_(True)).order_by(PersonLifeEvent.occurred_at.desc().nullslast()).limit(20)).all()
     owner_relationships = db.scalars(select(UserPersonRelationship).where(UserPersonRelationship.owner_id == user.id, UserPersonRelationship.person_id == person_id, UserPersonRelationship.confirmed.is_(True)).order_by(UserPersonRelationship.valid_from.desc().nullslast())).all()
+    participated_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id).order_by(Event.starts_at.desc()).limit(50)).all()
     now = datetime.now(timezone.utc)
     upcoming_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id, Event.starts_at >= now).order_by(Event.starts_at).limit(10)).all()
     return {
@@ -511,6 +512,7 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
         "relationships": [{"id": row.id, "source_person_id": row.source_person_id, "target_person_id": row.target_person_id, "relationship_type": row.relationship_type, "inverse_relationship_type": row.inverse_relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_memory_id": row.source_memory_id} for row in links],
         "open_loans": [LoanOut.model_validate(loan).model_dump(mode="json") for loan in loans],
         "gift_ideas": [GiftOut.model_validate(gift).model_dump(mode="json") for gift in gifts],
+        "participated_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in participated_events],
         "upcoming_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in upcoming_events],
     }
 
