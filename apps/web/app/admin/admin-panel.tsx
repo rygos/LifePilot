@@ -83,21 +83,26 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
     setUpdating(true);
     setError("");
     setMessage("");
-    let targetCommit = "";
+    let targetCommit = updateStatus?.latest_commit ?? "";
     try {
       const result = await request<UpdateResponse>("/api/admin/app-update", { method: "POST" });
       targetCommit = result.target_commit;
       setMessage(`${result.message} Zielversion: ${targetCommit}.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      setUpdating(false);
-      return;
+      if (caught instanceof TypeError || caught instanceof SyntaxError) {
+        setMessage("LifePilot startet nach Annahme des Updates neu. Der Abschluss wird geprüft …");
+      } else {
+        setError(caught instanceof Error ? caught.message : String(caught));
+        setUpdating(false);
+        return;
+      }
     }
     const deadline = Date.now() + 5 * 60 * 1000;
     while (Date.now() < deadline) {
       await new Promise(resolve => window.setTimeout(resolve, 5000));
       try {
         const progress = await request<UpdateStatus>("/api/admin/app-update?progress_only=true");
+        if (!targetCommit && progress.pending_commit) targetCommit = progress.pending_commit;
         setUpdateStatus(previous => previous ? { ...previous, current_commit: progress.current_commit, pending_update: progress.pending_update, pending_commit: progress.pending_commit } : progress);
         setUpdateConfigured(progress.configured);
         if (!progress.pending_update && progress.current_commit === targetCommit) {
