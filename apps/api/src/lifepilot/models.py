@@ -11,9 +11,11 @@ def new_id(): return str(uuid4())
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('user', 'admin')", name="ck_users_role"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     username: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="user", server_default="user", nullable=False)
     full_name: Mapped[str] = mapped_column(String(240), default="")
     nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
     birthday: Mapped[str | None] = mapped_column(String(10), nullable=True)

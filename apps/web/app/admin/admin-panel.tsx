@@ -1,0 +1,109 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+
+type AdminUser = {
+  id: string;
+  username: string;
+  full_name: string;
+  role: "user" | "admin";
+  created_at: string;
+};
+
+type UpdateStatus = { configured: boolean; source: string };
+type UpdateResponse = { status: string; message: string };
+type AdminRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
+
+type AdminPanelProps = {
+  request: AdminRequest;
+  currentUserId: string;
+};
+
+export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [updateConfigured, setUpdateConfigured] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [workingUserId, setWorkingUserId] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [userRows, update] = await Promise.all([
+        request<AdminUser[]>("/api/admin/users"),
+        request<UpdateStatus>("/api/admin/app-update"),
+      ]);
+      setUsers(userRows);
+      setUpdateConfigured(update.configured);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setLoading(false);
+    }
+  }, [request]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function changeRole(user: AdminUser) {
+    const role = user.role === "admin" ? "user" : "admin";
+    if (role === "user" && !window.confirm(`Administratorrechte für ${user.username} entziehen?`)) return;
+    setWorkingUserId(user.id);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await request<AdminUser>(`/api/admin/users/${user.id}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+      setUsers(rows => rows.map(row => row.id === updated.id ? updated : row));
+      setMessage(`${updated.username}: ${role === "admin" ? "Administratorrechte vergeben." : "Administratorrechte entzogen."}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setWorkingUserId("");
+    }
+  }
+
+  async function updateApp() {
+    if (!window.confirm("LifePilot aktualisiert sich aus dem Git-Hauptbranch. Die App startet danach neu und führt ausstehende Datenbankmigrationen aus. Jetzt aktualisieren?")) return;
+    setUpdating(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await request<UpdateResponse>("/api/admin/app-update", { method: "POST" });
+      setMessage(result.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setUpdating(false);
+      return;
+    }
+  }
+
+  return <div className="admin-page">
+    <section className="card panel admin-update-panel">
+      <div className="panel-head"><div><span className="eyebrow">WARTUNG</span><h2>LifePilot aktualisieren</h2></div><span className={`role-badge ${updateConfigured ? "role-admin" : "role-user"}`}>{updateConfigured ? "Verbunden" : "Nicht eingerichtet"}</span></div>
+      <p>Portainer lädt den aktuellen Stand des Git-Hauptbranches, baut die Dienste neu und startet LifePilot. Datenbankmigrationen laufen kontrolliert vor dem API-Start.</p>
+      {!updateConfigured && <p className="form-hint">Der Git-Webhook ist nicht konfiguriert. Der Updateknopf wird nach der Portainer-Einrichtung verfügbar.</p>}
+      {updating && <p className="admin-update-progress" role="status">Aktualisierung wurde angefordert. LifePilot wird neu gestartet; lade diese Seite in etwa einer Minute neu.</p>}
+      <button type="button" onClick={() => void updateApp()} disabled={!updateConfigured || updating}>{updating ? "Update angefordert" : "Jetzt aktualisieren"}</button>
+    </section>
+
+    <section className="card panel admin-users-panel">
+      <div className="panel-head"><div><span className="eyebrow">ZUGRIFF</span><h2>Benutzer und Rollen</h2></div><span className="count">{users.length}</span></div>
+      <p className="muted">Administratoren können Nutzer und Systemfunktionen verwalten. Mindestens ein Administratorkonto bleibt immer aktiv.</p>
+      {loading ? <p className="empty">Benutzer werden geladen …</p> : users.length === 0 ? <p className="empty">Keine Benutzer vorhanden.</p> : <div className="admin-user-list">{users.map(user => {
+        const isSelf = user.id === currentUserId;
+        return <article className="admin-user-row" key={user.id}>
+          <div className="admin-user-identity"><strong>{user.full_name || user.username}</strong><small>{user.username}{isSelf ? " · dein Konto" : ""}</small></div>
+          <span className={`role-badge ${user.role === "admin" ? "role-admin" : "role-user"}`}>{user.role === "admin" ? "Administrator" : "Nutzer"}</span>
+          <button type="button" className={user.role === "admin" ? "quiet" : ""} disabled={isSelf || workingUserId === user.id} onClick={() => void changeRole(user)}>{workingUserId === user.id ? "Speichert …" : user.role === "admin" ? "Adminrechte entziehen" : "Zum Admin machen"}</button>
+        </article>;
+      })}</div>}
+    </section>
+    {message && <p className="admin-message" role="status">{message}</p>}
+    {error && <p className="error" role="alert">{error}</p>}
+  </div>;
+}

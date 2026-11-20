@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+export type AuthenticatedUser = { id: string; username: string; role: "user" | "admin" };
+
 export function useLifePilotSession(api: string) {
   const [token, setToken] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionMessage, setSessionMessage] = useState("");
+  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
 
   const clearSession = useCallback((message = "") => {
     localStorage.removeItem("lifepilot-token");
     setToken("");
     setIsAuthenticated(false);
+    setCurrentUser(null);
     setSessionMessage(message);
   }, []);
 
@@ -22,18 +26,20 @@ export function useLifePilotSession(api: string) {
   useEffect(() => {
     if (!token) {
       setIsAuthenticated(false);
+      setCurrentUser(null);
       return;
     }
 
     localStorage.setItem("lifepilot-token", token);
     const controller = new AbortController();
     void fetch(`${api}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
-      .then(response => {
+      .then(async response => {
         if (response.status === 401) {
           clearSession("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
           return;
         }
         if (!response.ok) throw new Error("Anmeldung konnte nicht geprüft werden.");
+        setCurrentUser(await response.json() as AuthenticatedUser);
         setSessionMessage("");
         setIsAuthenticated(true);
       })
@@ -46,7 +52,7 @@ export function useLifePilotSession(api: string) {
     return () => controller.abort();
   }, [api, clearSession, token]);
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const request = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
     const response = await fetch(`${api}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers } });
     if (response.status === 401 && token) {
       clearSession("Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
@@ -54,7 +60,7 @@ export function useLifePilotSession(api: string) {
     }
     if (!response.ok) throw new Error((await response.json()).detail ?? "Anfrage fehlgeschlagen");
     return response.status === 204 ? undefined as T : response.json();
-  }
+  }, [api, clearSession, token]);
 
-  return { token, setToken, isAuthenticated, sessionMessage, clearSession, request };
+  return { token, setToken, isAuthenticated, sessionMessage, clearSession, request, currentUser };
 }

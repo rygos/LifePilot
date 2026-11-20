@@ -252,3 +252,6 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Ereignisbilder sicher hochladen, anzeigen und löschen; API beschränkt Bildformat, Größe, Auflösung und Zugriff auf den Dateneigentümer.
 - [x] API-Tests für Ereignisfotos und Fremdnutzerzugriff; Capture-Test prüft getrennte Erlebnisdatensätze, alle genannten Teilnehmenden und fehlende Termin-Erinnerung; Playwright prüft Anlegen, Auswahl, Ort, Kontext, Foto und mobile Breite.
 - [x] PostgreSQL-Migration 0021 auf der laufenden Compose-Instanz ausgeführt; Backend-Suite: 69 bestanden, 2 übersprungen; Frontend-Build und Ereignis-Playwright-Test erfolgreich.
+- [ ] Neue Adminverwaltung mit rollenbasierter API-Autorisierung, Schutz vor dem Entfernen des letzten Admins und Administratorbereich in der GUI.
+- [ ] Portainer-Git-Webhook als Adminaktion einrichten; Updates beziehen den aktuellen Commit und führen Alembic-Migrationen vor dem Start der API aus.
+- [ ] Migration 0022 auf lokaler und Server-PostgreSQL-Datenbank ausführen und `ryg` in beiden Datenbanken zum Administrator machen.

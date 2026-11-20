@@ -41,6 +41,7 @@ services:
       MCP_PORT: "8002"
       MCP_API_KEY: ${MCP_API_KEY:-}
       WEB_ORIGIN: https://pim.rygos.de
+      PORTAINER_WEBHOOK_URL: ${PORTAINER_WEBHOOK_URL:-}
       LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
       LIFE_PILOT_BOOTSTRAP_PASSWORD: ${LIFE_PILOT_BOOTSTRAP_PASSWORD:?Set initial login password in Portainer}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
@@ -81,7 +82,7 @@ services:
       traefik.http.routers.lifepilot-mcp.tls.certresolver: http_resolver
       traefik.http.routers.lifepilot-mcp.service: lifepilot-mcp
       traefik.http.services.lifepilot-mcp.loadbalancer.server.port: "8002"
-    networks: [internal, proxy]
+    networks: [internal, proxy, portainer-control]
 
   web:
     build:
@@ -153,4 +154,7 @@ services:
 networks:
   internal:
   proxy:
+    external: true
+  portainer-control:
+    name: lifepilot-portainer-control
     external: true

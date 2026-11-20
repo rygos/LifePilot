@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     life_pilot_bootstrap_password: str = "change-this-password"
     mcp_api_key: str = ""
     mcp_port: int = 8002
+    portainer_webhook_url: str = ""
     web_origin: str = "http://localhost:3000"
     llm_base_url: str = ""
     llm_api_key: str = ""

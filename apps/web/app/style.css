@@ -47,6 +47,8 @@
   .shell[data-view] .header-actions{flex-wrap:wrap;align-items:flex-end}
 }
 .brand{color:var(--ink);text-decoration:none}
+ .admin-page{display:grid;gap:18px;max-width:980px}.admin-update-panel,.admin-users-panel{display:grid;gap:12px}.admin-update-panel>p,.admin-users-panel>p{margin:0;line-height:1.6}.admin-update-panel>button{justify-self:start}.admin-update-progress{padding:12px 14px;border-radius:9px;background:var(--pale);color:var(--green)}.admin-user-list{display:grid;gap:10px}.admin-user-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}.admin-user-identity{min-width:0}.admin-user-identity strong,.admin-user-identity small{display:block;overflow-wrap:anywhere}.admin-user-identity small{margin-top:4px;color:var(--muted);font-size:12px}.role-badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.role-admin{background:var(--pale);color:var(--green)}.role-user{background:var(--bg);color:var(--muted)}.admin-message{padding:12px 14px;border-radius:9px;background:var(--pale);color:var(--green)}.shell[data-view="admin"] .content>header>div>p.muted{display:none}
+@media(max-width:650px){.admin-user-row{grid-template-columns:1fr auto;gap:10px}.admin-user-identity{grid-column:1/-1}.admin-user-row button{grid-column:1/-1;width:100%}.admin-update-panel>button{justify-self:stretch}}
 .profile-toggle{text-decoration:none;color:var(--muted)}
 .capture{border-top:0}
 .people-toolbar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(160px,1fr));gap:12px;margin-bottom:16px}

@@ -29,6 +29,7 @@ from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_ent
 from lifepilot.search_routes import router as search_router
 from lifepilot.chat_routes import router as chat_router
 from lifepilot.auth_routes import router as auth_router
+from lifepilot.admin_routes import router as admin_router
 from lifepilot.revisions import history, record_conversation_revision
 
 @asynccontextmanager
@@ -36,7 +37,8 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     with Session(engine) as db:
         if db.scalar(select(User).where(User.username == settings.life_pilot_bootstrap_username)) is None:
-            db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password)))
+            first_user = db.scalar(select(User.id).limit(1)) is None
+            db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password), role="admin" if first_user else "user"))
             db.flush()
         for owner in db.scalars(select(User)).all():
             ensure_self_person(db, owner)
@@ -58,6 +60,7 @@ app.include_router(approval_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -86,7 +89,7 @@ def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
     return {"access_token": create_token(user.id, scopes, token_use="mcp")}
 
 @app.get("/api/auth/me")
-def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username}
+def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username, "role": user.role}
 
 @app.get("/api/profile", response_model=ProfileOut)
 def profile_get(db: Session = Depends(get_db), user: User = Depends(current_user)):
