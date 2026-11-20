@@ -109,7 +109,7 @@
 .update-version-status>span,.update-version-status>small{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .update-commit-list{display:grid;gap:8px;margin:2px 0 0;padding:0;list-style:none}
 .update-commit-list li{display:grid;grid-template-columns:82px minmax(0,1fr);gap:10px;padding-top:8px;border-top:1px solid var(--line);line-height:1.45}
-.update-commit-list code{color:var(--muted);font-size:11px}
+.update-commit-list code{color:var(--muted);font-size:10px;overflow-wrap:anywhere}
 .update-commit-list span{overflow-wrap:anywhere}
 @media(max-width:850px){
   .sidebar{position:static;width:auto;height:58px;display:flex;flex-direction:row;align-items:center;padding:8px 17px;border-right:0;border-bottom:1px solid var(--line)}

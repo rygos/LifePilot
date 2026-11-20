@@ -107,6 +107,16 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
         setUpdateStatus(previous => previous ? { ...previous, current_commit: progress.current_commit, pending_update: progress.pending_update, pending_commit: progress.pending_commit } : progress);
         setUpdateConfigured(progress.configured);
         if (!progress.pending_update && progress.current_commit === targetCommit) {
+          setUpdateStatus(previous => ({
+            ...(previous ?? progress),
+            current_commit: targetCommit,
+            latest_commit: targetCommit,
+            update_available: false,
+            ahead_by: 0,
+            commits: [],
+            pending_update: false,
+            pending_commit: null,
+          }));
           setMessage(`LifePilot wurde erfolgreich auf ${targetCommit} aktualisiert.`);
           setUpdating(false);
           return;
