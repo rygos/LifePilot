@@ -10,6 +10,8 @@ Bei einer Neuinstallation erhält das erste durch die Bootstrap-Konfiguration an
 
 Der Updateknopf verwendet den Git-Webhook des Portainer-Stacks `lifepilot`. Der Stack muss aus `https://github.com/rygos/LifePilot.git`, Branch `main`, und `docker-compose.portainer.yml` bereitgestellt sein. Portainer lädt bei einem Update den aktuellen Commit und baut die Web- und API-Images neu. Vor dem Start der API führt `apps/api/entrypoint.sh` `alembic upgrade head` aus; erst danach starten REST-API und MCP-Dienst.
 
+Im Adminbereich vergleicht LifePilot die beim API-Image-Bau eingebettete Commit-ID mit dem öffentlichen GitHub-Branch `main`. Bei neueren Commits erscheinen Anzahl und Betreffzeilen der Änderungen; die Anzeige ist auf die letzten 20 Commits begrenzt. Dazu benötigt der API-Container ausgehenden HTTPS-Zugriff auf `api.github.com`. Falls GitHub nicht erreichbar ist, bleibt die Versionsanzeige als nicht verfügbar markiert und der manuelle Updateknopf bleibt nutzbar. Der API-Build-Kontext ist deshalb das Repository-Wurzelverzeichnis und enthält `.git`; `.dockerignore` schließt unnötige Dateien und Abhängigkeiten aus.
+
 Einmalige Vorbereitung für den Portainer-Server:
 
 ```sh

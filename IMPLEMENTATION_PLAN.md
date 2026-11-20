@@ -255,3 +255,10 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Neue Adminverwaltung mit rollenbasierter API-Autorisierung, Schutz vor dem Entfernen des letzten Admins und Administratorbereich in der GUI.
 - [x] Portainer-Git-Webhook als Adminaktion einrichten; Updates beziehen den aktuellen Commit und führen Alembic-Migrationen vor dem Start der API aus.
 - [x] Migration 0022 auf lokaler und Server-PostgreSQL-Datenbank ausführen und `ryg` in beiden Datenbanken zum Administrator machen.
+
+## Administration mobil und Versionsvergleich
+
+- [x] Adminroute auf Benutzerverwaltung und Wartung begrenzen, damit Dashboard- und Planungsbereiche dort nicht zusätzlich erscheinen.
+- [x] Mobile Navigation mit drei Schnellzielen und kompaktem „Mehr“-Menü statt mehrreihiger Seitenleiste.
+- [x] API-Image enthält den Build-Commit; Admin-API vergleicht ihn mit `main` und liefert die letzten 20 Commit-Betreffzeilen sowie Anzahl verfügbarer Änderungen.
+- [x] 75 Backendtests bestanden, 2 übersprungen; Next.js-Build, Docker-Compose-Konfiguration und API-Image-Build erfolgreich. Mobile Adminroute und „Mehr“-Menü bei 390 px im Browser geprüft; den Live-Stack auf dem vorherigen Commit gelassen, damit dieser Stand über die vorhandene Updateaktion getestet werden kann.

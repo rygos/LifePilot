@@ -78,3 +78,82 @@ def test_app_update_is_admin_only_and_invokes_configured_webhook(client: TestCli
         thread.join(timeout=2)
         server.server_close()
         monkeypatch.setattr(settings, "portainer_webhook_url", previous_url)
+
+
+def test_app_update_status_reports_commit_messages_for_admin(client: TestClient, monkeypatch) -> None:
+    _, admin_headers = create_user(client, "admin")
+    _, user_headers = create_user(client, "user")
+    from lifepilot import admin_routes
+
+    monkeypatch.setattr(admin_routes, "current_commit_sha", lambda: "a" * 40)
+    monkeypatch.setattr(admin_routes, "compare_github_commits", lambda _: admin_routes.GitUpdateComparison(
+        available=True,
+        update_available=True,
+        ahead_by=2,
+        latest_commit="b" * 12,
+        commits=[admin_routes.UpdateCommit(sha="b" * 12, message="Neue mobile Navigation", date=None)],
+    ))
+
+    assert client.get("/api/admin/app-update").status_code == 401
+    assert client.get("/api/admin/app-update", headers=user_headers).status_code == 403
+    response = client.get("/api/admin/app-update", headers=admin_headers)
+
+    assert response.status_code == 200
+    assert response.json()["current_commit"] == "a" * 12
+    assert response.json()["update_available"] is True
+    assert response.json()["commits"][0]["message"] == "Neue mobile Navigation"
+
+
+def test_github_comparison_parses_newest_commit_subjects() -> None:
+    import json
+
+    from lifepilot import admin_routes
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path.endswith("/commits/main"):
+                payload = {"sha": "c" * 40, "commit": {"message": "Letzter Stand", "author": {"date": "2026-11-20T12:00:00Z"}}}
+            else:
+                payload = {
+                    "ahead_by": 2,
+                    "commits": [
+                        {"sha": "a" * 40, "commit": {"message": "Mobile Navigation\n\nWeitere Details", "author": {"date": "2026-11-20T10:00:00Z"}}},
+                        {"sha": "b" * 40, "commit": {"message": "Git-Updates anzeigen", "author": {"date": "2026-11-20T11:00:00Z"}}},
+                    ],
+                }
+            body = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    branch_url = admin_routes.GITHUB_BRANCH_URL
+    compare_url = admin_routes.GITHUB_COMPARE_URL
+    try:
+        base_url = f"http://127.0.0.1:{server.server_port}/repos/rygos/LifePilot"
+        admin_routes.GITHUB_BRANCH_URL = f"{base_url}/commits/main"
+        admin_routes.GITHUB_COMPARE_URL = f"{base_url}/compare/{{base}}...main"
+
+        comparison = admin_routes.compare_github_commits("d" * 40)
+
+        assert comparison.available is True
+        assert comparison.update_available is True
+        assert comparison.ahead_by == 2
+        assert comparison.latest_commit == "c" * 12
+        assert [(commit.sha, commit.message) for commit in comparison.commits] == [
+            ("a" * 12, "Mobile Navigation"),
+            ("b" * 12, "Git-Updates anzeigen"),
+        ]
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
+        admin_routes.GITHUB_BRANCH_URL = branch_url
+        admin_routes.GITHUB_COMPARE_URL = compare_url

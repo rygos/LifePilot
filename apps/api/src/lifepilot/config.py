@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     mcp_api_key: str = ""
     mcp_port: int = 8002
     portainer_webhook_url: str = ""
+    life_pilot_commit_sha: str = ""
     web_origin: str = "http://localhost:3000"
     llm_base_url: str = ""
     llm_api_key: str = ""

@@ -1,0 +1,17 @@
+.env
+.venv
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/.pytest_cache
+**/test-results
+**/playwright-report
+.playwright-mcp
+backups
+data

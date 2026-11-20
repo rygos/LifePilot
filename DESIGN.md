@@ -28,6 +28,8 @@ Layout: LifePilot Chat - switch between capturing an original note and asking qu
 
 Layout: Dashboard scheduling controls - create tasks and appointments, adjust a saved appointment, and set personal quiet hours -> existing dashboard cards with compact labeled forms and inline appointment details; scroll owner: document; anti-patterns: hidden required fields, nested scroll areas, horizontal overflow at mobile width.
 
+Layout: Mobile navigation and administration - reach the three frequent areas directly and the remaining sections from one compact sheet; keep the administration view focused on update status and user roles -> fixed four-item bottom navigation with a scrollable secondary sheet and a single-column admin page; scroll owner: document; anti-patterns: a full multi-row navigation grid above every page, dashboard sections repeated inside the admin view, or horizontal overflow.
+
 Layout: Event archive - scan a month, select a date, then inspect an event's context, participant cards, place and photos -> calendar grid with one selected-event detail region below it; the detail region switches between a read view and an edit form without repeating fields; scroll owner: document; anti-patterns: mixing future reminders into past memories, unattached attendee names, photos without owner-scoped access, nested scroll areas.
 
 ## Screen brief: Dashboard scheduling controls

@@ -10,7 +10,16 @@ type AdminUser = {
   created_at: string;
 };
 
-type UpdateStatus = { configured: boolean; source: string };
+type UpdateStatus = {
+  configured: boolean;
+  source: string;
+  available: boolean;
+  update_available: boolean;
+  current_commit: string | null;
+  latest_commit: string | null;
+  ahead_by: number;
+  commits: { sha: string; message: string; date: string | null }[];
+};
 type UpdateResponse = { status: string; message: string };
 type AdminRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -22,27 +31,27 @@ type AdminPanelProps = {
 export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [updateConfigured, setUpdateConfigured] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [updateLoading, setUpdateLoading] = useState(true);
   const [workingUserId, setWorkingUserId] = useState("");
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(() => {
     setLoading(true);
+    setUpdateLoading(true);
     setError("");
-    try {
-      const [userRows, update] = await Promise.all([
-        request<AdminUser[]>("/api/admin/users"),
-        request<UpdateStatus>("/api/admin/app-update"),
-      ]);
-      setUsers(userRows);
-      setUpdateConfigured(update.configured);
-    } catch (caught) {
+    void request<AdminUser[]>("/api/admin/users").then(setUsers).catch(caught => {
       setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setLoading(false);
-    }
+    }).finally(() => setLoading(false));
+    void request<UpdateStatus>("/api/admin/app-update").then(update => {
+      setUpdateConfigured(update.configured);
+      setUpdateStatus(update);
+    }).catch(caught => {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }).finally(() => setUpdateLoading(false));
   }, [request]);
 
   useEffect(() => { void load(); }, [load]);
@@ -86,6 +95,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
     <section className="card panel admin-update-panel">
       <div className="panel-head"><div><span className="eyebrow">WARTUNG</span><h2>LifePilot aktualisieren</h2></div><span className={`role-badge ${updateConfigured ? "role-admin" : "role-user"}`}>{updateConfigured ? "Verbunden" : "Nicht eingerichtet"}</span></div>
       <p>Portainer lädt den aktuellen Stand des Git-Hauptbranches, baut die Dienste neu und startet LifePilot. Datenbankmigrationen laufen kontrolliert vor dem API-Start.</p>
+      {updateLoading ? <p className="form-hint">Git-Version wird geprüft …</p> : updateStatus?.available ? <div className="update-version-status" role="status"><strong>{updateStatus.update_available ? `${updateStatus.ahead_by} ${updateStatus.ahead_by === 1 ? "Änderung" : "Änderungen"} verfügbar` : "LifePilot ist aktuell"}</strong><span>Installiert: {updateStatus.current_commit ?? "unbekannt"} · Ziel: {updateStatus.latest_commit ?? "unbekannt"}</span>{updateStatus.update_available && updateStatus.commits.length > 0 && <ul className="update-commit-list">{updateStatus.commits.map(commit => <li key={commit.sha}><code>{commit.sha}</code><span>{commit.message}</span></li>)}</ul>}{updateStatus.ahead_by > updateStatus.commits.length && <small>Es werden die letzten {updateStatus.commits.length} von {updateStatus.ahead_by} Änderungen angezeigt.</small>}</div> : <p className="form-hint">{updateStatus?.current_commit ? "GitHub ist momentan nicht erreichbar; der Versionsvergleich ist nicht verfügbar." : "Die laufende Versionsnummer konnte nicht ermittelt werden."}</p>}
       {!updateConfigured && <p className="form-hint">Der Git-Webhook ist nicht konfiguriert. Der Updateknopf wird nach der Portainer-Einrichtung verfügbar.</p>}
       {updating && <p className="admin-update-progress" role="status">Aktualisierung wurde angefordert. LifePilot wird neu gestartet; lade diese Seite in etwa einer Minute neu.</p>}
       <button type="button" onClick={() => void updateApp()} disabled={!updateConfigured || updating}>{updating ? "Update angefordert" : "Jetzt aktualisieren"}</button>

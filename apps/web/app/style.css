@@ -101,3 +101,36 @@
 .owner-relationship-form{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:8px;margin-top:12px}.owner-relationship-form label{display:grid;gap:5px;font-size:12px;color:var(--muted)}.owner-relationship-form input,.owner-relationship-form select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}.owner-relationship-form button{min-height:38px}@media(max-width:850px){.owner-relationship-form{grid-template-columns:1fr}}
 .capture-chat-result{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.capture-chat-result ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}.chat-suggestion{padding:9px 10px;border:1px solid var(--line);border-radius:9px}.chat-suggestion .suggestion{padding:0}.chat-suggestion>label:not(.suggestion){display:grid;gap:5px;margin:7px 0 0;font-size:12px}.chat-suggestion select{width:100%;min-width:0;border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--paper);color:var(--ink)}.chat-suggestion .suggestion-confirm{display:flex!important;align-items:center;gap:7px}.chat-suggestion .suggestion-confirm input{width:16px;flex:none}.chat-review-hint{font-size:12px;color:var(--muted)}.capture-chat-result button{justify-self:start;margin-top:4px}.capture-chat-result button:disabled{opacity:.55;cursor:not-allowed}.capture-follow-up{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.capture-follow-up label{display:grid;gap:6px;font-weight:600}.capture-follow-up textarea{width:100%;resize:vertical;min-height:64px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--paper);color:var(--ink);font:inherit}.capture-follow-up button{justify-self:start}
 .loan-form{display:grid;grid-template-columns:1.2fr 1.3fr 1fr 1fr auto;gap:7px;margin-bottom:11px;align-items:end}.loan-form input,.loan-form select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--paper);color:var(--ink);font:inherit}.loan-form label{display:grid;gap:4px;color:var(--muted);font-size:11px}.loan-form button{min-height:39px}@media(max-width:850px){.loan-form{grid-template-columns:1fr 1fr}.loan-form button{grid-column:span 2}}
+
+.mobile-primary-nav,.mobile-more-backdrop{display:none}
+.shell[data-view="admin"] .content>*:not(header):not(.notice):not(.admin-page):not(footer){display:none}
+.update-version-status{display:grid;gap:9px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.update-version-status>strong{font-size:14px;color:var(--green)}
+.update-version-status>span,.update-version-status>small{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.update-commit-list{display:grid;gap:8px;margin:2px 0 0;padding:0;list-style:none}
+.update-commit-list li{display:grid;grid-template-columns:82px minmax(0,1fr);gap:10px;padding-top:8px;border-top:1px solid var(--line);line-height:1.45}
+.update-commit-list code{color:var(--muted);font-size:11px}
+.update-commit-list span{overflow-wrap:anywhere}
+@media(max-width:850px){
+  .sidebar{position:static;width:auto;height:58px;display:flex;flex-direction:row;align-items:center;padding:8px 17px;border-right:0;border-bottom:1px solid var(--line)}
+  .sidebar>.eyebrow,.sidebar>nav,.sidebar>.profile{display:none!important}
+  .shell[data-view] .content{margin:0;padding:24px 16px calc(92px + env(safe-area-inset-bottom))}
+  .shell[data-view] .content>header{gap:12px;margin-bottom:20px}
+  .shell[data-view] .content h1{font-size:32px;text-wrap:balance}
+  .shell[data-view="admin"] .header-actions .date,.shell[data-view="admin"] .header-actions>button{display:none}
+  .mobile-primary-nav{position:fixed;z-index:30;inset:auto 0 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--paper)}
+  .mobile-primary-nav>a,.mobile-primary-nav>button{display:flex;min-width:0;min-height:44px;align-items:center;justify-content:center;padding:7px 4px;border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;text-align:center;text-decoration:none;white-space:nowrap}
+  .mobile-primary-nav>a.active,.mobile-primary-nav>button.active{background:var(--pale);color:var(--green)}
+  .mobile-more-backdrop{position:fixed;z-index:29;inset:0 0 calc(60px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;background:rgb(20 24 21 / 38%)}
+  .mobile-more-menu{display:grid;width:100%;max-height:min(72dvh,600px);grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;overflow-y:auto;padding:14px 14px calc(16px + env(safe-area-inset-bottom));border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;background:var(--paper);box-shadow:0 -8px 32px rgb(20 24 21 / 14%)}
+  .mobile-more-heading{display:flex;grid-column:1/-1;align-items:center;justify-content:space-between;padding:0 4px 5px}
+  .mobile-more-heading .quiet{width:44px;height:44px;margin:0;font-size:25px}
+  .mobile-more-menu>a{display:flex;min-height:48px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+  .mobile-more-menu>a.active{border-color:var(--green);background:var(--pale);color:var(--green);font-weight:600}
+  .admin-page{gap:12px}
+  .admin-page .panel{min-height:0;padding:17px 15px}
+  .admin-update-panel .panel-head{gap:8px}
+  .admin-update-panel .role-badge{white-space:normal;text-align:center}
+  .update-commit-list li{grid-template-columns:66px minmax(0,1fr);gap:8px}
+  .update-version-status{padding:11px}
+}

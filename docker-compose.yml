@@ -27,7 +27,9 @@ services:
       timeout: 3s
       retries: 5
   api:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
@@ -73,7 +75,9 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
   scheduler:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.scheduler"]
     environment:
@@ -88,7 +92,9 @@ services:
     volumes:
       - lifepilot-data:/app/data
   worker:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.jobs"]
     environment:
