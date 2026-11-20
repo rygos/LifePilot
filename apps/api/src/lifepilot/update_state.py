@@ -79,11 +79,9 @@ def complete_pending_update() -> None:
     state = read_update_state()
     pending = state.pending_commit
     image_sha = image_commit_sha()
-    if pending and image_sha == pending:
+    if pending:
         write_update_state(UpdateState(current_commit=pending))
         return
     if state.current_commit is None and image_sha:
         write_update_state(UpdateState(current_commit=image_sha))
         return
-    if pending:
-        write_update_state(state.model_copy(update={"pending_commit": None, "pending_since": None}))

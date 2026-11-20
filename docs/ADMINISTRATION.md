@@ -12,6 +12,8 @@ Der Updateknopf verwendet den Git-Webhook des Portainer-Stacks `lifepilot`. Der 
 
 Im Adminbereich vergleicht LifePilot die beim API-Image-Bau eingebettete Commit-ID mit dem öffentlichen GitHub-Branch `main`. Bei neueren Commits erscheinen Anzahl und Betreffzeilen der Änderungen; die Anzeige ist auf die letzten 20 Commits begrenzt. Dazu benötigt der API-Build und -Container ausgehenden HTTPS-Zugriff auf `api.github.com`. Wenn die Versionsabfrage beim Build fehlschlägt, bleibt das Image trotzdem baubar; die Commitanzeige ist dann vorübergehend nicht verfügbar und der Updateknopf bleibt nutzbar. Der Portainer-Build-Kontext bleibt auf `apps/api` begrenzt und braucht kein `.git`-Verzeichnis.
 
+Beim Start fordert der Updateknopf Portainer an, speichert vorher die Ziel-Commit-ID auf dem persistenten Datenvolume und wartet dann bis zu fünf Minuten auf den erfolgreichen API-Start nach den Migrationen. Erst dieser Start bestätigt die Version als installiert. Bei Build- oder Startfehlern bleibt der Button nach dem Timeout bedienbar und meldet, dass der Portainer-Stack geprüft werden muss.
+
 Einmalige Vorbereitung für den Portainer-Server:
 
 ```sh
