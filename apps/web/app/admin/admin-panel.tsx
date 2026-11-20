@@ -131,8 +131,13 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       targetCommit = result.target_commit;
       setMessage(`${result.message} Zielversion: ${targetCommit}.`);
     } catch (caught) {
-      if (caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError && [404, 500, 502, 503, 504].includes(caught.status)) {
-        setMessage("LifePilot startet nach Annahme des Updates neu. Der Abschluss wird geprüft …");
+      if (caught instanceof ApiRequestError && (caught.hasServerDetail || [401, 403].includes(caught.status))) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+        setUpdating(false);
+        return;
+      }
+      if (caught instanceof TypeError || caught instanceof SyntaxError || caught instanceof ApiRequestError) {
+        setMessage("Die Antwort auf die Updateanfrage ist unklar. LifePilot prüft, ob der Neustart begonnen hat …");
       } else {
         setError(caught instanceof Error ? caught.message : String(caught));
         setUpdating(false);
@@ -192,7 +197,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       {updateLoading ? <p className="form-hint">Git-Version wird geprüft …</p> : updateStatus?.available ? <div className="update-version-status" role="status"><strong>{updateStatus.update_available ? `${updateStatus.ahead_by} ${updateStatus.ahead_by === 1 ? "Änderung" : "Änderungen"} verfügbar` : "LifePilot ist aktuell"}</strong><span>Installiert: {updateStatus.current_commit ?? "unbekannt"} · Ziel: {updateStatus.latest_commit ?? "unbekannt"}</span>{updateStatus.update_available && updateStatus.commits.length > 0 && <ul className="update-commit-list">{updateStatus.commits.map(commit => <li key={commit.sha}><code>{commit.sha}</code><span>{commit.message}</span></li>)}</ul>}{updateStatus.ahead_by > updateStatus.commits.length && <small>Es werden die letzten {updateStatus.commits.length} von {updateStatus.ahead_by} Änderungen angezeigt.</small>}</div> : <p className="form-hint">{updateStatus?.current_commit ? "GitHub ist momentan nicht erreichbar; der Versionsvergleich ist nicht verfügbar." : "Die laufende Versionsnummer konnte nicht ermittelt werden."}</p>}
       {!updateConfigured && <p className="form-hint">Der Git-Webhook ist nicht konfiguriert. Der Updateknopf wird nach der Portainer-Einrichtung verfügbar.</p>}
       {updateStatus?.pending_update && !updating && <p className="admin-update-progress" role="status">Ein Update auf {updateStatus.pending_commit} wurde angefordert. LifePilot wartet auf den Neustart.</p>}
-      {updating && <p className="admin-update-progress" role="status">Portainer baut und startet LifePilot neu. Der Abschluss wird automatisch geprüft.</p>}
+      {updating && <p className="admin-update-progress" role="status">Updateanfrage läuft. Der Abschluss wird automatisch geprüft.</p>}
       <button type="button" onClick={() => void updateApp()} disabled={!updateConfigured || updating}>{updating ? "Update angefordert" : "Jetzt aktualisieren"}</button>
     </section>
 

@@ -51,13 +51,13 @@ def image_commit_sha() -> str:
 
 
 def current_commit_sha() -> str:
-    state = read_update_state()
-    if state.current_commit:
-        return state.current_commit
     configured_sha = settings.life_pilot_commit_sha.strip()
     if COMMIT_PATTERN.fullmatch(configured_sha):
         return configured_sha
-    return image_commit_sha()
+    image_sha = image_commit_sha()
+    if image_sha:
+        return image_sha
+    return read_update_state().current_commit or ""
 
 
 def mark_update_pending(target_commit: str) -> None:
@@ -80,8 +80,8 @@ def complete_pending_update() -> None:
     pending = state.pending_commit
     image_sha = image_commit_sha()
     if pending:
-        write_update_state(UpdateState(current_commit=pending))
+        write_update_state(UpdateState(current_commit=image_sha or state.current_commit, pending_commit=None))
         return
-    if state.current_commit is None and image_sha:
+    if image_sha and state.current_commit != image_sha:
         write_update_state(UpdateState(current_commit=image_sha))
         return

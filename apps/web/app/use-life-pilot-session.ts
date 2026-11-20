@@ -6,11 +6,13 @@ export type AuthenticatedUser = { id: string; username: string; role: "user" | "
 
 export class ApiRequestError extends Error {
   readonly status: number;
+  readonly hasServerDetail: boolean;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, hasServerDetail: boolean) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.hasServerDetail = hasServerDetail;
   }
 }
 
@@ -71,15 +73,19 @@ export function useLifePilotSession(api: string) {
     if (!response.ok) {
       const body = await response.text();
       let message = `Anfrage fehlgeschlagen (${response.status})`;
+      let hasServerDetail = false;
       if (response.headers.get("content-type")?.includes("application/json")) {
         try {
           const parsed: unknown = JSON.parse(body);
-          if (typeof parsed === "object" && parsed !== null && "detail" in parsed && typeof parsed.detail === "string") message = parsed.detail;
+          if (typeof parsed === "object" && parsed !== null && "detail" in parsed && typeof parsed.detail === "string") {
+            message = parsed.detail;
+            hasServerDetail = true;
+          }
         } catch (caught) {
           if (!(caught instanceof SyntaxError)) throw caught;
         }
       }
-      throw new ApiRequestError(response.status, message);
+      throw new ApiRequestError(response.status, message, hasServerDetail);
     }
     return response.status === 204 ? undefined as T : response.json();
   }, [api, clearSession, token]);
