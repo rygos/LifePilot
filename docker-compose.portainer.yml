@@ -1,0 +1,156 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lifepilot
+      POSTGRES_USER: lifepilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}
+    volumes:
+      - /home/docker/rygos/lifepilot/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - /home/docker/rygos/lifepilot/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in Portainer}
+      DATABASE_URL: postgresql+psycopg://lifepilot:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}@db:5432/lifepilot
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}
+      REDIS_URL: redis://redis:6379/0
+      MCP_PORT: "8002"
+      MCP_API_KEY: ${MCP_API_KEY:-}
+      WEB_ORIGIN: https://pim.rygos.de
+      LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
+      LIFE_PILOT_BOOTSTRAP_PASSWORD: ${LIFE_PILOT_BOOTSTRAP_PASSWORD:?Set initial login password in Portainer}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-30}
+    volumes:
+      - /home/docker/rygos/lifepilot/data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.lifepilot-api.rule: Host(`pim.rygos.de`) && PathPrefix(`/api`)
+      traefik.http.routers.lifepilot-api.entrypoints: websecure
+      traefik.http.routers.lifepilot-api.priority: "100"
+      traefik.http.routers.lifepilot-api.tls: "true"
+      traefik.http.routers.lifepilot-api.tls.certresolver: http_resolver
+      traefik.http.routers.lifepilot-api.service: lifepilot-api
+      traefik.http.services.lifepilot-api.loadbalancer.server.port: "8000"
+      traefik.http.routers.lifepilot-mcp.rule: Host(`pim.rygos.de`) && PathPrefix(`/mcp`)
+      traefik.http.routers.lifepilot-mcp.entrypoints: websecure
+      traefik.http.routers.lifepilot-mcp.priority: "110"
+      traefik.http.routers.lifepilot-mcp.tls: "true"
+      traefik.http.routers.lifepilot-mcp.tls.certresolver: http_resolver
+      traefik.http.routers.lifepilot-mcp.service: lifepilot-mcp
+      traefik.http.services.lifepilot-mcp.loadbalancer.server.port: "8002"
+    networks: [internal, proxy]
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://pim.rygos.de
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.lifepilot-web.rule: Host(`pim.rygos.de`)
+      traefik.http.routers.lifepilot-web.entrypoints: websecure
+      traefik.http.routers.lifepilot-web.priority: "1"
+      traefik.http.routers.lifepilot-web.tls: "true"
+      traefik.http.routers.lifepilot-web.tls.certresolver: http_resolver
+      traefik.http.services.lifepilot-web.loadbalancer.server.port: "3000"
+    networks: [proxy]
+
+  scheduler:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "lifepilot.scheduler"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://lifepilot:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}@db:5432/lifepilot
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/docker/rygos/lifepilot/data:/app/data
+    networks: [internal]
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "lifepilot.jobs"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://lifepilot:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}@db:5432/lifepilot
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}
+      REDIS_URL: redis://redis:6379/0
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-30}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/docker/rygos/lifepilot/data:/app/data
+    networks: [internal]
+
+networks:
+  internal:
+  proxy:
+    external: true
