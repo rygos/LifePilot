@@ -1,6 +1,6 @@
 from datetime import datetime, time, timezone
 from uuid import uuid4
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 from lifepilot.db import Base
@@ -44,6 +44,9 @@ class Person(Base):
     website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
     organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    how_met: Mapped[str] = mapped_column(Text, default="", server_default="")
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]", nullable=False)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     photo_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_self: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)

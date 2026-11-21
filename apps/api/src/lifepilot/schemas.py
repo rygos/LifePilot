@@ -64,7 +64,25 @@ class PersonIn(BaseModel):
     website: str | None = None
     job_title: str | None = None
     organization: str | None = None
+    how_met: str = ""
+    tags: list[str] = Field(default_factory=list, max_length=30)
+    is_favorite: bool = False
     notes: str = ""
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, values: list[str]) -> list[str]:
+        normalized: dict[str, str] = {}
+        for value in values:
+            tag = " ".join(value.strip().split())
+            if not tag:
+                continue
+            if len(tag) > 40:
+                raise ValueError("Labels dürfen höchstens 40 Zeichen lang sein")
+            normalized.setdefault(tag.casefold(), tag)
+        if len(normalized) > 30:
+            raise ValueError("Pro Person sind höchstens 30 Labels erlaubt")
+        return list(normalized.values())
 class PersonOut(PersonIn):
     model_config = ConfigDict(from_attributes=True)
     id: str

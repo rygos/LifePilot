@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import Text, or_, select
 from sqlalchemy.orm import Session
 from lifepilot.audit import ACTOR_KEY
 from lifepilot.config import settings
@@ -52,16 +52,17 @@ try:
         db.refresh(row)
         return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
     @mcp.tool()
-    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str = "") -> dict:
+    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str = "", tags: list[str] | None = None, is_favorite: bool = False, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
+        data = PersonIn(first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, how_met=how_met, tags=tags or [], is_favorite=is_favorite, notes=notes)
         with mcp_session(owner_id) as db:
-            row = Person(owner_id=owner_id, first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, notes=notes); db.add(row); db.commit(); db.refresh(row)
+            row = Person(owner_id=owner_id, **data.model_dump(exclude_none=True)); db.add(row); db.commit(); db.refresh(row)
             return PersonOut.model_validate(row).model_dump(mode="json")
     @mcp.tool()
     def person_search_tool(query: str) -> list[dict]:
         owner_id = mcp_user(); term = f"%{query}%"
         with mcp_session(owner_id) as db:
-            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.notes.ilike(term)))).all()
+            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.how_met.ilike(term), Person.tags.cast(Text).ilike(term), Person.notes.ilike(term)))).all()
             return [PersonOut.model_validate(r).model_dump(mode="json") for r in rows]
     @mcp.tool()
     def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
@@ -85,7 +86,7 @@ try:
             return PersonOut.model_validate(person_get(person_id, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="person_update")
-    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, notes: str | None = None) -> dict:
+    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str | None = None, tags: list[str] | None = None, is_favorite: bool | None = None, notes: str | None = None) -> dict:
         owner_id = mcp_user("memory:write")
         changes = {key: value for key, value in locals().copy().items() if key in PersonIn.model_fields and value is not None}
         with mcp_session(owner_id) as db:

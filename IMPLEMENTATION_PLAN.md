@@ -24,6 +24,41 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 - [x] Personen-/Tagesbriefings, installierbare PWA mit Offline-App-Shell und UI-Kernflüsse für Schnellerfassung, Personen und gerichtete Beziehungen.
 - [x] MCP-Abdeckung für Profile, Personenmerge, Notizen, Faktenreview, Beziehungen, Gespräche, Aufgaben, Termine, Erinnerungen, Leihgaben, Geschenke, Projekte, Briefings und bestätigungspflichtige Löschungen.
 
+## Abgleich mit Monica HQ (Stand 21.11.2026)
+
+Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot bleibt ein persönliches Zweitgedächtnis mit KI, Graphbeziehungen und MCP. Grundlage sind die [aktuelle Produktseite](https://www.monicahq.com/en/), die [Monica-v3-Seite](https://www.monicahq.com/en/v3/) und das [Open-Source-Repository](https://github.com/monicahq/monica), nicht nur die frühere Funktionsliste der v4-Anwendung.
+
+| Monica-Funktion | LifePilot-Stand | Maßnahme |
+| --- | --- | --- |
+| Kontakte mit Profilfoto, Geburtstag, Beziehungen und Kontaktverlauf | Vorhanden; Ereignisse, Gespräche, Erinnerungen und Aufgaben erscheinen im Profil | Beibehalten und weiter zusammenführen |
+| Favoriten | Fehlte | Favoritenstatus samt Personenfilter ergänzen |
+| Labels/Tags und Suche danach | Fehlte | Benutzerdefinierte, normalisierte Labels pro Person ergänzen |
+| „Wie kennengelernt“ | Fehlte | Eigenes Profilfeld ergänzen |
+| Mehrere E-Mail-Adressen, Telefonnummern und Adressen mit Beschriftung | Nur je ein E-Mail-, Telefon- und Adressfeld | Priorität 1: Kontaktwege als eigene Datensätze ergänzen |
+| Erinnerungen und Wiedervorlagen | Allgemeine Aufgaben-/Termin-Erinnerungen vorhanden; automatische Geburtstags-Wiedervorlagen fehlen | Priorität 1: jährliche Geburtstagsplanung ergänzen |
+| Aktivitäten und Journal | Gespräche, Erlebnisse, Erinnerungen und Kalenderereignisse vorhanden; freier Tagesjournal-/Stimmungsverlauf fehlt | Priorität 2: Tagebuchansicht mit Verknüpfungen erwägen |
+| Notizen, Geschenke und Beziehungen | Vorhanden | Bereits durch das Gedächtnismodell abgedeckt |
+| Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte und Gegenstände vorhanden; Tiere sind nicht als eigenes Modul vorhanden | Priorität 2: Haustierprofile als typisierte Entität prüfen |
+| Schulden und Geldbewegungen | Gegenstände-Leihgaben vorhanden; Geldschulden fehlen | Priorität 3: optionales Geldverzeichnis ergänzen |
+| Anhänge und Dokumente | Ereignisbilder vorhanden; allgemeine Dokumente/Anhänge fehlen | Priorität 2: sichere, ressourcengebundene Anhänge |
+| Kontaktfreigabe und gemeinsam genutzte Bereiche | Benutzerbereiche sind isoliert; selektive Freigaben fehlen | Nicht ohne Freigabe- und Datenschutzmodell öffnen |
+| Import/Export | Backup/Restore vorhanden; strukturierter Kontakt-/vCard-Export und Import sind nicht vollständig | Priorität 2: portabler JSON/vCard-Export |
+| Anrufdauer, Kontaktfrequenz, Stimmungsverfolgung, frei definierte Profilabschnitte | Nicht vollständig vorhanden | Nur nach Produktentscheidung; nicht stillschweigend auswerten oder soziale Ranglisten bauen |
+
+Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kennengelernt“ mit persistenter Migration, API und Profil-/Listenansicht. Die übrigen Monica-Funktionen sind in der Tabelle ausdrücklich als Lücken oder bewusste Folgeentscheidungen dokumentiert und gelten nicht als umgesetzt.
+
+### Monica-Kontaktfunktionen: erster Ausbau
+
+- [x] Personen als Favoriten markieren und die Menschenliste nach Favoriten filtern.
+- [x] Frei vergebbare Labels je Person speichern, im Profil anzeigen und im Menschenfilter durchsuchen.
+- [x] Eigenes Feld „Wie kennengelernt“ im Profil bearbeiten, anzeigen und über die Personen-API-Suche finden.
+- [x] MCP-Personenanlage, -bearbeitung und -suche unterstützen dieselben Felder und die Labelnormalisierung.
+- [x] Alembic-Migration `0024_person_favorites_labels` ergänzt die drei Felder mit sicheren Werten für Bestandsprofile.
+- [x] API-Test prüft Labelnormalisierung, Suche, Favoritenwechsel und Besitzergrenze: 1 bestanden; MCP-Integration prüft dieselben Profilfelder.
+- [x] Migration von Head `0023` bis `0024` auf einer isolierten SQLite-Datenbank erfolgreich.
+- [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E in einer isolierten App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter und Suche: 1 bestanden.
+- [ ] Folgearbeit laut Vergleich: mehrere beschriftete Kontaktwege je Person und automatische jährliche Geburtstags-Wiedervorlagen; anschließend Dokumente/Anhänge, Journal/Tagebuch, Haustiere und Geldschulden nach Produktpriorität.
+
 ## Initiales Datenmodell
 
 Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repository-Zugriff wird auf diesen Besitzer eingeschränkt. `Person` enthält Identitäts- und Kontaktdaten. `Relationship` verbindet gerichtete Quell- und Zielpersonen; `UserPersonRelationship` verbindet eine Person mit dem angemeldeten Nutzer, jeweils mit Gültigkeitszeitraum, Quelle und Bestätigungsstatus. `Memory` speichert Originaltext, optionale Zusammenfassung, Ereigniszeit und Erfassungszeit getrennt. `Task` enthält Status, Priorität, Fälligkeit und optional eine Person. `ResourceRevision` hält benutzergebundene, unveränderliche JSON-Snapshots für Aufgaben und Gespräche mit Revision, Aktion, Quelle und Erstellungszeit fest. Benutzerpasswörter werden ausschließlich als Argon2-Hash persistiert. Fremdschlüssel, eindeutige IDs und Datenbanktransaktionen schützen die Integrität.

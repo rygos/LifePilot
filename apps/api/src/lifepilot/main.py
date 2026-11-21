@@ -9,7 +9,7 @@ from PIL import Image, UnidentifiedImageError
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import delete, select, or_
+from sqlalchemy import Text, delete, select, or_
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
@@ -113,7 +113,7 @@ def people_list(db: Session = Depends(get_db), user: User = Depends(current_user
     stmt = select(Person).where(Person.owner_id == user.id)
     if q:
         alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
-        stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.id.in_(alias_ids)))
+        stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.how_met.ilike(f"%{q}%"), Person.tags.cast(Text).ilike(f"%{q}%"), Person.id.in_(alias_ids)))
     return db.scalars(stmt.order_by(Person.is_self.desc(), Person.first_name, Person.last_name)).all()
 
 @app.post("/api/people/{person_id}/photo", response_model=PersonOut)
@@ -236,6 +236,14 @@ def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = De
 @app.get("/api/people/{person_id}", response_model=PersonOut)
 def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return owned_person(db, person_id, user)
+
+@app.patch("/api/people/{person_id}/favorite", response_model=PersonOut)
+def person_favorite_toggle(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    person.is_favorite = not person.is_favorite
+    db.add(AuditEvent(owner_id=user.id, action="update", resource_type="people", resource_id=person.id, source="web"))
+    db.commit(); db.refresh(person)
+    return person
 
 @app.get("/api/people/{person_id}/names")
 def person_names(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):

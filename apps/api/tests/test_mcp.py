@@ -70,10 +70,12 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         await session.initialize()
                         listed = await session.list_tools()
                         assert "relationship_create" in {tool.name for tool in listed.tools}
-                        created = await session.call_tool("person_create_tool", {"first_name": "MCP", "last_name": "Client"})
+                        created = await session.call_tool("person_create_tool", {"first_name": "MCP", "last_name": "Client", "how_met": "MCP-Club", "tags": ["MCP", "Kontakt"], "is_favorite": True})
                         assert not created.isError
-                        person_id = json.loads(created.content[0].text)["id"]
-                        searched = await session.call_tool("person_search_tool", {"query": "MCP"})
+                        created_person = json.loads(created.content[0].text)
+                        person_id = created_person["id"]
+                        assert created_person["how_met"] == "MCP-Club" and created_person["tags"] == ["MCP", "Kontakt"] and created_person["is_favorite"] is True
+                        searched = await session.call_tool("person_search_tool", {"query": "MCP-Club"})
                         assert not searched.isError and "MCP" in str(searched.content)
                         child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind", "gender": "female"})
                         child_id = json.loads(child.content[0].text)["id"]
@@ -111,8 +113,10 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         relation_id = json.loads(relation.content[0].text)["id"]
                         updated_relation = await session.call_tool("relationship_update", {"relationship_id": relation_id, "relationship_type": "Elternteil von", "inverse_relationship_type": "Kind von"})
                         assert not updated_relation.isError and "Elternteil von" in str(updated_relation.content)
-                        updated_child = await session.call_tool("person_update", {"person_id": child_id, "gender": "male"})
-                        assert not updated_child.isError and '"gender": "male"' in str(updated_child.content)
+                        updated_child = await session.call_tool("person_update", {"person_id": child_id, "gender": "male", "how_met": "MCP-Update", "tags": ["Familie", "Kontakt"], "is_favorite": True})
+                        assert not updated_child.isError and '"gender": "male"' in str(updated_child.content) and '"is_favorite": true' in str(updated_child.content)
+                        searched_label = await session.call_tool("person_search_tool", {"query": "Familie"})
+                        assert not searched_label.isError and child_id in str(searched_label.content)
                         updated_relation = await session.call_tool("relationship_search", {"person_id": person_id})
                         assert not updated_relation.isError and "Sohn von" in str(updated_relation.content)
                         owner_relationship = await session.call_tool("memory_review", {"capture_id": owner_relationship_capture_id, "accepted_indices": [0], "person_assignments": {"0": person_id}, "confirmations": [0]})

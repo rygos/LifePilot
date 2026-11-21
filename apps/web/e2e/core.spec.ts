@@ -13,6 +13,7 @@ const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
 const chatQuestionText = `Was weißt du über ${parentName}?`;
 const organizationName = `E2E-Verein-${suffix}`;
+const monicaPersonName = `E2E-Monica-${suffix}`;
 const lentItemName = `E2E-Leihgabe-${suffix}`;
 const borrowedItemName = `E2E-Rueckgabe-${suffix}`;
 
@@ -35,7 +36,7 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const peopleResponse = await request.get(`${apiUrl}/api/people?q=E2E-`, { headers: { Authorization: `Bearer ${token}` } });
   if (!peopleResponse.ok()) return;
   const people = (await peopleResponse.json()) as { id: string; first_name: string }[];
-  for (const person of people.filter(({ first_name }) => first_name === parentName || first_name === childName)) {
+  for (const person of people.filter(({ first_name }) => first_name === parentName || first_name === childName || first_name === monicaPersonName)) {
     await request.delete(`${apiUrl}/api/people/${person.id}`, { headers: { Authorization: `Bearer ${token}` } });
   }
   const organizationsResponse = await request.get(`${apiUrl}/api/organizations`, { headers: { Authorization: `Bearer ${token}` } });
@@ -63,6 +64,30 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
 
 test.afterEach(async ({ request }) => {
   await deleteCreatedPeople(request);
+});
+
+test("Personenfavoriten, Labels und Kennenlerngeschichte lassen sich bearbeiten und finden", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(monicaPersonName);
+  await page.locator("#people input[name=last_name]").fill("Kontaktpflege");
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+
+  await page.locator(".person-card").filter({ hasText: monicaPersonName }).click();
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
+  await page.locator(".person-profile textarea[name=how_met]").fill("Beim Sommerfest im Sportverein");
+  await page.locator(".person-profile input[name=tags]").fill("Verein, Familie");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(page.locator(".person-profile")).toContainText("Beim Sommerfest im Sportverein");
+  await expect(page.locator(".person-profile")).toContainText("Verein · Familie");
+
+  await page.getByRole("button", { name: "Zu Favoriten" }).click();
+  await expect(page.getByRole("button", { name: "★ Favorit" })).toBeVisible();
+  await page.goto("/people");
+  await page.getByLabel("Filtern").selectOption("favorite");
+  await expect(page.locator(".person-card").filter({ hasText: monicaPersonName })).toBeVisible();
+  await page.getByLabel("Personen suchen").fill("Sportverein");
+  await expect(page.locator(".person-card").filter({ hasText: monicaPersonName })).toBeVisible();
 });
 
 test("Freunde-Beziehungen sind im Personenprofil sichtbar", async ({ page }) => {
