@@ -15,7 +15,7 @@ from lifepilot.security import create_token, resolve_bearer_scopes
 
 def test_mcp_tools_are_registered() -> None:
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
+    assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
 
 
 def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
@@ -77,6 +77,17 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         assert created_person["how_met"] == "MCP-Club" and created_person["tags"] == ["MCP", "Kontakt"] and created_person["is_favorite"] is True
                         searched = await session.call_tool("person_search_tool", {"query": "MCP-Club"})
                         assert not searched.isError and "MCP" in str(searched.content)
+                        contact_method = await session.call_tool("person_contact_method_create", {"person_id": person_id, "method_type": "email", "value": "mcp@example.org", "label": "Arbeit"})
+                        assert not contact_method.isError and "mcp@example.org" in str(contact_method.content)
+                        contact_method_id = json.loads(contact_method.content[0].text)["id"]
+                        found_contact = await session.call_tool("person_search_tool", {"query": "mcp@example.org"})
+                        assert not found_contact.isError and person_id in str(found_contact.content)
+                        contact_methods = await session.call_tool("person_contact_methods", {"person_id": person_id})
+                        assert not contact_methods.isError and contact_method_id in str(contact_methods.content)
+                        changed_contact = await session.call_tool("person_contact_method_update", {"method_id": contact_method_id, "method_type": "email", "value": "mcp-work@example.org", "label": "Geschäftlich"})
+                        assert not changed_contact.isError and "mcp-work@example.org" in str(changed_contact.content)
+                        deleted_contact = await session.call_tool("person_contact_method_delete", {"method_id": contact_method_id})
+                        assert not deleted_contact.isError and "deleted" in str(deleted_contact.content)
                         child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind", "gender": "female"})
                         child_id = json.loads(child.content[0].text)["id"]
                         assert json.loads(child.content[0].text)["gender"] == "female"

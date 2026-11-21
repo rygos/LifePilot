@@ -1,7 +1,7 @@
 from datetime import datetime, time, timezone
 from uuid import uuid4
 from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 from lifepilot.db import Base
 from lifepilot.entity_types import EntityType
@@ -50,8 +50,21 @@ class Person(Base):
     photo_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_self: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    contact_methods: Mapped[list["PersonContactMethod"]] = relationship(back_populates="person", cascade="all, delete-orphan", lazy="selectin")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+class PersonContactMethod(Base):
+    __tablename__ = "person_contact_methods"
+    __table_args__ = (UniqueConstraint("owner_id", "person_id", "method_type", "label", "value", name="uq_person_contact_method_value"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    method_type: Mapped[str] = mapped_column(String(24))
+    label: Mapped[str] = mapped_column(String(80), default="")
+    value: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    person: Mapped[Person] = relationship(back_populates="contact_methods")
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -260,13 +273,15 @@ class EventPhoto(Base):
 
 class Reminder(Base):
     __tablename__ = "reminders"
-    __table_args__ = (UniqueConstraint("task_id"), UniqueConstraint("event_id"))
+    __table_args__ = (UniqueConstraint("task_id"), UniqueConstraint("event_id"), UniqueConstraint("birthday_person_id", "birthday_year", name="uq_reminders_birthday_person_year"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(240))
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True)
     event_id: Mapped[str | None] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True)
+    birthday_person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), nullable=True, index=True)
+    birthday_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     state: Mapped[str] = mapped_column(String(20), default="scheduled", index=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

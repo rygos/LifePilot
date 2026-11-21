@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
-from lifepilot.schemas import ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonContactMethod, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
+from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
@@ -113,7 +113,8 @@ def people_list(db: Session = Depends(get_db), user: User = Depends(current_user
     stmt = select(Person).where(Person.owner_id == user.id)
     if q:
         alias_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(f"%{q}%"))
-        stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.how_met.ilike(f"%{q}%"), Person.tags.cast(Text).ilike(f"%{q}%"), Person.id.in_(alias_ids)))
+        contact_ids = select(PersonContactMethod.person_id).where(PersonContactMethod.owner_id == user.id, or_(PersonContactMethod.value.ilike(f"%{q}%"), PersonContactMethod.label.ilike(f"%{q}%")))
+        stmt = stmt.where(or_(Person.first_name.ilike(f"%{q}%"), Person.last_name.ilike(f"%{q}%"), Person.nickname.ilike(f"%{q}%"), Person.how_met.ilike(f"%{q}%"), Person.tags.cast(Text).ilike(f"%{q}%"), Person.id.in_(alias_ids), Person.id.in_(contact_ids)))
     return db.scalars(stmt.order_by(Person.is_self.desc(), Person.first_name, Person.last_name)).all()
 
 @app.post("/api/people/{person_id}/photo", response_model=PersonOut)
@@ -244,6 +245,45 @@ def person_favorite_toggle(person_id: str, db: Session = Depends(get_db), user: 
     db.add(AuditEvent(owner_id=user.id, action="update", resource_type="people", resource_id=person.id, source="web"))
     db.commit(); db.refresh(person)
     return person
+
+@app.get("/api/people/{person_id}/contact-methods", response_model=list[ContactMethodOut])
+def person_contact_methods(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    return db.scalars(select(PersonContactMethod).where(PersonContactMethod.owner_id == user.id, PersonContactMethod.person_id == person_id).order_by(PersonContactMethod.method_type, PersonContactMethod.label, PersonContactMethod.created_at)).all()
+
+@app.post("/api/people/{person_id}/contact-methods", response_model=ContactMethodOut, status_code=201)
+def person_contact_method_create(person_id: str, data: ContactMethodIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    duplicate = db.scalar(select(PersonContactMethod.id).where(PersonContactMethod.owner_id == user.id, PersonContactMethod.person_id == person_id, PersonContactMethod.method_type == data.method_type, PersonContactMethod.label == data.label, PersonContactMethod.value == data.value))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Diese Kontaktmöglichkeit ist bereits gespeichert")
+    row = PersonContactMethod(owner_id=user.id, person_id=person_id, **data.model_dump())
+    db.add(row); db.flush()
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="person_contact_methods", resource_id=row.id, source="web"))
+    db.commit(); db.refresh(row)
+    return row
+
+@app.patch("/api/contact-methods/{method_id}", response_model=ContactMethodOut)
+def person_contact_method_update(method_id: str, data: ContactMethodIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(PersonContactMethod).where(PersonContactMethod.id == method_id, PersonContactMethod.owner_id == user.id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Kontaktmöglichkeit nicht gefunden")
+    duplicate = db.scalar(select(PersonContactMethod.id).where(PersonContactMethod.owner_id == user.id, PersonContactMethod.person_id == row.person_id, PersonContactMethod.method_type == data.method_type, PersonContactMethod.label == data.label, PersonContactMethod.value == data.value, PersonContactMethod.id != method_id))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Diese Kontaktmöglichkeit ist bereits gespeichert")
+    for key, value in data.model_dump().items():
+        setattr(row, key, value)
+    db.add(AuditEvent(owner_id=user.id, action="update", resource_type="person_contact_methods", resource_id=row.id, source="web"))
+    db.commit(); db.refresh(row)
+    return row
+
+@app.delete("/api/contact-methods/{method_id}", status_code=204)
+def person_contact_method_delete(method_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    row = db.scalar(select(PersonContactMethod).where(PersonContactMethod.id == method_id, PersonContactMethod.owner_id == user.id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Kontaktmöglichkeit nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="person_contact_methods", resource_id=row.id, source="web"))
+    db.delete(row); db.commit()
 
 @app.get("/api/people/{person_id}/names")
 def person_names(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):

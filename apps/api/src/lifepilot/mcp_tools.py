@@ -8,12 +8,12 @@ from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_person_context_embeddings
-from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, Relationship, Task, User
-from lifepilot.schemas import ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
+from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, PersonContactMethod, Relationship, Task, User
+from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
 from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
 from lifepilot.services import owned_person, search
 from lifepilot.relationship_language import refresh_relationship_labels
-from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_get, relationship_add, relationship_list
+from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_contact_method_create, person_contact_method_delete, person_contact_method_update, person_contact_methods, person_get, relationship_add, relationship_list
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -62,8 +62,37 @@ try:
     def person_search_tool(query: str) -> list[dict]:
         owner_id = mcp_user(); term = f"%{query}%"
         with mcp_session(owner_id) as db:
-            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.how_met.ilike(term), Person.tags.cast(Text).ilike(term), Person.notes.ilike(term)))).all()
+            contact_person_ids = select(PersonContactMethod.person_id).where(PersonContactMethod.owner_id == owner_id, or_(PersonContactMethod.value.ilike(term), PersonContactMethod.label.ilike(term)))
+            rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.how_met.ilike(term), Person.tags.cast(Text).ilike(term), Person.notes.ilike(term), Person.id.in_(contact_person_ids)))).all()
             return [PersonOut.model_validate(r).model_dump(mode="json") for r in rows]
+
+    @mcp.tool(name="person_contact_methods")
+    def person_contact_methods_tool(person_id: str) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            rows = person_contact_methods(person_id, db, db.get(User, owner_id))
+            return [ContactMethodOut.model_validate(row).model_dump(mode="json") for row in rows]
+
+    @mcp.tool(name="person_contact_method_create")
+    def person_contact_method_create_tool(person_id: str, method_type: Literal["email", "phone", "address", "website", "messaging", "social", "other"], value: str, label: str = "") -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            row = person_contact_method_create(person_id, ContactMethodIn(method_type=method_type, label=label, value=value), db, db.get(User, owner_id))
+            return ContactMethodOut.model_validate(row).model_dump(mode="json")
+
+    @mcp.tool(name="person_contact_method_update")
+    def person_contact_method_update_tool(method_id: str, method_type: Literal["email", "phone", "address", "website", "messaging", "social", "other"], value: str, label: str = "") -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            row = person_contact_method_update(method_id, ContactMethodIn(method_type=method_type, label=label, value=value), db, db.get(User, owner_id))
+            return ContactMethodOut.model_validate(row).model_dump(mode="json")
+
+    @mcp.tool(name="person_contact_method_delete")
+    def person_contact_method_delete_tool(method_id: str) -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            person_contact_method_delete(method_id, db, db.get(User, owner_id))
+            return {"deleted": True, "method_id": method_id}
     @mcp.tool()
     def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
         owner_id = mcp_user("memory:write")

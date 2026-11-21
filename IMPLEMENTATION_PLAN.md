@@ -34,8 +34,8 @@ Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot 
 | Favoriten | Fehlte | Favoritenstatus samt Personenfilter ergänzen |
 | Labels/Tags und Suche danach | Fehlte | Benutzerdefinierte, normalisierte Labels pro Person ergänzen |
 | „Wie kennengelernt“ | Fehlte | Eigenes Profilfeld ergänzen |
-| Mehrere E-Mail-Adressen, Telefonnummern und Adressen mit Beschriftung | Nur je ein E-Mail-, Telefon- und Adressfeld | Priorität 1: Kontaktwege als eigene Datensätze ergänzen |
-| Erinnerungen und Wiedervorlagen | Allgemeine Aufgaben-/Termin-Erinnerungen vorhanden; automatische Geburtstags-Wiedervorlagen fehlen | Priorität 1: jährliche Geburtstagsplanung ergänzen |
+| Mehrere E-Mail-Adressen, Telefonnummern und Adressen mit Beschriftung | Beschriftete zusätzliche E-Mail-, Telefon-, Adress-, Webseiten-, Messenger-, Social- und sonstige Kontaktwege; Suche, REST und MCP | Vorhanden |
+| Erinnerungen und Wiedervorlagen | Aufgaben-/Termin-Erinnerungen vorhanden; Geburtstage werden eine Woche vorher jährlich und in der Benutzerzeitzone vorgemerkt | Vorhanden; Vorlauf derzeit sieben Tage |
 | Aktivitäten und Journal | Gespräche, Erlebnisse, Erinnerungen und Kalenderereignisse vorhanden; freier Tagesjournal-/Stimmungsverlauf fehlt | Priorität 2: Tagebuchansicht mit Verknüpfungen erwägen |
 | Notizen, Geschenke und Beziehungen | Vorhanden | Bereits durch das Gedächtnismodell abgedeckt |
 | Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte und Gegenstände vorhanden; Tiere sind nicht als eigenes Modul vorhanden | Priorität 2: Haustierprofile als typisierte Entität prüfen |
@@ -53,11 +53,19 @@ Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kenne
 - [x] Frei vergebbare Labels je Person speichern, im Profil anzeigen und im Menschenfilter durchsuchen.
 - [x] Eigenes Feld „Wie kennengelernt“ im Profil bearbeiten, anzeigen und über die Personen-API-Suche finden.
 - [x] MCP-Personenanlage, -bearbeitung und -suche unterstützen dieselben Felder und die Labelnormalisierung.
+- [x] Der Scheduler plant jährliche Geburtstagserinnerungen sieben Tage vorher in der Zeitzone des Kontos; Dubletten werden pro Person und Jahr verhindert, der 29. Februar wird in Nichtschaltjahren auf den 28. Februar gelegt.
 - [x] Alembic-Migration `0024_person_favorites_labels` ergänzt die drei Felder mit sicheren Werten für Bestandsprofile.
+- [x] Alembic-Migration `0025_birthday_reminders` ergänzt die referenzierte, pro Jahr eindeutige Geburtstags-Wiedervorlage.
+- [x] Beschriftete zusätzliche Kontaktwege pro Person mit validierten REST-CRUD-Operationen, Duplikatschutz, Audit und Besitzerprüfung.
+- [x] REST-Personensuche, universelle Suche, Verzeichnis und MCP-Personensuche finden Kontaktwerte und Beschriftungen.
+- [x] MCP-Kontaktwerkzeuge lesen, anlegen, bearbeiten und löschen dieselben validierten Kontaktweg-Datensätze.
+- [x] Migration `0026_person_contact_methods` ergänzt eine relationale, besitzergebundene Kontakttabelle.
 - [x] API-Test prüft Labelnormalisierung, Suche, Favoritenwechsel und Besitzergrenze: 1 bestanden; MCP-Integration prüft dieselben Profilfelder.
-- [x] Migration von Head `0023` bis `0024` auf einer isolierten SQLite-Datenbank erfolgreich.
-- [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E in einer isolierten App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter und Suche: 1 bestanden.
-- [ ] Folgearbeit laut Vergleich: mehrere beschriftete Kontaktwege je Person und automatische jährliche Geburtstags-Wiedervorlagen; anschließend Dokumente/Anhänge, Journal/Tagebuch, Haustiere und Geldschulden nach Produktpriorität.
+- [x] Scheduler-Regressionstest prüft Jahresplanung, Kontenzeitzone, Deduplizierung und Schaltjahrbehandlung.
+- [x] Migration `0023` bis Head `0026` sowie Downgrade und erneutes Upgrade auf einer isolierten SQLite-Datenbank erfolgreich.
+- [x] API-Suite nach den Ergänzungen: 81 bestanden, 2 übersprungen.
+- [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E gegen eine isolierte App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter, Kontaktweg-Erfassung und Suche: 1 bestanden.
+- [ ] Folgearbeit laut Vergleich: Dokumente/Anhänge, Journal/Tagebuch, Haustiere und Geldschulden nach Produktpriorität.
 
 ## Initiales Datenmodell
 

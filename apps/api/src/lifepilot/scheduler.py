@@ -1,19 +1,72 @@
 import time
 import logging
 from typing import Final
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from redis import Redis
 from rq import Queue, Retry
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import engine
-from lifepilot.models import Event, Reminder, Task
+from lifepilot.models import Event, Person, Reminder, Task, User
 
 logger = logging.getLogger(__name__)
 SCHEDULER_LOCK_KEY: Final = "lifepilot:scheduler:leader"
 SCHEDULE_EXECUTION_LOCK_KEY: Final = "lifepilot:scheduler:execution"
 SCHEDULE_QUEUE_NAME: Final = "lifepilot"
+BIRTHDAY_REMINDER_DAYS: Final = 7
+
+
+def _birthday_in_year(birthday: date, year: int) -> date:
+    try:
+        return birthday.replace(year=year)
+    except ValueError:
+        return date(year, 2, 28)
+
+
+def _schedule_birthday_reminders(db: Session, now: datetime) -> int:
+    created = 0
+    people = db.execute(
+        select(Person, User)
+        .join(User, User.id == Person.owner_id)
+        .where(Person.is_self.is_(False), Person.birthday.is_not(None))
+    ).all()
+    for person, owner in people:
+        try:
+            birth_date = date.fromisoformat(person.birthday or "")
+        except ValueError:
+            continue
+        try:
+            zone = ZoneInfo(owner.timezone_name)
+        except ZoneInfoNotFoundError:
+            zone = timezone.utc
+        local_today = now.astimezone(zone).date()
+        occurrence = _birthday_in_year(birth_date, local_today.year)
+        if occurrence < local_today:
+            occurrence = _birthday_in_year(birth_date, local_today.year + 1)
+        reminder_date = max(local_today, occurrence - timedelta(days=BIRTHDAY_REMINDER_DAYS))
+        due_at = datetime.combine(reminder_date, time(9), tzinfo=zone).astimezone(timezone.utc)
+        reminder = db.scalar(
+            select(Reminder).where(
+                Reminder.birthday_person_id == person.id,
+                Reminder.birthday_year == occurrence.year,
+            )
+        )
+        title = f"Geburtstag von {person.first_name} {person.last_name}".strip()
+        if reminder is None:
+            db.add(Reminder(
+                owner_id=owner.id,
+                title=title,
+                due_at=due_at,
+                birthday_person_id=person.id,
+                birthday_year=occurrence.year,
+            ))
+            created += 1
+        elif reminder.state == "scheduled":
+            reminder.title = title
+            reminder.due_at = due_at
+    return created
 
 def schedule_due_items(db: Session) -> int:
     created = 0
@@ -29,6 +82,7 @@ def schedule_due_items(db: Session) -> int:
         if existing is None:
             db.add(Reminder(owner_id=event.owner_id, title=event.title, due_at=event.starts_at, event_id=event.id))
             created += 1
+    created += _schedule_birthday_reminders(db, datetime.now(timezone.utc))
     if created:
         db.commit()
     return created

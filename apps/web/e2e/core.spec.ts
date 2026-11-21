@@ -81,10 +81,21 @@ test("Personenfavoriten, Labels und Kennenlerngeschichte lassen sich bearbeiten 
   await expect(page.locator(".person-profile")).toContainText("Beim Sommerfest im Sportverein");
   await expect(page.locator(".person-profile")).toContainText("Verein · Familie");
 
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
+  await page.locator(".contact-method-create-form select[name=method_type]").selectOption("email");
+  await page.locator(".contact-method-create-form input[name=label]").fill("Arbeit");
+  await page.locator(".contact-method-create-form input[name=value]").fill("mara@example.org");
+  await page.getByRole("button", { name: "Kontakt hinzufügen" }).click();
+  await expect(page.locator(".contact-method-edit-form input[name=value]")).toHaveValue("mara@example.org");
+  await page.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.locator(".contact-methods-panel")).toContainText("mara@example.org");
+
   await page.getByRole("button", { name: "Zu Favoriten" }).click();
   await expect(page.getByRole("button", { name: "★ Favorit" })).toBeVisible();
   await page.goto("/people");
   await page.getByLabel("Filtern").selectOption("favorite");
+  await expect(page.locator(".person-card").filter({ hasText: monicaPersonName })).toBeVisible();
+  await page.getByLabel("Personen suchen").fill("mara@example.org");
   await expect(page.locator(".person-card").filter({ hasText: monicaPersonName })).toBeVisible();
   await page.getByLabel("Personen suchen").fill("Sportverein");
   await expect(page.locator(".person-card").filter({ hasText: monicaPersonName })).toBeVisible();

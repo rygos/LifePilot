@@ -51,6 +51,31 @@ class ReindexOut(BaseModel):
     semantic_enabled: bool
 Gender = Literal["female", "male", "diverse", "unspecified"]
 
+ContactMethodType = Literal["email", "phone", "address", "website", "messaging", "social", "other"]
+
+class ContactMethodIn(BaseModel):
+    method_type: ContactMethodType
+    label: str = Field(default="", max_length=80)
+    value: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("label", "value")
+    @classmethod
+    def trim_contact_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("value")
+    @classmethod
+    def require_contact_value(cls, value: str) -> str:
+        if not value:
+            raise ValueError("Bitte einen Kontaktwert angeben")
+        return value
+
+class ContactMethodOut(ContactMethodIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    person_id: str
+    created_at: datetime
+
 
 class PersonIn(BaseModel):
     first_name: str
@@ -90,6 +115,7 @@ class PersonOut(PersonIn):
     photo_key: str | None = None
     created_at: datetime
     gender: Gender = "unspecified"
+    contact_methods: list[ContactMethodOut] = Field(default_factory=list)
 
 class OrganizationIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -393,6 +419,8 @@ class ReminderOut(BaseModel):
     snoozed_until: datetime | None
     task_id: str | None
     event_id: str | None
+    birthday_person_id: str | None = None
+    birthday_year: int | None = None
 
     @field_serializer("due_at", "snoozed_until")
     def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
