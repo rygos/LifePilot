@@ -40,7 +40,7 @@ Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot 
 | Notizen, Geschenke und Beziehungen | Vorhanden | Bereits durch das Gedächtnismodell abgedeckt |
 | Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte und Gegenstände vorhanden; Tiere sind nicht als eigenes Modul vorhanden | Priorität 2: Haustierprofile als typisierte Entität prüfen |
 | Schulden und Geldbewegungen | Gegenstände-Leihgaben vorhanden; Geldschulden fehlen | Priorität 3: optionales Geldverzeichnis ergänzen |
-| Anhänge und Dokumente | Sichere Anhänge für Personen, Erinnerungen, Gespräche und Ereignisse in UI und API; MCP kann Metadaten der eigenen Anhänge abfragen | Weitere Arbeit: Anhänge für Notizen/Projekte, Vorschaubilder und Import |
+| Anhänge und Dokumente | Sichere Anhänge für Personen, Erinnerungen/Notizen, Gespräche, Ereignisse und Projekte in UI und API; MCP kann Metadaten der eigenen Anhänge abfragen | Weitere Arbeit: Vorschaubilder und Import |
 | Kontaktfreigabe und gemeinsam genutzte Bereiche | Benutzerbereiche sind isoliert; selektive Freigaben fehlen | Nicht ohne Freigabe- und Datenschutzmodell öffnen |
 | Import/Export | Backup/Restore vorhanden; strukturierter Kontakt-/vCard-Export und Import sind nicht vollständig | Priorität 2: portabler JSON/vCard-Export |
 | Anrufdauer, Kontaktfrequenz, Stimmungsverfolgung, frei definierte Profilabschnitte | Nicht vollständig vorhanden | Nur nach Produktentscheidung; nicht stillschweigend auswerten oder soziale Ranglisten bauen |
@@ -65,19 +65,20 @@ Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kenne
 - [x] Migration `0023` bis Head `0026` sowie Downgrade und erneutes Upgrade auf einer isolierten SQLite-Datenbank erfolgreich.
 - [x] API-Suite nach den Ergänzungen: 81 bestanden, 2 übersprungen.
 - [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E gegen eine isolierte App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter, Kontaktweg-Erfassung und Suche: 1 bestanden.
-- [ ] Folgearbeit laut Vergleich: Journal/Tagebuch, Haustiere und Geldschulden; außerdem Anhänge für Notizen/Projekte sowie Vorschaubilder und Import.
+- [ ] Folgearbeit laut Vergleich: Journal/Tagebuch, Haustiere und Geldschulden; außerdem Vorschaubilder und Import für Dokumente.
 
 ### Monica-Anhänge: erster Ausbau
 
 - [x] Ressourcenbezogene Dateimetadaten und Alembic-Migration `0027_resource_attachments` ergänzen.
-- [x] Authentifizierte Upload-, Listen-, Download- und Lösch-API für Personen, Erinnerungen, Gespräche und Ereignisse; jeder Zugriff prüft Besitzer und Ressource.
+- [x] Authentifizierte Upload-, Listen-, Download- und Lösch-API für Personen, Erinnerungen/Notizen, Gespräche, Ereignisse und Projekte; jeder Zugriff prüft Besitzer und Ressource.
 - [x] Upload auf 20 MB begrenzen, Dateitypen erlauben-listen, Dateinamen vom Speicherpfad trennen und Downloads als private Anhänge mit `nosniff` ausliefern.
 - [x] Audit-Ereignisse für Upload und Löschung sowie Dateibereinigung beim Löschen zugehöriger Personen, Erinnerungen, Gespräche, Ereignisse und dauerhaft gelöschter Konten.
 - [x] Profiloberfläche für Personen und Ereignisdetails unterstützen Upload, Liste, Download und Löschen.
 - [x] API-Regressionen für Upload, Downloadheader, Dateitypprüfung, Mandantentrennung und Löschbereinigung.
 - [x] Browser-E2E prüft privaten Profilanhang-Upload, Download, Löschen und die Profil-/Mitgliedschaftsansicht.
 - [x] Oberfläche für Dateianhänge an Erinnerungen und Gesprächen; MCP-Metadatenzugriff mit Besitzerprüfung und eingeschränktem Lesetoken.
-- [x] Gesamte API-Suite nach dem Anhang-Ausbau: 84 bestanden, 2 übersprungen; Produktionsbuild und `0027`-Migration inklusive Downgrade/Upgrade erfolgreich.
+- [x] Projektanhänge in Projektansicht und MCP-Metadatensuche ergänzen; Besitzerprüfung und Dateibereinigung bei direkter sowie bestätigter Projektlöschung.
+- [x] Gesamte API-Suite nach dem Anhang-Ausbau: 85 bestanden, 2 übersprungen; Produktionsbuild und Migrationen `0027` bis `0028` inklusive Downgrade/Upgrade erfolgreich.
 
 ## Initiales Datenmodell
 

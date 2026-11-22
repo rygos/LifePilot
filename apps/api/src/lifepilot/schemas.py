@@ -52,7 +52,7 @@ class ReindexOut(BaseModel):
 Gender = Literal["female", "male", "diverse", "unspecified"]
 
 ContactMethodType = Literal["email", "phone", "address", "website", "messaging", "social", "other"]
-AttachmentResourceType = Literal["person", "memory", "conversation", "event"]
+AttachmentResourceType = Literal["person", "memory", "conversation", "event", "project"]
 
 class AttachmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

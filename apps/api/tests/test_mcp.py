@@ -15,7 +15,9 @@ from lifepilot.security import create_token, resolve_bearer_scopes
 
 
 def test_mcp_tools_are_registered() -> None:
-    names = {tool.name for tool in mcp._tool_manager.list_tools()}
+    tools = mcp._tool_manager.list_tools()
+    names = {tool.name for tool in tools}
+    assert sum(tool.name == "attachment_search" for tool in tools) == 1
     assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search", "attachment_search"} <= names
 
 
@@ -103,6 +105,11 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         deleted_person["id"] = child_id
                         project = await session.call_tool("project_create", {"name": "MCP-Projekt", "description": "Nur für den Benutzer"})
                         project_id = json.loads(project.content[0].text)["id"]
+                        project_attachment = client.post("/api/attachments", headers=auth, data={"resource_type": "project", "resource_id": project_id}, files={"file": ("mcp-projekt.txt", b"MCP project attachment", "text/plain")})
+                        assert project_attachment.status_code == 201
+                        project_attachment_id = project_attachment.json()["id"]
+                        project_attachment_search = await session.call_tool("attachment_search", {"resource_type": "project", "resource_id": project_id})
+                        assert not project_attachment_search.isError and project_attachment_id in str(project_attachment_search.content)
                         project_search = await session.call_tool("project_search", {"query": "MCP-Projekt"})
                         assert not project_search.isError and project_id in str(project_search.content)
                         project_get = await session.call_tool("project_get", {"project_id": project_id})

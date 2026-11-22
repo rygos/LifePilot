@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files
 from lifepilot.db import get_db
 from lifepilot.models import AuditEvent, Project, User
 from lifepilot.schemas import ProjectIn, ProjectOut, ProjectPatch
@@ -35,5 +36,7 @@ def project_delete(project_id: str, db: Session = Depends(get_db), user: User = 
     if project is None:
         raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="projects", resource_id=project.id, source="web"))
+    attachment_paths = attachment_files_for_resource(db, user.id, "project", project.id)
     db.delete(project)
     db.commit()
+    remove_attachment_files(attachment_paths)

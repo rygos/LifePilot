@@ -15,7 +15,7 @@ from starlette.responses import FileResponse
 
 from lifepilot.config import settings
 from lifepilot.db import get_db
-from lifepilot.models import Attachment, AuditEvent, Conversation, Event, Memory, Person, User
+from lifepilot.models import Attachment, AuditEvent, Conversation, Event, Memory, Person, Project, User
 from lifepilot.schemas import AttachmentOut, AttachmentResourceType
 from lifepilot.security import current_user
 
@@ -40,6 +40,8 @@ def owned_attachment_resource(db: Session, resource_type: AttachmentResourceType
             exists = db.scalar(select(Conversation.id).where(Conversation.id == resource_id, Conversation.owner_id == user.id))
         case "event":
             exists = db.scalar(select(Event.id).where(Event.id == resource_id, Event.owner_id == user.id))
+        case "project":
+            exists = db.scalar(select(Project.id).where(Project.id == resource_id, Project.owner_id == user.id))
         case unreachable:
             assert_never(unreachable)
     if exists is None:

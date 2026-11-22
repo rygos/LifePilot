@@ -274,7 +274,7 @@ class EventPhoto(Base):
 class Attachment(Base):
     __tablename__ = "attachments"
     __table_args__ = (
-        CheckConstraint("resource_type IN ('person', 'memory', 'conversation', 'event')", name="ck_attachments_resource_type"),
+        CheckConstraint("resource_type IN ('person', 'memory', 'conversation', 'event', 'project')", name="ck_attachments_resource_type"),
         Index("ix_attachments_owner_resource", "owner_id", "resource_type", "resource_id"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

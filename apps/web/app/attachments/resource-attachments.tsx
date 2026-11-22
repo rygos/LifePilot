@@ -2,11 +2,11 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-export type AttachmentResourceType = "person" | "memory" | "conversation" | "event";
+export type AttachmentResourceType = "person" | "memory" | "conversation" | "event" | "project";
 type Attachment = { id: string; resource_type: AttachmentResourceType; resource_id: string; file_name: string; content_type: string; size_bytes: number; created_at: string };
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
-const labels: Record<AttachmentResourceType, string> = { person: "Profil", memory: "Erinnerung", conversation: "Gespräch", event: "Ereignis" };
+const labels: Record<AttachmentResourceType, string> = { person: "Profil", memory: "Erinnerung", conversation: "Gespräch", event: "Ereignis", project: "Projekt" };
 
 function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Byte`;

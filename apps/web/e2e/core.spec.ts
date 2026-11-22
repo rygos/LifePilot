@@ -13,6 +13,7 @@ const chatCaptureText = `E2E-Chat-Gedanke-${suffix}`;
 const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
 const chatQuestionText = `Was weißt du über ${parentName}?`;
 const organizationName = `E2E-Verein-${suffix}`;
+const projectName = `E2E-Projekt-${suffix}`;
 const monicaPersonName = `E2E-Monica-${suffix}`;
 const lentItemName = `E2E-Leihgabe-${suffix}`;
 const borrowedItemName = `E2E-Rueckgabe-${suffix}`;
@@ -60,10 +61,32 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
       await request.delete(`${apiUrl}/api/loans/${loan.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
+  const projectsResponse = await request.get(`${apiUrl}/api/projects?q=E2E-`, { headers: { Authorization: `Bearer ${token}` } });
+  if (projectsResponse.ok()) {
+    const projects = (await projectsResponse.json()) as { id: string; name: string }[];
+    for (const project of projects.filter(({ name }) => name === projectName)) {
+      await request.delete(`${apiUrl}/api/projects/${project.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    }
+  }
 }
 
 test.afterEach(async ({ request }) => {
   await deleteCreatedPeople(request);
+});
+
+test("Projektanhänge lassen sich in der Projektansicht verwalten", async ({ page }) => {
+  await login(page);
+  const projects = page.locator("#dashboard-panels");
+  await projects.getByPlaceholder("Projektname").fill(projectName);
+  await projects.getByRole("button", { name: "Projekt speichern" }).click();
+  const project = projects.locator(".project-item").filter({ hasText: projectName });
+  await expect(project).toBeVisible();
+  await project.locator("summary").click();
+  await project.locator(".resource-attachment-form input[type=file]").setInputFiles({ name: "projekt-notiz.txt", mimeType: "text/plain", buffer: Buffer.from("Private Projektunterlage") });
+  await project.locator(".resource-attachment-form button[type=submit]").click();
+  await expect(project.locator(".resource-attachment-list")).toContainText("projekt-notiz.txt");
+  await project.getByRole("button", { name: "projekt-notiz.txt löschen" }).click();
+  await expect(project.locator(".resource-attachment-list")).toHaveCount(0);
 });
 
 test("Personenfavoriten, Labels und Kennenlerngeschichte lassen sich bearbeiten und finden", async ({ page }) => {

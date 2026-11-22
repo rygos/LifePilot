@@ -82,3 +82,28 @@ def test_attachment_upload_accepts_open_document_and_ooxml_container_signatures(
             files={"file": (filename, package.getvalue(), "application/zip")},
         )
         assert response.status_code == 201
+
+
+def test_project_attachment_is_private_and_removed_with_project(client, auth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    project = client.post("/api/projects", headers=auth, json={"name": "Projektanhang", "description": "Vertraulich"}).json()
+    uploaded = client.post(
+        "/api/attachments",
+        headers=auth,
+        data={"resource_type": "project", "resource_id": project["id"]},
+        files={"file": ("projekt.txt", b"Projektunterlage", "text/plain")},
+    )
+    assert uploaded.status_code == 201
+    attachment_id = uploaded.json()["id"]
+    stored_files = list((Path(settings.data_dir) / "attachments").rglob("projekt.txt"))
+    assert stored_files == []
+    with Session(engine) as db:
+        attachment = db.get(Attachment, attachment_id)
+        assert attachment is not None
+        stored_path = Path(settings.data_dir) / "attachments" / attachment.owner_id / attachment.storage_key
+        assert stored_path.read_bytes() == b"Projektunterlage"
+
+    deleted = client.delete(f"/api/projects/{project['id']}", headers=auth)
+    assert deleted.status_code == 204
+    assert not stored_path.exists()
+    assert client.get(f"/api/attachments/{attachment_id}/download", headers=auth).status_code == 404

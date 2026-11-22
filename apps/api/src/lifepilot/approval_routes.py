@@ -24,7 +24,7 @@ _RESOURCES = {
     "loan_delete": Loan,
     "gift_delete": Gift,
 }
-_ATTACHMENT_RESOURCES: dict[str, AttachmentResourceType] = {"people": "person", "memories": "memory", "conversations": "conversation", "events": "event"}
+_ATTACHMENT_RESOURCES: dict[str, AttachmentResourceType] = {"people": "person", "memories": "memory", "conversations": "conversation", "events": "event", "projects": "project"}
 
 
 @router.get("", response_model=list[ApprovalOut])
