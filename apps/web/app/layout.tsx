@@ -1,6 +1,7 @@
 import "./style.css";
 import "./schedule.css";
 import "./capture.css";
+import "./journal.css";
 import type { Viewport } from "next";
 
 export const metadata = {

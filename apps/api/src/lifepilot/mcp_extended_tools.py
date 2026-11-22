@@ -19,6 +19,7 @@ from lifepilot.models import (
     Event,
     EventParticipant,
     Gift,
+    JournalEntry,
     Loan,
     Memory,
     Person,
@@ -29,7 +30,7 @@ from lifepilot.models import (
     User,
     UserPersonRelationship,
 )
-from lifepilot.schemas import MemoryOut, ProfileUpdate, ReminderOut
+from lifepilot.schemas import JournalEntryIn, JournalEntryPatch, MemoryOut, ProfileUpdate, ReminderOut
 from lifepilot.services import owned_person
 from lifepilot.mcp_tools import mcp_session, mcp_user
 
@@ -76,6 +77,50 @@ def register_extended_tools(mcp: FastMCP) -> None:
                 }
                 for row in rows
             ]
+
+    @mcp.tool(name="journal_create")
+    def journal_create_mcp(entry_date: str, content: str, title: str = "", mood: Literal["freudig", "ruhig", "neutral", "traurig", "gestresst", "dankbar", "energiegeladen"] | None = None, person_ids: list[str] | None = None, project_ids: list[str] | None = None, event_ids: list[str] | None = None) -> dict:
+        from lifepilot.journal_routes import journal_create
+
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            data = JournalEntryIn(entry_date=entry_date, title=title, content=content, mood=mood, person_ids=person_ids or [], project_ids=project_ids or [], event_ids=event_ids or [])
+            return journal_create(db, db.get(User, owner_id), data, source="mcp").model_dump(mode="json")
+
+    @mcp.tool(name="journal_search")
+    def journal_search_mcp(from_date: str | None = None, to_date: str | None = None, query: str = "", limit: int = 50) -> list[dict]:
+        from datetime import date
+        from lifepilot.journal_routes import journal_list
+
+        if limit < 1 or limit > 250:
+            raise ValueError("Die Anzahl muss zwischen 1 und 250 liegen")
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            rows = journal_list(db, db.get(User, owner_id), date.fromisoformat(from_date) if from_date else None, date.fromisoformat(to_date) if to_date else None, query, limit)
+            return [row.model_dump(mode="json") for row in rows]
+
+    @mcp.tool(name="journal_get")
+    def journal_get_mcp(entry_id: str) -> dict:
+        from lifepilot.journal_routes import journal_get
+
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return journal_get(db, db.get(User, owner_id), entry_id).model_dump(mode="json")
+
+    @mcp.tool(name="journal_update")
+    def journal_update_mcp(entry_id: str, entry_date: str | None = None, title: str | None = None, content: str | None = None, mood: Literal["freudig", "ruhig", "neutral", "traurig", "gestresst", "dankbar", "energiegeladen"] | None = None, person_ids: list[str] | None = None, project_ids: list[str] | None = None, event_ids: list[str] | None = None) -> dict:
+        from lifepilot.journal_routes import journal_update
+
+        owner_id = mcp_user("memory:write")
+        changes = {key: value for key, value in (("entry_date", entry_date), ("title", title), ("content", content), ("mood", mood), ("person_ids", person_ids), ("project_ids", project_ids), ("event_ids", event_ids)) if value is not None}
+        with mcp_session(owner_id) as db:
+            patch = JournalEntryPatch.model_validate(changes)
+            return journal_update(db, db.get(User, owner_id), entry_id, patch, source="mcp").model_dump(mode="json")
+
+    @mcp.tool(name="journal_delete")
+    def journal_delete_mcp(entry_id: str) -> dict:
+        owner_id = mcp_user("memory:write")
+        return _request_delete(owner_id, JournalEntry, entry_id, "journal_delete")
 
     @mcp.tool(name="memory_capture")
     def memory_capture_mcp(original_text: str) -> dict:

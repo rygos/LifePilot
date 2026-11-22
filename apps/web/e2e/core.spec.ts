@@ -14,6 +14,9 @@ const chatFollowUpText = `E2E-Nachtrag-${suffix}`;
 const chatQuestionText = `Was weißt du über ${parentName}?`;
 const organizationName = `E2E-Verein-${suffix}`;
 const projectName = `E2E-Projekt-${suffix}`;
+const journalTitle = `E2E-Tagebuch-${suffix}`;
+const journalContent = `Eintrag zum Browserablauf ${suffix}`;
+const journalEventTitle = `E2E-Tagebuch-Ereignis-${suffix}`;
 const monicaPersonName = `E2E-Monica-${suffix}`;
 const lentItemName = `E2E-Leihgabe-${suffix}`;
 const borrowedItemName = `E2E-Rueckgabe-${suffix}`;
@@ -34,6 +37,13 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const loginResponse = await request.post(`${apiUrl}/api/auth/login`, { data: { username, password } });
   if (!loginResponse.ok()) return;
   const token = (await loginResponse.json()).access_token as string;
+  const journalResponse = await request.get(`${apiUrl}/api/journal?q=${encodeURIComponent(journalContent)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (journalResponse.ok()) {
+    const entries = (await journalResponse.json()) as { id: string; title: string }[];
+    for (const entry of entries.filter(({ title }) => title === journalTitle)) {
+      await request.delete(`${apiUrl}/api/journal/${entry.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    }
+  }
   const peopleResponse = await request.get(`${apiUrl}/api/people?q=E2E-`, { headers: { Authorization: `Bearer ${token}` } });
   if (!peopleResponse.ok()) return;
   const people = (await peopleResponse.json()) as { id: string; first_name: string }[];
@@ -68,6 +78,13 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
       await request.delete(`${apiUrl}/api/projects/${project.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
+  const eventsResponse = await request.get(`${apiUrl}/api/events`, { headers: { Authorization: `Bearer ${token}` } });
+  if (eventsResponse.ok()) {
+    const events = (await eventsResponse.json()) as { id: string; title: string }[];
+    for (const event of events.filter(({ title }) => title === journalEventTitle)) {
+      await request.delete(`${apiUrl}/api/events/${event.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    }
+  }
 }
 
 test.afterEach(async ({ request }) => {
@@ -87,6 +104,41 @@ test("Projektanhänge lassen sich in der Projektansicht verwalten", async ({ pag
   await expect(project.locator(".resource-attachment-list")).toContainText("projekt-notiz.txt");
   await project.getByRole("button", { name: "projekt-notiz.txt löschen" }).click();
   await expect(project.locator(".resource-attachment-list")).toHaveCount(0);
+});
+
+test("Tagebucheinträge lassen sich mit Personen, Projekten und Ereignissen verbinden", async ({ page, request }) => {
+  await login(page);
+  const loginResponse = await request.post(`${apiUrl}/api/auth/login`, { data: { username, password } });
+  const token = (await loginResponse.json()).access_token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const person = await request.post(`${apiUrl}/api/people`, { headers, data: { first_name: parentName } });
+  const personId = ((await person.json()) as { id: string }).id;
+  const project = await request.post(`${apiUrl}/api/projects`, { headers, data: { name: projectName } });
+  const projectId = ((await project.json()) as { id: string }).id;
+  const eventResponse = await request.post(`${apiUrl}/api/events`, { headers, data: { title: journalEventTitle, record_type: "experience", starts_at: "2026-11-20T17:00:00+01:00", participant_ids: [personId] } });
+  const eventId = ((await eventResponse.json()) as { id: string }).id;
+  await page.goto("/journal");
+  const form = page.locator(".journal-new-entry .journal-entry-form");
+  await form.locator("input[name=entry_date]").fill("2026-11-20");
+  await form.locator("input[name=title]").fill(journalTitle);
+  await form.locator("textarea[name=content]").fill(journalContent);
+  await form.locator("select[name=mood]").selectOption("dankbar");
+  await form.getByRole("combobox", { name: "Personen verknüpfen" }).fill(parentName);
+  await form.getByRole("option", { name: parentName }).click();
+  await form.locator("select[name=project_ids]").selectOption(projectId);
+  await form.locator("select[name=event_ids]").selectOption(eventId);
+  await form.getByRole("button", { name: "Eintrag speichern" }).click();
+  const entry = page.locator(".journal-entry").filter({ hasText: journalTitle });
+  await expect(entry).toContainText(journalContent);
+  await expect(entry).toContainText("Dankbar");
+  await expect(entry).toContainText(parentName);
+  await expect(entry).toContainText(projectName);
+  await expect(entry).toContainText(journalEventTitle);
+  await page.getByLabel("Suchen", { exact: true }).fill(journalContent);
+  await expect(entry).toBeVisible();
+  page.once("dialog", dialog => dialog.accept());
+  await entry.getByRole("button", { name: "Löschen" }).click();
+  await expect(page.locator(".journal-entry")).toHaveCount(0);
 });
 
 test("Personenfavoriten, Labels und Kennenlerngeschichte lassen sich bearbeiten und finden", async ({ page }) => {

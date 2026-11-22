@@ -36,7 +36,7 @@ Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot 
 | „Wie kennengelernt“ | Fehlte | Eigenes Profilfeld ergänzen |
 | Mehrere E-Mail-Adressen, Telefonnummern und Adressen mit Beschriftung | Beschriftete zusätzliche E-Mail-, Telefon-, Adress-, Webseiten-, Messenger-, Social- und sonstige Kontaktwege; Suche, REST und MCP | Vorhanden |
 | Erinnerungen und Wiedervorlagen | Aufgaben-/Termin-Erinnerungen vorhanden; Geburtstage werden eine Woche vorher jährlich und in der Benutzerzeitzone vorgemerkt | Vorhanden; Vorlauf derzeit sieben Tage |
-| Aktivitäten und Journal | Gespräche, Erlebnisse, Erinnerungen und Kalenderereignisse vorhanden; freier Tagesjournal-/Stimmungsverlauf fehlt | Priorität 2: Tagebuchansicht mit Verknüpfungen erwägen |
+| Aktivitäten und Journal | Chronologisches Tagebuch mit freiem Text, optionaler Selbsteinschätzung der Stimmung und Verknüpfungen zu Personen, Projekten und Ereignissen | Grundfunktion vorhanden; Import älterer Journaleinträge ist Folgearbeit |
 | Notizen, Geschenke und Beziehungen | Vorhanden | Bereits durch das Gedächtnismodell abgedeckt |
 | Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte und Gegenstände vorhanden; Tiere sind nicht als eigenes Modul vorhanden | Priorität 2: Haustierprofile als typisierte Entität prüfen |
 | Schulden und Geldbewegungen | Gegenstände-Leihgaben vorhanden; Geldschulden fehlen | Priorität 3: optionales Geldverzeichnis ergänzen |
@@ -65,7 +65,16 @@ Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kenne
 - [x] Migration `0023` bis Head `0026` sowie Downgrade und erneutes Upgrade auf einer isolierten SQLite-Datenbank erfolgreich.
 - [x] API-Suite nach den Ergänzungen: 81 bestanden, 2 übersprungen.
 - [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E gegen eine isolierte App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter, Kontaktweg-Erfassung und Suche: 1 bestanden.
-- [ ] Folgearbeit laut Vergleich: Journal/Tagebuch, Haustiere und Geldschulden; außerdem Vorschaubilder und Import für Dokumente.
+- [ ] Folgearbeit laut Vergleich: Haustiere und Geldschulden; außerdem Vorschaubilder, Dokumentimport und Journalimport.
+
+### Tagebuch
+
+- [x] Benutzergebundene Tagebucheinträge mit eigenem Datum, freiem Text und optionaler, manuell gewählter Stimmung speichern.
+- [x] Einträge mit mehreren Personen, Projekten und Ereignissen verknüpfen; alle verknüpften IDs werden gegen den angemeldeten Benutzer geprüft.
+- [x] Chronologische Ansicht mit Textsuche und Datumsbereich sowie Bearbeiten und Löschen ergänzen.
+- [x] REST und MCP bieten typisierte Erstellen-, Suchen-, Lesen- und Bearbeiten-Werkzeuge; MCP-Löschungen verlangen die vorhandene Freigabe.
+- [x] API- und MCP-Regressionen prüfen Zeitfilter, Verknüpfungen, Besitzertrennung, Löschung und Nur-Lese-Scope.
+- [x] Verifikation: 86 API-Tests bestanden, 2 übersprungen; Produktionsbuild, Migration `0029` mit Downgrade/Upgrade und Browser-E2E für Eintrag, Verknüpfungen, Suche und Löschen erfolgreich.
 
 ### Monica-Anhänge: erster Ausbau
 
@@ -82,7 +91,7 @@ Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kenne
 
 ## Initiales Datenmodell
 
-Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repository-Zugriff wird auf diesen Besitzer eingeschränkt. `Person` enthält Identitäts- und Kontaktdaten. `Relationship` verbindet gerichtete Quell- und Zielpersonen; `UserPersonRelationship` verbindet eine Person mit dem angemeldeten Nutzer, jeweils mit Gültigkeitszeitraum, Quelle und Bestätigungsstatus. `Memory` speichert Originaltext, optionale Zusammenfassung, Ereigniszeit und Erfassungszeit getrennt. `Task` enthält Status, Priorität, Fälligkeit und optional eine Person. `ResourceRevision` hält benutzergebundene, unveränderliche JSON-Snapshots für Aufgaben und Gespräche mit Revision, Aktion, Quelle und Erstellungszeit fest. Benutzerpasswörter werden ausschließlich als Argon2-Hash persistiert. Fremdschlüssel, eindeutige IDs und Datenbanktransaktionen schützen die Integrität.
+Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repository-Zugriff wird auf diesen Besitzer eingeschränkt. `Person` enthält Identitäts- und Kontaktdaten. `Relationship` verbindet gerichtete Quell- und Zielpersonen; `UserPersonRelationship` verbindet eine Person mit dem angemeldeten Nutzer, jeweils mit Gültigkeitszeitraum, Quelle und Bestätigungsstatus. `Memory` speichert Originaltext, optionale Zusammenfassung, Ereigniszeit und Erfassungszeit getrennt. `JournalEntry` speichert unabhängiges Eintragsdatum, freien Text und optional selbst gewählte Stimmung; separate besitzergebundene Verbindungstabellen verknüpfen mehrere Personen, Projekte und Ereignisse. `Task` enthält Status, Priorität, Fälligkeit und optional eine Person. `ResourceRevision` hält benutzergebundene, unveränderliche JSON-Snapshots für Aufgaben und Gespräche mit Revision, Aktion, Quelle und Erstellungszeit fest. Benutzerpasswörter werden ausschließlich als Argon2-Hash persistiert. Fremdschlüssel, eindeutige IDs und Datenbanktransaktionen schützen die Integrität.
 
 ## Architekturentscheidungen
 

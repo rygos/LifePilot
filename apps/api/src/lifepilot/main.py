@@ -29,6 +29,7 @@ from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import delete_entity_embedding, enqueue_entity_embedding, enqueue_person_context_embeddings
 from lifepilot.search_routes import router as search_router
 from lifepilot.chat_routes import router as chat_router
+from lifepilot.journal_routes import router as journal_router
 from lifepilot.auth_routes import router as auth_router
 from lifepilot.admin_routes import router as admin_router
 from lifepilot.revisions import history, record_conversation_revision
@@ -63,6 +64,7 @@ app.include_router(project_router)
 app.include_router(approval_router)
 app.include_router(search_router)
 app.include_router(chat_router)
+app.include_router(journal_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 

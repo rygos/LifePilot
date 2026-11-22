@@ -18,7 +18,7 @@ def test_mcp_tools_are_registered() -> None:
     tools = mcp._tool_manager.list_tools()
     names = {tool.name for tool in tools}
     assert sum(tool.name == "attachment_search" for tool in tools) == 1
-    assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search", "attachment_search"} <= names
+    assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search", "attachment_search", "journal_create", "journal_search", "journal_get", "journal_update", "journal_delete"} <= names
 
 
 def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, monkeypatch) -> None:
@@ -114,6 +114,15 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not project_search.isError and project_id in str(project_search.content)
                         project_get = await session.call_tool("project_get", {"project_id": project_id})
                         assert not project_get.isError and "Nur für den Benutzer" in str(project_get.content)
+                        journal_entry = await session.call_tool("journal_create", {"entry_date": "2026-11-20", "title": "MCP-Tagebuch", "content": "Ein privater Tagebucheintrag", "mood": "ruhig", "person_ids": [person_id], "project_ids": [project_id]})
+                        assert not journal_entry.isError and "ruhig" in str(journal_entry.content)
+                        journal_id = json.loads(journal_entry.content[0].text)["id"]
+                        journal_search = await session.call_tool("journal_search", {"query": "privater Tagebucheintrag"})
+                        assert not journal_search.isError and journal_id in str(journal_search.content)
+                        journal_get = await session.call_tool("journal_get", {"entry_id": journal_id})
+                        assert not journal_get.isError and project_id in str(journal_get.content)
+                        journal_update = await session.call_tool("journal_update", {"entry_id": journal_id, "title": "Aktualisierter Tagebucheintrag"})
+                        assert not journal_update.isError and "Aktualisierter Tagebucheintrag" in str(journal_update.content)
                         captured = await session.call_tool("memory_capture", {"original_text": "Der MCP-Originaltext bleibt erhalten."})
                         assert not captured.isError and "Der MCP-Originaltext bleibt erhalten." in str(captured.content)
                         capture_id = json.loads(captured.content[0].text)["id"]
@@ -197,6 +206,7 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                             ("loan_delete", "loan_id", loan_id),
                             ("gift_delete", "gift_id", gift_id),
                             ("project_delete", "project_id", project_id),
+                            ("journal_delete", "entry_id", journal_id),
                         ):
                             requested_delete = await session.call_tool(tool_name, {resource_key: resource_id})
                             assert not requested_delete.isError, tool_name
@@ -223,6 +233,8 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         await session.initialize()
                         denied = await session.call_tool("task_create", {"title": "Soll nicht gespeichert werden"})
                         assert denied.isError
+                        denied_journal = await session.call_tool("journal_create", {"entry_date": "2026-11-20", "content": "Schreibzugriff muss gesperrt bleiben"})
+                        assert denied_journal.isError
                         denied_person = await session.call_tool("person_create_tool", {"first_name": "Soll auch nicht gespeichert werden"})
                         assert denied_person.isError
         other_headers = {"Authorization": f"Bearer {create_token(other_user_id)}"}

@@ -1,4 +1,4 @@
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from typing import Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
@@ -173,6 +173,40 @@ class MemoryOut(MemoryIn):
     id: str
     created_at: datetime
     source_capture_id: str | None = None
+
+JournalMood = Literal["freudig", "ruhig", "neutral", "traurig", "gestresst", "dankbar", "energiegeladen"]
+
+class JournalEntryIn(BaseModel):
+    entry_date: date
+    title: str = Field(default="", max_length=240)
+    content: str = Field(min_length=1, max_length=20000)
+    mood: JournalMood | None = None
+    person_ids: list[str] = Field(default_factory=list, max_length=50)
+    project_ids: list[str] = Field(default_factory=list, max_length=50)
+    event_ids: list[str] = Field(default_factory=list, max_length=50)
+
+class JournalEntryPatch(BaseModel):
+    entry_date: date | None = None
+    title: str | None = Field(default=None, max_length=240)
+    content: str | None = Field(default=None, min_length=1, max_length=20000)
+    mood: JournalMood | None = None
+    person_ids: list[str] | None = Field(default=None, max_length=50)
+    project_ids: list[str] | None = Field(default=None, max_length=50)
+    event_ids: list[str] | None = Field(default=None, max_length=50)
+
+class JournalEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    entry_date: date
+    title: str
+    content: str
+    mood: JournalMood | None
+    person_ids: list[str]
+    project_ids: list[str]
+    event_ids: list[str]
+    created_at: datetime
+    updated_at: datetime
+
 class TaskIn(BaseModel):
     title: str
     description: str = ""
