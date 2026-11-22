@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
+from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files
 from lifepilot.entity_embedding_jobs import delete_entity_embedding
 from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, Event, Gift, Loan, Memory, Person, Project, Relationship, Reminder, Task, User
-from lifepilot.schemas import ApprovalOut
+from lifepilot.schemas import ApprovalOut, AttachmentResourceType
 from lifepilot.security import current_user
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
@@ -23,6 +24,7 @@ _RESOURCES = {
     "loan_delete": Loan,
     "gift_delete": Gift,
 }
+_ATTACHMENT_RESOURCES: dict[str, AttachmentResourceType] = {"people": "person", "memories": "memory", "conversations": "conversation", "events": "event"}
 
 
 @router.get("", response_model=list[ApprovalOut])
@@ -56,11 +58,14 @@ def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User
         delete_entity_embedding(db, "conversation", request.resource_id, user.id)
     if request.operation == "task_delete":
         delete_entity_embedding(db, "task", request.resource_id, user.id)
+    attachment_resource = _ATTACHMENT_RESOURCES.get(model.__tablename__)
+    attachment_paths = attachment_files_for_resource(db, user.id, attachment_resource, resource.id) if attachment_resource is not None else []
     db.delete(resource)
     request.status = "executed"
     request.decided_at = datetime.now(timezone.utc)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type=model.__tablename__, resource_id=request.resource_id, source="web"))
     db.commit()
+    remove_attachment_files(attachment_paths)
     db.refresh(request)
     return request
 

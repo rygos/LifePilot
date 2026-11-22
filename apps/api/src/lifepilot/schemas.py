@@ -52,6 +52,17 @@ class ReindexOut(BaseModel):
 Gender = Literal["female", "male", "diverse", "unspecified"]
 
 ContactMethodType = Literal["email", "phone", "address", "website", "messaging", "social", "other"]
+AttachmentResourceType = Literal["person", "memory", "conversation", "event"]
+
+class AttachmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    resource_type: AttachmentResourceType
+    resource_id: str
+    file_name: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
 
 class ContactMethodIn(BaseModel):
     method_type: ContactMethodType

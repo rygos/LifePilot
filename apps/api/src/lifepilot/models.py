@@ -271,6 +271,22 @@ class EventPhoto(Base):
     caption: Mapped[str] = mapped_column(String(240), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class Attachment(Base):
+    __tablename__ = "attachments"
+    __table_args__ = (
+        CheckConstraint("resource_type IN ('person', 'memory', 'conversation', 'event')", name="ck_attachments_resource_type"),
+        Index("ix_attachments_owner_resource", "owner_id", "resource_type", "resource_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_type: Mapped[str] = mapped_column(String(24))
+    resource_id: Mapped[str] = mapped_column(String(36))
+    storage_key: Mapped[str] = mapped_column(String(120), unique=True)
+    file_name: Mapped[str] = mapped_column(String(240))
+    content_type: Mapped[str] = mapped_column(String(160))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Reminder(Base):
     __tablename__ = "reminders"
     __table_args__ = (UniqueConstraint("task_id"), UniqueConstraint("event_id"), UniqueConstraint("birthday_person_id", "birthday_year", name="uq_reminders_birthday_person_year"))

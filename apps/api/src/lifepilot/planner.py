@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
+from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.models import AuditEvent, Event, EventParticipant, EventPhoto, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
@@ -206,6 +207,7 @@ def event_delete(event_id: str, db: Session = Depends(get_db), user: User = Depe
     event = db.scalar(select(Event).where(Event.id == event_id, Event.owner_id == user.id))
     if event is None:
         raise HTTPException(status_code=404, detail="Termin nicht gefunden")
+    attachment_paths = attachment_files_for_resource(db, user.id, "event", event.id)
     photo_rows = db.scalars(select(EventPhoto).where(EventPhoto.event_id == event.id, EventPhoto.owner_id == user.id)).all()
     photo_directory = Path(settings.data_dir) / "event-photos"
     for photo in photo_rows:
@@ -213,6 +215,7 @@ def event_delete(event_id: str, db: Session = Depends(get_db), user: User = Depe
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="events", resource_id=event.id, source="web"))
     db.delete(event)
     db.commit()
+    remove_attachment_files(attachment_paths)
 
 
 @router.post("/api/reminders", response_model=ReminderOut, status_code=201)

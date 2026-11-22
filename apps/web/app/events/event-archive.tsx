@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Person } from "../page";
 import { PersonPicker } from "../people/person-picker";
+import { ResourceAttachments } from "../attachments/resource-attachments";
 
 type EventRecord = { id: string; title: string; record_type: "appointment" | "experience"; starts_at: string; ends_at?: string | null; description?: string | null; location: string; location_address: string; source_memory_id: string | null; participant_ids: string[] };
 type EventPhoto = { id: string; event_id: string; caption: string; created_at: string };
@@ -145,6 +146,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
             <h4>Teilnehmende</h4>{selected.participant_ids.length ? <div className="event-participant-cards">{selected.participant_ids.map(id => people.find(person => person.id === id)).filter((person): person is Person => Boolean(person)).map(person => <a className="event-participant-card" href={`/people/${person.id}`} key={person.id}><ParticipantPhoto person={person} token={token} api={api} /><strong>{person.first_name} {person.last_name}</strong>{person.nickname && <small>{person.nickname}</small>}</a>)}</div> : <p className="muted">Noch keine Teilnehmenden zugeordnet.</p>}
           </div>}
           <div className="event-image-section"><div className="panel-head"><h4>Bilder</h4><span className="count">{photos.length}</span></div><form className="event-photo-upload" onSubmit={event => void upload(event, selected.id)}><label>Bild hinzufügen<input name="file" type="file" accept="image/jpeg,image/png,image/webp" required /></label><label>Bildbeschreibung (optional)<input name="caption" maxLength={240} /></label><button>Hochladen</button></form>{photos.length ? <div className="event-photo-grid">{photos.map(photo => <Photo key={photo.id} eventId={selected.id} photo={photo} token={token} api={api} onDelete={() => void deletePhoto(selected.id, photo.id)} />)}</div> : <p className="empty">Zu diesem Ereignis wurden noch keine Bilder hinzugefügt.</p>}</div>
+          <ResourceAttachments resourceType="event" resourceId={selected.id} token={token} api={api} request={request} />
           {selected.source_memory_id && memories.find(memory => memory.id === selected.source_memory_id) && <details className="event-source"><summary>Ursprüngliche Eingabe</summary><p>{memories.find(memory => memory.id === selected.source_memory_id)?.content}</p></details>}
         </>}
       </section>

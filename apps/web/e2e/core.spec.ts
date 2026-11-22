@@ -222,9 +222,19 @@ test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch 
   await personCard.click();
   await expect(page).toHaveURL(/\/people\/.+/);
 
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
   const image = await readFile("public/icon-192.png");
   await page.getByLabel("Profilbild auswählen").setInputFiles({ name: "profil.png", mimeType: "image/png", buffer: image });
   await expect(page.locator(".person-profile-hero .avatar-photo")).toBeVisible();
+
+  await page.locator(".resource-attachment-form input[type=file]").setInputFiles({ name: "kontakt-notiz.txt", mimeType: "text/plain", buffer: Buffer.from("Private Notiz zum Kontakt") });
+  await page.locator(".resource-attachment-form button[type=submit]").click();
+  await expect(page.locator(".resource-attachment-list")).toContainText("kontakt-notiz.txt");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Herunterladen" }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe("kontakt-notiz.txt");
+  await page.getByRole("button", { name: "kontakt-notiz.txt löschen" }).click();
+  await expect(page.locator(".resource-attachment-list")).toHaveCount(0);
 
   await page.locator(".membership-create-form input[name=organization_name]").fill(organizationName);
   await page.locator(".membership-create-form").getByRole("button", { name: "Anlegen" }).click();
@@ -249,6 +259,7 @@ test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch 
   expect(cardPositions[0]).toBe(cardPositions[1]);
   const selfCard = page.locator(".person-card").filter({ hasText: "Du · eigenes Profil" });
   await selfCard.click();
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
   await page.locator(".membership-form select[name=organization_id]").selectOption({ label: organizationName });
   await page.locator(".membership-form").getByRole("button", { name: "Mitgliedschaft hinzufügen" }).click();
   await expect(page.locator(".organization-card").filter({ hasText: organizationName })).toContainText("Mitglied");

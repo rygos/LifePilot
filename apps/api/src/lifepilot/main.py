@@ -21,6 +21,7 @@ from lifepilot.services import ensure_self_person, owned_person, relationship_cr
 from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
 from lifepilot.planner import router as planner_router
 from lifepilot.event_media import router as event_media_router
+from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files, router as attachment_router
 from lifepilot.capture_routes import router as capture_router
 from lifepilot.project_routes import router as project_router
 from lifepilot.approval_routes import router as approval_router
@@ -56,6 +57,7 @@ app.add_middleware(
 )
 app.include_router(planner_router)
 app.include_router(event_media_router)
+app.include_router(attachment_router)
 app.include_router(capture_router)
 app.include_router(project_router)
 app.include_router(approval_router)
@@ -315,8 +317,10 @@ def person_delete(person_id: str, db: Session = Depends(get_db), user: User = De
     person = owned_person(db, person_id, user)
     if person.is_self:
         raise HTTPException(status_code=409, detail="Das eigene Personenprofil kann nicht gelöscht werden")
+    attachment_paths = attachment_files_for_resource(db, user.id, "person", person.id)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people", resource_id=person.id, source="web"))
     db.delete(person); db.commit()
+    remove_attachment_files(attachment_paths)
 
 @app.post("/api/people/{person_id}/owner-relationships", response_model=UserPersonRelationshipOut, status_code=201)
 def owner_relationship_add(person_id: str, data: UserPersonRelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -371,8 +375,10 @@ def relationship_delete(relationship_id: str, db: Session = Depends(get_db), use
 def memory_delete(memory_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Erinnerung nicht gefunden")
+    attachment_paths = attachment_files_for_resource(db, user.id, "memory", row.id)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="memories", resource_id=row.id, source="web"))
     db.delete(row); db.commit()
+    remove_attachment_files(attachment_paths)
 
 @app.post("/api/memories", response_model=MemoryOut, status_code=201)
 def memory_create(data: MemoryIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -461,8 +467,10 @@ def conversation_delete(conversation_id: str, db: Session = Depends(get_db), use
     row = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Gespräch nicht gefunden")
     delete_entity_embedding(db, "conversation", row.id, user.id)
+    attachment_paths = attachment_files_for_resource(db, user.id, "conversation", row.id)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="conversations", resource_id=row.id, source="web"))
     db.delete(row); db.commit()
+    remove_attachment_files(attachment_paths)
 
 @app.post("/api/loans", response_model=LoanOut, status_code=201)
 def loan_create(data: LoanIn, db: Session = Depends(get_db), user: User = Depends(current_user)):

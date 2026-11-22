@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.main import profile_update
 from lifepilot.models import (
     AuditEvent,
+    Attachment,
+    Attachment,
     Capture,
     Conversation,
     ConversationParticipant,
@@ -42,6 +45,71 @@ def _request_delete(owner_id: str, model: type, resource_id: str, operation: str
 
 
 def register_extended_tools(mcp: FastMCP) -> None:
+    @mcp.tool(name="attachment_search")
+    def attachment_search_mcp(resource_type: Literal["person", "memory", "conversation", "event"], resource_id: str) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            model_by_type = {"person": Person, "memory": Memory, "conversation": Conversation, "event": Event}
+            model = model_by_type[resource_type]
+            exists = db.scalar(select(model.id).where(model.id == resource_id, model.owner_id == owner_id))
+            if exists is None:
+                raise ValueError("Zugehöriger Eintrag nicht gefunden")
+            rows = db.scalars(
+                select(Attachment)
+                .where(
+                    Attachment.owner_id == owner_id,
+                    Attachment.resource_type == resource_type,
+                    Attachment.resource_id == resource_id,
+                )
+                .order_by(Attachment.created_at, Attachment.id)
+            ).all()
+            return [
+                {
+                    "id": row.id,
+                    "resource_type": row.resource_type,
+                    "resource_id": row.resource_id,
+                    "file_name": row.file_name,
+                    "content_type": row.content_type,
+                    "size_bytes": row.size_bytes,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
+    @mcp.tool(name="attachment_search")
+    def attachment_search_mcp(resource_type: str, resource_id: str) -> list[dict]:
+        """Listet Metadaten privater Dateien eines eigenen Eintrags auf."""
+        if resource_type not in {"person", "memory", "conversation", "event"}:
+            raise ValueError("Nicht unterstützter Eintragstyp")
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            model_by_type = {"person": Person, "memory": Memory, "conversation": Conversation, "event": Event}
+            model = model_by_type[resource_type]
+            exists = db.scalar(select(model.id).where(model.id == resource_id, model.owner_id == owner_id))
+            if exists is None:
+                raise ValueError("Zugehöriger Eintrag nicht gefunden")
+            rows = db.scalars(
+                select(Attachment)
+                .where(
+                    Attachment.owner_id == owner_id,
+                    Attachment.resource_type == resource_type,
+                    Attachment.resource_id == resource_id,
+                )
+                .order_by(Attachment.created_at, Attachment.id)
+            ).all()
+            return [
+                {
+                    "id": row.id,
+                    "resource_type": row.resource_type,
+                    "resource_id": row.resource_id,
+                    "file_name": row.file_name,
+                    "content_type": row.content_type,
+                    "size_bytes": row.size_bytes,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
     @mcp.tool(name="memory_capture")
     def memory_capture_mcp(original_text: str) -> dict:
         owner_id = mcp_user("memory:write")

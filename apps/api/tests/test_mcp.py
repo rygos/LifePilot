@@ -7,6 +7,7 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy.orm import Session
 
 from lifepilot.db import engine
+from lifepilot.config import settings
 from lifepilot.main import mcp
 from lifepilot.models import Capture, Person, User
 from lifepilot.capture_schemas import CaptureSuggestion
@@ -15,10 +16,11 @@ from lifepilot.security import create_token, resolve_bearer_scopes
 
 def test_mcp_tools_are_registered() -> None:
     names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search"} <= names
+    assert {"person_create_tool", "person_search_tool", "person_contact_methods", "person_contact_method_create", "person_contact_method_update", "person_contact_method_delete", "memory_capture", "memory_capture_status", "memory_capture_list", "memory_capture_tool", "memory_search_tool", "person_get", "person_update", "relationship_create", "relationship_search", "relationship_update", "memory_get", "memory_update", "memory_delete", "memory_review", "note_create", "note_search", "note_get", "note_update", "note_delete", "conversation_create", "conversation_search", "conversation_get", "conversation_update", "conversation_history", "conversation_delete", "task_create", "task_search", "task_update", "task_history", "task_complete", "task_delete", "event_create", "event_update", "event_search", "event_delete", "upcoming_events", "reminder_create", "reminder_update", "reminder_search", "reminder_delete", "loan_create", "loan_search", "loan_return", "loan_update", "loan_delete", "gift_create", "gift_search", "gift_update", "gift_delete", "person_context", "person_merge", "profile_get", "profile_update", "daily_briefing", "open_commitments", "person_delete", "relationship_delete", "audit_search", "project_create", "project_search", "project_get", "project_update", "project_delete", "approval_search", "attachment_search"} <= names
 
 
-def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
+def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
     writable = client.post("/api/auth/mcp-token", json={"username": "testuser", "password": "test-password", "access": "read_write"})
     assert writable.status_code == 200
     token = writable.json()["access_token"]
@@ -75,6 +77,13 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth) -> None:
                         created_person = json.loads(created.content[0].text)
                         person_id = created_person["id"]
                         assert created_person["how_met"] == "MCP-Club" and created_person["tags"] == ["MCP", "Kontakt"] and created_person["is_favorite"] is True
+                        attachment = client.post("/api/attachments", headers=auth, data={"resource_type": "person", "resource_id": person_id}, files={"file": ("mcp-notiz.txt", b"MCP attachment metadata", "text/plain")})
+                        assert attachment.status_code == 201
+                        attachment_id = attachment.json()["id"]
+                        attachment_search = await session.call_tool("attachment_search", {"resource_type": "person", "resource_id": person_id})
+                        assert not attachment_search.isError and attachment_id in str(attachment_search.content)
+                        private_attachment_search = await session.call_tool("attachment_search", {"resource_type": "person", "resource_id": "foreign-resource-id"})
+                        assert private_attachment_search.isError
                         searched = await session.call_tool("person_search_tool", {"query": "MCP-Club"})
                         assert not searched.isError and "MCP" in str(searched.content)
                         contact_method = await session.call_tool("person_contact_method_create", {"person_id": person_id, "method_type": "email", "value": "mcp@example.org", "label": "Arbeit"})
