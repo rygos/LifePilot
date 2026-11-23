@@ -3,12 +3,18 @@
 import { useState } from "react";
 import type { Person } from "../page";
 
-export function PersonPicker({ id, people, initialIds = [], name = "participant_ids" }: { id: string; people: Person[]; initialIds?: readonly string[]; name?: string }) {
-  const [selectedIds, setSelectedIds] = useState<string[]>([...initialIds]);
+export function PersonPicker({ id, people, initialIds = [], name = "participant_ids", selectedIds: selectedIdsProp, onSelectedIdsChange }: { id: string; people: Person[]; initialIds?: readonly string[]; name?: string; selectedIds?: readonly string[]; onSelectedIdsChange?: (ids: string[]) => void }) {
+  const [localSelectedIds, setLocalSelectedIds] = useState<string[]>([...initialIds]);
+  const selectedIds = selectedIdsProp ?? localSelectedIds;
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
   const selected = selectedIds.map(personId => people.find(person => person.id === personId)).filter((person): person is Person => Boolean(person));
+  function updateSelectedIds(update: (current: readonly string[]) => string[]) {
+    const next = update(selectedIds);
+    if (onSelectedIdsChange) onSelectedIdsChange(next);
+    else setLocalSelectedIds(next);
+  }
   const normalizedQuery = query.trim().toLocaleLowerCase("de-DE");
   const suggestions = people
     .filter(person => !selectedIds.includes(person.id))
@@ -16,7 +22,7 @@ export function PersonPicker({ id, people, initialIds = [], name = "participant_
     .slice(0, 8);
 
   function addPerson(person: Person) {
-    setSelectedIds(current => current.includes(person.id) ? current : [...current, person.id]);
+    updateSelectedIds(current => current.includes(person.id) ? [...current] : [...current, person.id]);
     setQuery("");
     setActiveIndex(-1);
     setOpen(false);
@@ -27,7 +33,7 @@ export function PersonPicker({ id, people, initialIds = [], name = "participant_
       <div className="person-picker-chips" aria-live="polite">
         {selected.map(person => <span className="person-picker-chip" key={person.id}>
           <span>{person.first_name} {person.last_name}</span>
-          <button type="button" aria-label={`${person.first_name} ${person.last_name} entfernen`} onClick={() => setSelectedIds(current => current.filter(personId => personId !== person.id))}>×</button>
+          <button type="button" aria-label={`${person.first_name} ${person.last_name} entfernen`} onClick={() => updateSelectedIds(current => current.filter(personId => personId !== person.id))}>×</button>
           <input type="hidden" name={name} value={person.id} />
         </span>)}
       </div>
