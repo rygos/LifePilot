@@ -207,9 +207,9 @@
 .birthday-fields label:first-of-type{grid-column:1/-1}
 .birthday-fields input,.birthday-fields select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}
 .birthday-fields small{font-size:10px;color:var(--muted)}
-.shell[data-view="person"][data-person-tab="history"] .person-profile:not(.editing)>:not(.person-profile-hero),
-.shell[data-view="person"][data-person-tab="planning"] .person-profile:not(.editing)>:not(.person-profile-hero),
-.shell[data-view="person"][data-person-tab="files"] .person-profile:not(.editing)>:not(.person-profile-hero){display:none}
+.shell[data-view="person"][data-person-tab="history"] .person-profile-content:not(.editing),
+.shell[data-view="person"][data-person-tab="planning"] .person-profile-content:not(.editing),
+.shell[data-view="person"][data-person-tab="files"] .person-profile-content:not(.editing){display:none}
 .shell[data-view="person"][data-person-tab="history"] .person-briefing>.person-planning-entry{display:none}
 .shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-history-entry,
 .shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-event-history{display:none}
