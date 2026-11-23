@@ -154,6 +154,8 @@ def test_app_update_status_reports_commit_messages_for_admin(client: TestClient,
     assert response.json()["current_commit"] == "a" * 12
     assert response.json()["update_available"] is True
     assert response.json()["pending_update"] is False
+    assert response.json()["monitor_configured"] is False
+    assert response.json()["containers"] == []
     assert response.json()["commits"][0]["message"] == "Neue mobile Navigation"
 
 

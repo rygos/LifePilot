@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiRequestError } from "../use-life-pilot-session";
 
 type AdminUser = {
@@ -22,10 +22,26 @@ type UpdateStatus = {
   ahead_by: number;
   pending_update: boolean;
   pending_commit: string | null;
+  last_update_commit: string | null;
+  last_update_requested_at: string | null;
+  monitor_configured: boolean;
+  monitor_available: boolean;
+  monitor_error: string | null;
+  containers: { service: string; name: string | null; state: string; health: string | null; image: string | null; image_id: string; started_at: string | null; version_commit: string | null; updated: boolean | null }[];
   commits: { sha: string; message: string; date: string | null }[];
 };
 type UpdateResponse = { status: string; message: string; target_commit: string };
 type AdminRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
+
+const containerLabels: Record<string, string> = { api: "API", web: "Weboberfläche", worker: "Auftragsverarbeitung", scheduler: "Erinnerungsplanung", db: "Datenbank", redis: "Warteschlange" };
+
+function containerStateLabel(container: UpdateStatus["containers"][number]): string {
+  if (container.state === "waiting") return "Wartet auf Rückkehr";
+  if (container.health === "healthy") return "Bereit";
+  if (container.health === "starting") return "Prüft Bereitschaft …";
+  if (container.health === "unhealthy") return "Nicht bereit";
+  return container.state === "running" ? "Läuft" : container.state;
+}
 
 type AdminPanelProps = {
   request: AdminRequest;
@@ -44,6 +60,10 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [deleteMode, setDeleteMode] = useState<"soft" | "permanent">("soft");
+  const updateStatusRef = useRef(updateStatus);
+  const progressPollInFlight = useRef(false);
+
+  useEffect(() => { updateStatusRef.current = updateStatus; }, [updateStatus]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -61,6 +81,26 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
   }, [request]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (updating) return;
+    const interval = window.setInterval(() => {
+      const status = updateStatusRef.current;
+      if (!status?.monitor_configured || !status.last_update_commit || !status.last_update_requested_at || Date.now() - new Date(status.last_update_requested_at).getTime() > 10 * 60 * 1000) return;
+      const allReturned = status.monitor_available && status.containers.length > 0 && status.containers.every(container => container.state === "running" && container.health !== "starting" && container.health !== "unhealthy");
+      const appUpdated = ["api", "web", "worker", "scheduler"].every(service => {
+        const matchingContainers = status.containers.filter(container => container.service === service);
+        return matchingContainers.length > 0 && matchingContainers.every(container => container.updated === true);
+      });
+      if ((allReturned && appUpdated) || progressPollInFlight.current) return;
+      progressPollInFlight.current = true;
+      void request<UpdateStatus>("/api/admin/app-update?progress_only=true").then(progress => {
+        updateStatusRef.current = progress;
+        setUpdateStatus(progress);
+      }).catch(() => undefined).finally(() => { progressPollInFlight.current = false; });
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [request, updating]);
 
   async function changeRole(user: AdminUser) {
     const role = user.role === "admin" ? "user" : "admin";
@@ -149,10 +189,16 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       await new Promise(resolve => window.setTimeout(resolve, 5000));
       try {
         const progress = await request<UpdateStatus>("/api/admin/app-update?progress_only=true");
-        if (!targetCommit && progress.pending_commit) targetCommit = progress.pending_commit;
-        setUpdateStatus(previous => previous ? { ...previous, current_commit: progress.current_commit, pending_update: progress.pending_update, pending_commit: progress.pending_commit } : progress);
+        if (!targetCommit) targetCommit = progress.pending_commit ?? progress.last_update_commit ?? "";
+        setUpdateStatus(previous => previous ? { ...previous, ...progress } : progress);
         setUpdateConfigured(progress.configured);
-        if (!progress.pending_update && progress.current_commit === targetCommit) {
+        const containersReady = progress.containers.length > 0 && progress.containers.every(container => container.state === "running" && container.health !== "starting" && container.health !== "unhealthy");
+        const applicationUpdated = ["api", "web", "worker", "scheduler"].every(service => {
+          const matchingContainers = progress.containers.filter(container => container.service === service);
+          return matchingContainers.length > 0 && matchingContainers.every(container => container.updated === true);
+        });
+        const containerUpdateConfirmed = !progress.monitor_configured || (progress.monitor_available && containersReady && applicationUpdated);
+        if (!progress.pending_update && progress.current_commit === targetCommit && containerUpdateConfirmed) {
           setUpdateStatus(previous => ({
             ...(previous ?? progress),
             current_commit: targetCommit,
@@ -196,6 +242,8 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       <p>Portainer lädt den aktuellen Stand des Git-Hauptbranches, baut die Dienste neu und startet LifePilot. Datenbankmigrationen laufen kontrolliert vor dem API-Start.</p>
       {updateLoading ? <p className="form-hint">Git-Version wird geprüft …</p> : updateStatus?.available ? <div className="update-version-status" role="status"><strong>{updateStatus.update_available ? `${updateStatus.ahead_by} ${updateStatus.ahead_by === 1 ? "Änderung" : "Änderungen"} verfügbar` : "LifePilot ist aktuell"}</strong><span>Installiert: {updateStatus.current_commit ?? "unbekannt"} · Ziel: {updateStatus.latest_commit ?? "unbekannt"}</span>{updateStatus.update_available && updateStatus.commits.length > 0 && <ul className="update-commit-list">{updateStatus.commits.map(commit => <li key={commit.sha}><code>{commit.sha}</code><span>{commit.message}</span></li>)}</ul>}{updateStatus.ahead_by > updateStatus.commits.length && <small>Es werden die letzten {updateStatus.commits.length} von {updateStatus.ahead_by} Änderungen angezeigt.</small>}</div> : <p className="form-hint">{updateStatus?.current_commit ? "GitHub ist momentan nicht erreichbar; der Versionsvergleich ist nicht verfügbar." : "Die laufende Versionsnummer konnte nicht ermittelt werden."}</p>}
       {!updateConfigured && <p className="form-hint">Der Git-Webhook ist nicht konfiguriert. Der Updateknopf wird nach der Portainer-Einrichtung verfügbar.</p>}
+      {!updateLoading && updateStatus && !updateStatus.monitor_configured && <p className="form-hint">Die Containerübersicht benötigt zusätzlich einen lesenden Portainer-Zugang. Ohne ihn kann LifePilot nur den Neustart der API-Version prüfen.</p>}
+      {updateStatus?.monitor_configured && <div className="container-update-status" aria-live="polite"><div className="panel-head"><h3>Containerstatus</h3><span className={`role-badge ${updateStatus.monitor_available ? "role-admin" : "role-user"}`}>{updateStatus.monitor_available ? "Verbunden" : "Nicht erreichbar"}</span></div>{updateStatus.monitor_error && <p className="form-hint">{updateStatus.monitor_error}</p>}<div className="container-update-list">{updateStatus.containers.map((container, index) => <article className="container-update-row" key={`${container.service}-${container.name ?? index}`}><strong>{containerLabels[container.service] ?? container.service}</strong><span>{containerStateLabel(container)}</span><span>{container.updated === true ? "Aktualisiert" : container.updated === false ? "Image unverändert" : "Versionsprüfung offen"}{container.version_commit ? ` · ${container.version_commit}` : ""}</span><small>{container.started_at ? `Gestartet: ${new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "medium" }).format(new Date(container.started_at))}` : container.name ?? "Noch nicht zurückgekehrt"}</small></article>)}</div></div>}
       {updateStatus?.pending_update && !updating && <p className="admin-update-progress" role="status">Ein Update auf {updateStatus.pending_commit} wurde angefordert. LifePilot wartet auf den Neustart.</p>}
       {updating && <p className="admin-update-progress" role="status">Updateanfrage läuft. Der Abschluss wird automatisch geprüft.</p>}
       <button type="button" onClick={() => void updateApp()} disabled={!updateConfigured || updating}>{updating ? "Update angefordert" : "Jetzt aktualisieren"}</button>

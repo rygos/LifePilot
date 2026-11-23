@@ -15,7 +15,9 @@ from lifepilot.db import get_db
 from lifepilot.attachment_routes import attachment_files_for_owner, remove_attachment_files
 from lifepilot.models import AuditEvent, User
 from lifepilot.security import current_user
-from lifepilot.update_state import COMMIT_PATTERN, clear_pending_update, current_commit_sha, mark_update_pending, read_update_state
+from lifepilot.update_state import COMMIT_PATTERN, clear_pending_update, current_commit_sha, read_update_state
+from lifepilot.portainer_monitor import ContainerStatus, container_statuses, is_configured
+from lifepilot.update_state import mark_update_pending_with_images
 
 router = APIRouter(prefix="/api/admin", tags=["Administration"])
 logger = logging.getLogger(__name__)
@@ -68,6 +70,12 @@ class AppUpdateStatus(GitUpdateComparison):
     current_commit: str | None
     pending_update: bool
     pending_commit: str | None
+    last_update_commit: str | None
+    last_update_requested_at: datetime | None
+    monitor_configured: bool
+    monitor_available: bool
+    monitor_error: str | None
+    containers: list[ContainerStatus]
 
 
 def call_portainer_webhook(webhook_url: str, commit_sha: str) -> int:
@@ -232,12 +240,19 @@ def app_update_status(progress_only: bool = Query(default=False), _: User = Depe
         else GitUpdateComparison(available=False, update_available=False, ahead_by=0, latest_commit=None, commits=[])
     )
     update_state = read_update_state()
+    monitored = container_statuses(update_state.previous_images, update_state.last_update_commit)
     return AppUpdateStatus(
         configured=bool(settings.portainer_webhook_url.strip()),
         source="main",
         current_commit=current_sha[:12] or None,
         pending_update=bool(update_state.pending_commit),
         pending_commit=update_state.pending_commit[:12] if update_state.pending_commit else None,
+        last_update_commit=update_state.last_update_commit[:12] if update_state.last_update_commit else None,
+        last_update_requested_at=update_state.last_update_requested_at,
+        monitor_configured=monitored.configured,
+        monitor_available=monitored.available,
+        monitor_error=monitored.error,
+        containers=monitored.containers,
         **comparison.model_dump(),
     )
 
@@ -259,7 +274,15 @@ def request_app_update(db: Session = Depends(get_db), actor: User = Depends(requ
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Die Zielversion konnte bei GitHub nicht ermittelt werden") from None
     if not COMMIT_PATTERN.fullmatch(latest.sha):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub hat eine ungültige Zielversion geliefert")
-    mark_update_pending(latest.sha)
+    previous_images: dict[str, str] = {}
+    if is_configured():
+        baseline = container_statuses()
+        if not baseline.available:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=baseline.error or "Portainer-Containerstatus ist nicht verfügbar")
+        if any(item.name is None for item in baseline.containers):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Portainer hat nicht alle sechs LifePilot-Stackdienste gefunden. Prüfe PORTAINER_STACK_NAME und die Environment-ID.")
+        previous_images = {item.service: item.image_id for item in baseline.containers if item.image_id}
+    mark_update_pending_with_images(latest.sha, previous_images)
     try:
         response_status = call_portainer_webhook(webhook_url, latest.sha)
     except (URLError, TimeoutError, OSError, ValueError) as exc:

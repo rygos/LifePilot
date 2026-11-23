@@ -12,7 +12,18 @@ Der Updateknopf verwendet den Git-Webhook des Portainer-Stacks `lifepilot`. Der 
 
 Im Adminbereich vergleicht LifePilot die beim API-Image-Bau eingebettete Commit-ID mit dem öffentlichen GitHub-Branch `main`. Beim Update über LifePilot übergibt der Webhook die geprüfte Ziel-Commit-ID an den API-Build. So bleibt die Versionsnummer auch dann korrekt, wenn sich nur Webdateien geändert haben und der Docker-Build sonst eine zwischengespeicherte API-Version verwenden würde. Bei neueren Commits erscheinen Anzahl und Betreffzeilen der Änderungen; die Anzeige ist auf die letzten 20 Commits begrenzt. Dazu benötigt der API-Build und -Container ausgehenden HTTPS-Zugriff auf `api.github.com`. Wenn die Versionsabfrage beim Build fehlschlägt, bleibt das Image trotzdem baubar; die Commitanzeige ist dann vorübergehend nicht verfügbar und der Updateknopf bleibt nutzbar. Der Portainer-Build-Kontext bleibt auf `apps/api` begrenzt und braucht kein `.git`-Verzeichnis.
 
-Beim Start fordert der Updateknopf Portainer an, speichert vorher die Ziel-Commit-ID auf dem persistenten Datenvolume und wartet dann bis zu fünf Minuten auf den erfolgreichen API-Start nach den Migrationen. Als installiert gilt die Version nur, wenn die Commit-ID des gestarteten API-Images dem angeforderten Ziel entspricht. Ein abweichender oder fehlender Image-Marker wird nicht als Erfolg gewertet. Bei Build- oder Startfehlern bleibt der Button nach dem Timeout bedienbar und meldet, dass der Portainer-Stack geprüft werden muss. Explizite API-Fehler wie eine nicht erreichbare oder ablehnende Portainer-Webhook-Adresse erscheinen direkt; nur eine verlorene oder unvollständige HTTP-Antwort wird als unklar behandelt und anschließend durch Statusabfragen abgeglichen.
+Beim Start fordert der Updateknopf Portainer an und speichert Zielversion und vorherige Image-IDs im persistenten Datenvolume. Mit aktivierter Portainer-Statusanbindung zeigt die Administration für API, Weboberfläche, Auftragsverarbeitung, Erinnerungsplanung, Datenbank und Warteschlange den Containerzustand, Bereitschaft, Startzeit und Imagewechsel. Für die vier LifePilot-Dienste wird zusätzlich geprüft, ob die laufende Commit-ID der angeforderten Version entspricht. Datenbank und Warteschlange können korrekt als „Image unverändert“ erscheinen, wenn Portainer dasselbe Image wiederverwendet hat. Der Updateknopf meldet Erfolg erst, wenn alle Container wieder laufen und die vier LifePilot-Dienste die Zielversion melden. Ohne Portainer-Statusanbindung bleibt die bisherige API-Versionsprüfung verfügbar.
+
+Für die Containerübersicht braucht LifePilot einen Portainer-API-Zugang mit Leserechten auf das Docker-Environment. Portainer unterstützt API-Schlüssel über den Header `X-API-Key` und stellt die Docker-Containerliste über sein Environment-Proxy bereit ([Portainer API-Zugriff](https://docs.portainer.io/api/access), [Docker-API-Beispiele](https://docs.portainer.io/api/examples)). Lege dafür in Portainer einen separaten Benutzer an, der nur Zugriff auf das LifePilot-Environment hat, erstelle für diesen Benutzer einen API-Schlüssel und hinterlege diese Stack-Variablen:
+
+```text
+PORTAINER_API_URL=http://portainer:9000
+PORTAINER_API_KEY=<API-Schlüssel>
+PORTAINER_ENDPOINT_ID=<Environment-ID>
+PORTAINER_STACK_NAME=lifepilot
+```
+
+Die Portainer-Adresse muss aus dem API-Container erreichbar sein. Die Environment-ID steht in Portainer bei den Environments. `PORTAINER_STACK_NAME` muss dem Compose-Projektnamen des Stacks entsprechen. Das vorhandene interne Netzwerk `lifepilot-portainer-control` wird bereits vom API-Container verwendet. Der Schlüssel wird nur serverseitig gespeichert und nie an den Browser ausgegeben.
 
 Einmalige Vorbereitung für den Portainer-Server:
 

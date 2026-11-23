@@ -44,6 +44,10 @@ services:
       MCP_API_KEY: ${MCP_API_KEY:-}
       WEB_ORIGIN: https://pim.rygos.de
       PORTAINER_WEBHOOK_URL: ${PORTAINER_WEBHOOK_URL:-}
+      PORTAINER_API_URL: ${PORTAINER_API_URL:-}
+      PORTAINER_API_KEY: ${PORTAINER_API_KEY:-}
+      PORTAINER_ENDPOINT_ID: ${PORTAINER_ENDPOINT_ID:-0}
+      PORTAINER_STACK_NAME: ${PORTAINER_STACK_NAME:-lifepilot}
       LIFE_PILOT_BOOTSTRAP_USERNAME: ${LIFE_PILOT_BOOTSTRAP_USERNAME:-admin}
       LIFE_PILOT_BOOTSTRAP_PASSWORD: ${LIFE_PILOT_BOOTSTRAP_PASSWORD:?Set initial login password in Portainer}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
@@ -92,10 +96,17 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: https://pim.rygos.de
+        LIFE_PILOT_COMMIT_SHA: ${LIFE_PILOT_COMMIT_SHA:-}
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     labels:
       traefik.enable: "true"
       traefik.docker.network: proxy
@@ -111,6 +122,8 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      args:
+        LIFE_PILOT_COMMIT_SHA: ${LIFE_PILOT_COMMIT_SHA:-}
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.scheduler"]
     environment:
@@ -130,6 +143,8 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      args:
+        LIFE_PILOT_COMMIT_SHA: ${LIFE_PILOT_COMMIT_SHA:-}
     restart: unless-stopped
     command: ["python", "-m", "lifepilot.jobs"]
     environment:

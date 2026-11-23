@@ -10,6 +10,8 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels .
 
 FROM python:3.12-slim
 WORKDIR /app
+ARG LIFE_PILOT_COMMIT_SHA
+LABEL org.opencontainers.image.revision=$LIFE_PILOT_COMMIT_SHA
 COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 COPY --from=build /app/version-commit ./version-commit

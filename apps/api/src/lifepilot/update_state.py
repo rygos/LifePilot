@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifepilot.config import settings
 
@@ -17,6 +17,9 @@ class UpdateState(BaseModel):
     current_commit: str | None = None
     pending_commit: str | None = None
     pending_since: datetime | None = None
+    last_update_commit: str | None = None
+    last_update_requested_at: datetime | None = None
+    previous_images: dict[str, str] = Field(default_factory=dict)
 
 
 def state_path() -> Path:
@@ -51,28 +54,36 @@ def image_commit_sha() -> str:
 
 
 def current_commit_sha() -> str:
-    configured_sha = settings.life_pilot_commit_sha.strip()
-    if COMMIT_PATTERN.fullmatch(configured_sha):
-        return configured_sha
     image_sha = image_commit_sha()
     if image_sha:
         return image_sha
+    configured_sha = settings.life_pilot_commit_sha.strip()
+    if COMMIT_PATTERN.fullmatch(configured_sha):
+        return configured_sha
     return read_update_state().current_commit or ""
 
 
 def mark_update_pending(target_commit: str) -> None:
+    mark_update_pending_with_images(target_commit, {})
+
+
+def mark_update_pending_with_images(target_commit: str, previous_images: dict[str, str]) -> None:
     if not COMMIT_PATTERN.fullmatch(target_commit):
         raise ValueError("Ungültige Commit-ID für das Update")
+    now = datetime.now(timezone.utc)
     write_update_state(UpdateState(
         current_commit=current_commit_sha() or None,
         pending_commit=target_commit,
-        pending_since=datetime.now(timezone.utc),
+        pending_since=now,
+        last_update_commit=target_commit,
+        last_update_requested_at=now,
+        previous_images=previous_images,
     ))
 
 
 def clear_pending_update() -> None:
     state = read_update_state()
-    write_update_state(state.model_copy(update={"pending_commit": None, "pending_since": None}))
+    write_update_state(state.model_copy(update={"pending_commit": None, "pending_since": None, "last_update_commit": None, "last_update_requested_at": None, "previous_images": {}}))
 
 
 def complete_pending_update() -> None:
@@ -80,7 +91,7 @@ def complete_pending_update() -> None:
     pending = state.pending_commit
     image_sha = image_commit_sha()
     if pending:
-        write_update_state(UpdateState(current_commit=image_sha or state.current_commit, pending_commit=None))
+        write_update_state(state.model_copy(update={"current_commit": image_sha or state.current_commit, "pending_commit": None, "pending_since": None}))
         return
     if image_sha and state.current_commit != image_sha:
         write_update_state(UpdateState(current_commit=image_sha))
