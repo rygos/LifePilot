@@ -1,7 +1,7 @@
-import time
+import time as time_module
 import logging
 from typing import Final
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from redis import Redis
 from rq import Queue, Retry
@@ -46,7 +46,7 @@ def _schedule_birthday_reminders(db: Session, now: datetime) -> int:
         if occurrence < local_today:
             occurrence = _birthday_in_year(birth_date, local_today.year + 1)
         reminder_date = max(local_today, occurrence - timedelta(days=BIRTHDAY_REMINDER_DAYS))
-        due_at = datetime.combine(reminder_date, time(9), tzinfo=zone).astimezone(timezone.utc)
+        due_at = datetime.combine(reminder_date, datetime_time(9), tzinfo=zone).astimezone(timezone.utc)
         reminder = db.scalar(
             select(Reminder).where(
                 Reminder.birthday_person_id == person.id,
@@ -134,8 +134,8 @@ def run_scheduler(interval_seconds: int = 60) -> None:
             run_scheduling_cycle(redis_client)
         except Exception:
             logger.exception("Erinnerungsplanung ist fehlgeschlagen")
-            time.sleep(min(interval_seconds, 10))
-        time.sleep(interval_seconds)
+            time_module.sleep(min(interval_seconds, 10))
+        time_module.sleep(interval_seconds)
 
 if __name__ == "__main__":
     run_scheduler()
