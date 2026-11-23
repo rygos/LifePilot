@@ -15,7 +15,7 @@ from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
 from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonCallLog, PersonContactMethod, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
-from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonCallIn, PersonCallOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, RelationshipWithPersonIn, RelationshipWithPersonOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
+from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonCallIn, PersonCallOut, PersonIn, PersonOut, PersonPatch, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, RelationshipWithPersonIn, RelationshipWithPersonOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.scheduler import sync_contact_followup
@@ -335,11 +335,12 @@ def person_life_events(person_id: str, db: Session = Depends(get_db), user: User
     return [{"id": row.id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at, "date_precision": row.date_precision, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in rows]
 
 @app.patch("/api/people/{person_id}", response_model=PersonOut)
-def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def person_update(person_id: str, data: PersonPatch, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
     previous_contact_interval = person.contact_interval_days
-    for key, value in data.model_dump(exclude={"gender"}).items(): setattr(person, key, value)
-    if data.gender is not None:
+    updates = data.model_dump(exclude_unset=True, exclude={"gender"})
+    for key, value in updates.items(): setattr(person, key, value)
+    if "gender" in data.model_fields_set and data.gender is not None:
         person.gender = data.gender
         refresh_relationship_labels(db, user.id, person)
     if person.is_self:

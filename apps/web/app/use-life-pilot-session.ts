@@ -77,8 +77,9 @@ export function useLifePilotSession(api: string) {
       if (response.headers.get("content-type")?.includes("application/json")) {
         try {
           const parsed: unknown = JSON.parse(body);
-          if (typeof parsed === "object" && parsed !== null && "detail" in parsed && typeof parsed.detail === "string") {
-            message = parsed.detail;
+          if (typeof parsed === "object" && parsed !== null && "detail" in parsed) {
+            const detail = parsed.detail;
+            message = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map(item => typeof item === "object" && item !== null && "msg" in item ? String(item.msg) : String(item)).join(" · ") : message;
             hasServerDetail = true;
           }
         } catch (caught) {

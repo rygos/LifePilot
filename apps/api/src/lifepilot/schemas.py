@@ -159,6 +159,89 @@ class PersonIn(BaseModel):
         if len(normalized) > 30:
             raise ValueError("Pro Person sind höchstens 30 Labels erlaubt")
         return list(normalized.values())
+
+class PersonPatch(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    nickname: str | None = None
+    birthday: str | None = None
+    birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] | None = None
+    birthday_month: int | None = Field(default=None, ge=1, le=12)
+    birthday_day: int | None = Field(default=None, ge=1, le=31)
+    birthday_approximate_age: int | None = Field(default=None, ge=0, le=130)
+    contact_interval_days: int | None = Field(default=None, ge=1, le=365)
+    gender: Gender | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    website: str | None = None
+    job_title: str | None = None
+    organization: str | None = None
+    how_met: str | None = None
+    tags: list[str] | None = Field(default=None, max_length=30)
+    is_favorite: bool | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_partial_birthday(self) -> Self:
+        fields = self.model_fields_set
+        precision = self.birthday_precision
+        if precision is None and fields.intersection({"birthday", "birthday_month", "birthday_day", "birthday_approximate_age"}):
+            if "birthday" in fields and self.birthday is None and not fields.intersection({"birthday_month", "birthday_day", "birthday_approximate_age"}):
+                self.birthday_precision = "unknown"
+                self.birthday_month = None
+                self.birthday_day = None
+                self.birthday_approximate_age = None
+                return self
+            raise ValueError("Beim Ändern eines Geburtstags muss auch die Genauigkeit angegeben werden")
+        if precision == "exact":
+            if not self.birthday:
+                raise ValueError("Bitte das genaue Geburtsdatum angeben")
+            try:
+                birth_date = date.fromisoformat(self.birthday)
+            except ValueError as error:
+                raise ValueError("Geburtstag muss ein gültiges Datum sein") from error
+            self.birthday_month = birth_date.month
+            self.birthday_day = birth_date.day
+            self.birthday_approximate_age = None
+        elif precision == "month_day":
+            if self.birthday_month is None or self.birthday_day is None:
+                raise ValueError("Bitte Tag und Monat des Geburtstags angeben")
+            try:
+                date(2000, self.birthday_month, self.birthday_day)
+            except ValueError as error:
+                raise ValueError("Dieser Geburtstag ist kein gültiges Kalenderdatum") from error
+            self.birthday = None
+            self.birthday_approximate_age = None
+        elif precision == "approximate":
+            if self.birthday_approximate_age is None:
+                raise ValueError("Bitte das ungefähre Alter angeben")
+            self.birthday = None
+            self.birthday_month = None
+            self.birthday_day = None
+        elif precision == "unknown":
+            self.birthday = None
+            self.birthday_month = None
+            self.birthday_day = None
+            self.birthday_approximate_age = None
+        return self
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_patch_tags(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        normalized: dict[str, str] = {}
+        for value in values:
+            tag = " ".join(value.strip().split())
+            if tag:
+                normalized.setdefault(tag.casefold(), tag)
+        if len(normalized) > 30:
+            raise ValueError("Pro Person sind höchstens 30 Labels erlaubt")
+        if any(len(tag) > 40 for tag in normalized.values()):
+            raise ValueError("Labels dürfen höchstens 40 Zeichen lang sein")
+        return list(normalized.values())
+
 class PersonOut(PersonIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
