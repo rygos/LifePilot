@@ -35,6 +35,19 @@ type AdminRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 const containerLabels: Record<string, string> = { api: "API", web: "Weboberfläche", worker: "Auftragsverarbeitung", scheduler: "Erinnerungsplanung", db: "Datenbank", redis: "Warteschlange" };
 
+function mergeUpdateProgress(current: UpdateStatus | null, progress: UpdateStatus): UpdateStatus {
+  if (!current) return progress;
+  return {
+    ...current,
+    ...progress,
+    available: current.available,
+    update_available: current.update_available,
+    latest_commit: current.latest_commit,
+    ahead_by: current.ahead_by,
+    commits: current.commits,
+  };
+}
+
 function containerStateLabel(container: UpdateStatus["containers"][number]): string {
   if (container.state === "waiting") return "Wartet auf Rückkehr";
   if (container.health === "healthy") return "Bereit";
@@ -95,8 +108,9 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       if ((allReturned && appUpdated) || progressPollInFlight.current) return;
       progressPollInFlight.current = true;
       void request<UpdateStatus>("/api/admin/app-update?progress_only=true").then(progress => {
-        updateStatusRef.current = progress;
-        setUpdateStatus(progress);
+        const merged = mergeUpdateProgress(updateStatusRef.current, progress);
+        updateStatusRef.current = merged;
+        setUpdateStatus(merged);
       }).catch(() => undefined).finally(() => { progressPollInFlight.current = false; });
     }, 5000);
     return () => window.clearInterval(interval);
@@ -190,7 +204,7 @@ export function AdminPanel({ request, currentUserId }: AdminPanelProps) {
       try {
         const progress = await request<UpdateStatus>("/api/admin/app-update?progress_only=true");
         if (!targetCommit) targetCommit = progress.pending_commit ?? progress.last_update_commit ?? "";
-        setUpdateStatus(previous => previous ? { ...previous, ...progress } : progress);
+        setUpdateStatus(previous => mergeUpdateProgress(previous, progress));
         setUpdateConfigured(progress.configured);
         const containersReady = progress.containers.length > 0 && progress.containers.every(container => container.state === "running" && container.health !== "starting" && container.health !== "unhealthy");
         const applicationUpdated = ["api", "web", "worker", "scheduler"].every(service => {
