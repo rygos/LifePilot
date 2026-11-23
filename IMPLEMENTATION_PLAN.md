@@ -38,7 +38,7 @@ Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot 
 | Erinnerungen und Wiedervorlagen | Aufgaben-/Termin-Erinnerungen vorhanden; Geburtstage werden eine Woche vorher jährlich und in der Benutzerzeitzone vorgemerkt | Vorhanden; Vorlauf derzeit sieben Tage |
 | Aktivitäten und Journal | Chronologisches Tagebuch mit freiem Text, optionaler Selbsteinschätzung der Stimmung und Verknüpfungen zu Personen, Projekten und Ereignissen | Grundfunktion vorhanden; Import älterer Journaleinträge ist Folgearbeit |
 | Notizen, Geschenke und Beziehungen | Vorhanden | Bereits durch das Gedächtnismodell abgedeckt |
-| Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte und Gegenstände vorhanden; Tiere sind nicht als eigenes Modul vorhanden | Priorität 2: Haustierprofile als typisierte Entität prüfen |
+| Haustiere, Unternehmen, Orte, Projekte und weitere Entitäten | Vereine/Organisationen, Orte als Eventdaten, Projekte, Gegenstände und benutzergebundene Tierprofile vorhanden | Vorhanden; Import und Tierfotos bleiben Erweiterungen |
 | Schulden und Geldbewegungen | Gegenstände-Leihgaben vorhanden; Geldschulden fehlen | Priorität 3: optionales Geldverzeichnis ergänzen |
 | Anhänge und Dokumente | Sichere Anhänge für Personen, Erinnerungen/Notizen, Gespräche, Ereignisse und Projekte in UI und API; MCP kann Metadaten der eigenen Anhänge abfragen | Weitere Arbeit: Vorschaubilder und Import |
 | Kontaktfreigabe und gemeinsam genutzte Bereiche | Benutzerbereiche sind isoliert; selektive Freigaben fehlen | Nicht ohne Freigabe- und Datenschutzmodell öffnen |
@@ -65,7 +65,16 @@ Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kenne
 - [x] Migration `0023` bis Head `0026` sowie Downgrade und erneutes Upgrade auf einer isolierten SQLite-Datenbank erfolgreich.
 - [x] API-Suite nach den Ergänzungen: 81 bestanden, 2 übersprungen.
 - [x] Next.js-Produktionsbuild erfolgreich; Playwright-E2E gegen eine isolierte App-/API-Instanz prüft Profilbearbeitung, Labels, Favoritenschalter, Filter, Kontaktweg-Erfassung und Suche: 1 bestanden.
-- [ ] Folgearbeit laut Vergleich: Haustiere und Geldschulden; außerdem Vorschaubilder, Dokumentimport und Journalimport.
+- [ ] Folgearbeit laut Vergleich: Geldschulden; außerdem Vorschaubilder, Dokumentimport und Journalimport.
+
+### Tierprofile
+
+- [x] Eigene, benutzergebundene Tierentität mit Tierart, Rasse, Geschlecht, Geburtstag, Kastrationsstatus und Notizen; Schema- und Besitzerprüfungen verhindern ungültige oder fremde Verknüpfungen.
+- [x] Tiere lassen sich mit Personen (Besitzer:in, Betreuung, gemeinsamer Haushalt) und Ereignissen verknüpfen; Verbindungen sind auf der Profilkarte sichtbar und führen zu den zugehörigen Personen/Ereignissen.
+- [x] CRUD-REST-Endpunkte, auditierte Änderungen und typisierte MCP-Werkzeuge `pet_create`, `pet_search`, `pet_get`, `pet_update` und freigabepflichtiges `pet_delete` verwenden dieselbe Geschäftslogik.
+- [x] Migration `0030_pet_profiles`; gezielte API-/MCP-Tests und SQLite-Migrationslauf bestanden.
+- [x] Playwright-Szenario prüft Tieranlage, Autocomplete-Verknüpfung mit einer Person, Ereigniszuordnung und nachträgliche Profiländerung.
+- [ ] Tierfotos, Import und eine dedizierte Detailansicht bleiben Folgearbeit.
 
 ### Tagebuch
 

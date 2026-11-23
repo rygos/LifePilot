@@ -1,0 +1,43 @@
+.shell[data-view="pets"] .content>*:not(header):not(.notice):not(.pets-panel){display:none}
+.pets-panel{display:grid;gap:16px}
+.pet-create{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.pet-create>summary{cursor:pointer;color:var(--green);font-weight:600}
+.pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.pet-form>label,.pet-links-field>label{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.pet-form input:not([type=checkbox]),.pet-form textarea,.pet-form select,.pet-person-picker>input,.pet-search input{width:100%;min-height:42px;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit}
+.pet-form .pet-notes,.pet-form .pet-links-field,.pet-form .pet-events-field,.pet-form .pet-select-hint{grid-column:1/-1}
+.pet-form textarea{resize:vertical}
+.pet-form .pet-neutered{display:flex;align-items:center;gap:9px}
+.pet-form .pet-neutered input{width:18px;height:18px;accent-color:var(--green)}
+.pet-form select[multiple]{min-height:100px}
+.pet-form button{justify-self:start}
+.pet-select-hint{margin:0;color:var(--muted);font-size:11px}
+.pet-search{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.pet-search label{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.pet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:14px}
+.pet-card{display:grid;align-content:start;gap:14px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.pet-card-heading{display:flex;align-items:center;gap:13px}
+.pet-avatar{display:grid;flex:0 0 58px;width:58px;height:58px;place-items:center;border-radius:50%;background:var(--pale);color:var(--green);font:600 25px 'Playfair Display',serif}
+.pet-card-heading .eyebrow{margin:0}
+.pet-card-heading h3{margin:2px 0;font:600 21px 'Playfair Display',serif}
+.pet-card-heading p{margin:0;color:var(--muted);font-size:12px}
+.pet-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0;padding:12px 0;border-block:1px solid var(--line)}
+.pet-facts dt{color:var(--muted);font-size:11px}
+.pet-facts dd{margin:3px 0 0;font-weight:600}
+.pet-notes-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.pet-related{display:grid;gap:7px}
+.pet-related h4{margin:0;font-size:12px}
+.pet-related>div{display:flex;flex-wrap:wrap;gap:7px}
+.pet-related a{display:grid;gap:2px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;color:var(--green);text-decoration:none;font-size:12px}
+.pet-related a small{color:var(--muted);font-size:10px}
+.pet-card-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--line)}
+.pet-person-picker{position:relative;display:grid;gap:8px}
+.pet-person-links{display:grid;gap:7px}
+.pet-person-link{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,auto) auto;align-items:center;gap:8px;padding:7px;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:12px}
+.pet-person-link select{min-height:36px;padding:6px}
+.pet-person-link button{min-height:36px;padding:5px 10px}
+.pet-person-picker>input{font-size:14px}
+.pet-person-suggestions{position:absolute;z-index:5;top:calc(100% - 2px);left:0;right:0;max-height:220px;overflow:auto;margin:0;padding:5px;list-style:none;border:1px solid var(--line);border-radius:9px;background:var(--paper);box-shadow:0 8px 20px rgb(0 0 0 / .12)}
+.pet-person-suggestions button{width:100%;padding:9px;background:transparent;color:var(--ink);text-align:left}
+.pet-person-suggestions button:hover{background:var(--pale);color:var(--green)}
+@media(max-width:650px){.pet-form{grid-template-columns:1fr}.pet-form .pet-notes,.pet-form .pet-links-field,.pet-form .pet-events-field,.pet-form .pet-select-hint{grid-column:auto}.pet-search{grid-template-columns:1fr}.pet-search button{width:100%}.pet-person-link{grid-template-columns:minmax(0,1fr) auto}.pet-person-link select{grid-column:1/-1;grid-row:2}.pet-person-link button{grid-column:2;grid-row:1}}

@@ -10,6 +10,7 @@ import { PersonPicker } from "./people/person-picker";
 import { AdminPanel } from "./admin/admin-panel";
 import { ResourceAttachments } from "./attachments/resource-attachments";
 import { JournalPanel } from "./journal/journal-panel";
+import { PetsPanel } from "./pets/pets-panel";
 
 export type Person = { id: string; first_name: string; last_name: string; nickname?: string | null; birthday?: string | null; gender: "female" | "male" | "diverse" | "unspecified"; email?: string | null; phone?: string | null; address: string; website?: string | null; job_title?: string | null; organization?: string | null; how_met: string; tags: string[]; is_favorite: boolean; contact_methods: PersonContactMethod[]; notes: string; is_self: boolean; photo_key?: string | null; created_at: string };
 type ChatSource = { id: string; kind: string; title: string; excerpt: string; href: string };
@@ -435,9 +436,9 @@ export default function Home() {
 
   if (!token || !isAuthenticated) return <main className="login"><div className="brand">L<span>·</span>P</div><p className="eyebrow">DEIN PERSÖNLICHES GEDÄCHTNIS</p><h1>Alles Wichtige<br />im Kopf. Ohne Kopf.</h1><form onSubmit={login} className="card stack"><label>Benutzername<input value={username} onChange={e => setUsername(e.target.value)} /></label><label>Passwort<input type="password" value={password} onChange={e => setPassword(e.target.value)} /></label><button>Anmelden</button>{(sessionMessage || message) && <p className="error">{sessionMessage || message}</p>}</form></main>;
 
-  const navItems: [string, string][] = [["/", "Übersicht"], ["/chat", "Chat"], ["/people", "Menschen"], ["/memory", "Gedächtnis"], ["/journal", "Tagebuch"], ["/events", "Ereignisse"], ["/planning", "Planung"], ["/things", "Gegenstände"], ["/inbox", "Eingang"], ["/settings", "Einstellungen"]];
+  const navItems: [string, string][] = [["/", "Übersicht"], ["/chat", "Chat"], ["/people", "Menschen"], ["/memory", "Gedächtnis"], ["/journal", "Tagebuch"], ["/pets", "Tiere"], ["/events", "Ereignisse"], ["/planning", "Planung"], ["/things", "Gegenstände"], ["/inbox", "Eingang"], ["/settings", "Einstellungen"]];
   if (currentUser?.role === "admin") navItems.push(["/admin", "Administration"]);
-  const pageTitle = currentView === "person" ? (selectedPerson ? `${selectedPerson.first_name} ${selectedPerson.last_name}` : "Personenprofil") : ({ dashboard: "Übersicht", chat: "Chat", people: "Menschen", memory: "Gedächtnis", journal: "Tagebuch", events: "Ereignisse", planning: "Planung", things: "Gegenstände", inbox: "Eingang", settings: "Einstellungen", admin: "Administration" } as Record<string, string>)[currentView] ?? "LifePilot";
+  const pageTitle = currentView === "person" ? (selectedPerson ? `${selectedPerson.first_name} ${selectedPerson.last_name}` : "Personenprofil") : ({ dashboard: "Übersicht", chat: "Chat", people: "Menschen", memory: "Gedächtnis", journal: "Tagebuch", pets: "Tiere", events: "Ereignisse", planning: "Planung", things: "Gegenstände", inbox: "Eingang", settings: "Einstellungen", admin: "Administration" } as Record<string, string>)[currentView] ?? "LifePilot";
   const inboxCaptures = currentView === "inbox" ? captures.filter(item => item.source !== "chat").slice(0, 30) : captures.filter(item => item.source !== "chat" && item.status !== "reviewed").slice(0, 5);
   const searchablePeople = people.filter(person => `${person.first_name} ${person.last_name} ${person.nickname ?? ""} ${person.email ?? ""} ${person.phone ?? ""} ${person.organization ?? ""} ${person.how_met} ${person.tags.join(" ")} ${person.contact_methods.map(method => `${method.label} ${method.value}`).join(" ")} ${organizations.filter(org => org.members.some(member => member.person_id === person.id)).map(org => org.name).join(" ")}`.toLocaleLowerCase("de-DE").includes(personFilter.trim().toLocaleLowerCase("de-DE"))).filter(person => personKindFilter === "all" || (personKindFilter === "favorite" && person.is_favorite) || (personKindFilter === "birthday" && Boolean(person.birthday)) || (personKindFilter === "photo" && Boolean(person.photo_key)) || (personKindFilter === "organization" && organizations.some(org => org.members.some(member => member.person_id === person.id))));
   const sortedPeople = [...searchablePeople].sort((left, right) => {
@@ -488,6 +489,7 @@ export default function Home() {
       {currentView === "admin" && currentUser?.role === "admin" && <AdminPanel request={request} currentUserId={currentUser.id} />}
       {currentView === "admin" && currentUser?.role !== "admin" && <section className="card panel"><h2>Kein Zugriff</h2><p>Für die Administration brauchst du ein Administratorkonto.</p></section>}
       {currentView === "journal" && <JournalPanel people={people} projects={projects} events={events} request={request} onMessage={setMessage} />}
+      {currentView === "pets" && <PetsPanel people={people} events={events} request={request} onMessage={setMessage} />}
       <footer>Deine Daten. Dein Server. Dein Gedächtnis.</footer>
     </section></main>;
 }

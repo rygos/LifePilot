@@ -207,6 +207,60 @@ class JournalEntryOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+PetRelationshipType = Literal["owner", "caretaker", "lives_with"]
+PetSex = Literal["female", "male", "unknown"]
+
+class PetPersonLinkIn(BaseModel):
+    person_id: str
+    relationship_type: PetRelationshipType = "owner"
+
+class PetPersonLinkOut(PetPersonLinkIn):
+    pass
+
+class PetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    species: str = Field(min_length=1, max_length=80)
+    breed: str = Field(default="", max_length=120)
+    sex: PetSex = "unknown"
+    birthday: date | None = None
+    is_neutered: bool = False
+    notes: str = Field(default="", max_length=20000)
+    person_links: list[PetPersonLinkIn] = Field(default_factory=list, max_length=50)
+    event_ids: list[str] = Field(default_factory=list, max_length=50)
+
+class PetPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    species: str | None = Field(default=None, min_length=1, max_length=80)
+    breed: str | None = Field(default=None, max_length=120)
+    sex: PetSex | None = None
+    birthday: date | None = None
+    is_neutered: bool | None = None
+    notes: str | None = Field(default=None, max_length=20000)
+    person_links: list[PetPersonLinkIn] | None = Field(default=None, max_length=50)
+    event_ids: list[str] | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def required_pet_fields_cannot_be_cleared(self) -> Self:
+        required = {"name", "species", "sex", "is_neutered"}
+        if any(getattr(self, field) is None for field in required & self.model_fields_set):
+            raise ValueError("Pflichtangaben des Tierprofils dürfen nicht geleert werden")
+        return self
+
+class PetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    species: str
+    breed: str
+    sex: PetSex
+    birthday: date | None
+    is_neutered: bool
+    notes: str
+    person_links: list[PetPersonLinkOut]
+    event_ids: list[str]
+    created_at: datetime
+    updated_at: datetime
+
 class TaskIn(BaseModel):
     title: str
     description: str = ""

@@ -12,7 +12,6 @@ from lifepilot.main import profile_update
 from lifepilot.models import (
     AuditEvent,
     Attachment,
-    Attachment,
     Capture,
     Conversation,
     ConversationParticipant,
@@ -23,6 +22,7 @@ from lifepilot.models import (
     Loan,
     Memory,
     Person,
+    Pet,
     Project,
     Relationship,
     Reminder,
@@ -30,7 +30,7 @@ from lifepilot.models import (
     User,
     UserPersonRelationship,
 )
-from lifepilot.schemas import JournalEntryIn, JournalEntryPatch, MemoryOut, ProfileUpdate, ReminderOut
+from lifepilot.schemas import JournalEntryIn, JournalEntryPatch, MemoryOut, PetIn, PetPatch, PetPersonLinkIn, ProfileUpdate, ReminderOut
 from lifepilot.services import owned_person
 from lifepilot.mcp_tools import mcp_session, mcp_user
 
@@ -121,6 +121,45 @@ def register_extended_tools(mcp: FastMCP) -> None:
     def journal_delete_mcp(entry_id: str) -> dict:
         owner_id = mcp_user("memory:write")
         return _request_delete(owner_id, JournalEntry, entry_id, "journal_delete")
+
+    @mcp.tool(name="pet_create")
+    def pet_create_mcp(name: str, species: str, breed: str = "", sex: Literal["female", "male", "unknown"] = "unknown", birthday: str | None = None, is_neutered: bool = False, notes: str = "", person_links: list[PetPersonLinkIn] | None = None, event_ids: list[str] | None = None) -> dict:
+        from lifepilot.pet_routes import pet_create
+
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            data = PetIn(name=name, species=species, breed=breed, sex=sex, birthday=birthday, is_neutered=is_neutered, notes=notes, person_links=person_links or [], event_ids=event_ids or [])
+            return pet_create(db, db.get(User, owner_id), data, source="mcp").model_dump(mode="json")
+
+    @mcp.tool(name="pet_search")
+    def pet_search_mcp(query: str = "") -> list[dict]:
+        from lifepilot.pet_routes import pet_list
+
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return [row.model_dump(mode="json") for row in pet_list(db, db.get(User, owner_id), query)]
+
+    @mcp.tool(name="pet_get")
+    def pet_get_mcp(pet_id: str) -> dict:
+        from lifepilot.pet_routes import pet_get
+
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return pet_get(db, db.get(User, owner_id), pet_id).model_dump(mode="json")
+
+    @mcp.tool(name="pet_update")
+    def pet_update_mcp(pet_id: str, name: str | None = None, species: str | None = None, breed: str | None = None, sex: Literal["female", "male", "unknown"] | None = None, birthday: str | None = None, is_neutered: bool | None = None, notes: str | None = None, person_links: list[PetPersonLinkIn] | None = None, event_ids: list[str] | None = None) -> dict:
+        from lifepilot.pet_routes import pet_update
+
+        owner_id = mcp_user("memory:write")
+        changes = {key: value for key, value in (("name", name), ("species", species), ("breed", breed), ("sex", sex), ("birthday", birthday), ("is_neutered", is_neutered), ("notes", notes), ("person_links", person_links), ("event_ids", event_ids)) if value is not None}
+        with mcp_session(owner_id) as db:
+            return pet_update(db, db.get(User, owner_id), pet_id, PetPatch.model_validate(changes), source="mcp").model_dump(mode="json")
+
+    @mcp.tool(name="pet_delete")
+    def pet_delete_mcp(pet_id: str) -> dict:
+        owner_id = mcp_user("memory:write")
+        return _request_delete(owner_id, Pet, pet_id, "pet_delete")
 
     @mcp.tool(name="memory_capture")
     def memory_capture_mcp(original_text: str) -> dict:

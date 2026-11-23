@@ -20,6 +20,9 @@ const journalEventTitle = `E2E-Tagebuch-Ereignis-${suffix}`;
 const monicaPersonName = `E2E-Monica-${suffix}`;
 const lentItemName = `E2E-Leihgabe-${suffix}`;
 const borrowedItemName = `E2E-Rueckgabe-${suffix}`;
+const petName = `E2E-Hund-${suffix}`;
+const petHolderName = `E2E-Tierhalter-${suffix}`;
+const petEventTitle = `E2E-Tierspaziergang-${suffix}`;
 
 async function login(page: Page): Promise<void> {
   if (!username || !password) {
@@ -37,6 +40,12 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
   const loginResponse = await request.post(`${apiUrl}/api/auth/login`, { data: { username, password } });
   if (!loginResponse.ok()) return;
   const token = (await loginResponse.json()).access_token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const petsResponse = await request.get(`${apiUrl}/api/pets?q=${encodeURIComponent(petName)}`, { headers });
+  if (petsResponse.ok()) {
+    const pets = (await petsResponse.json()) as { id: string; name: string }[];
+    for (const pet of pets.filter(({ name }) => name === petName)) await request.delete(`${apiUrl}/api/pets/${pet.id}`, { headers });
+  }
   const journalResponse = await request.get(`${apiUrl}/api/journal?q=${encodeURIComponent(journalContent)}`, { headers: { Authorization: `Bearer ${token}` } });
   if (journalResponse.ok()) {
     const entries = (await journalResponse.json()) as { id: string; title: string }[];
@@ -44,51 +53,83 @@ async function deleteCreatedPeople(request: APIRequestContext): Promise<void> {
       await request.delete(`${apiUrl}/api/journal/${entry.id}`, { headers: { Authorization: `Bearer ${token}` } });
     }
   }
-  const peopleResponse = await request.get(`${apiUrl}/api/people?q=E2E-`, { headers: { Authorization: `Bearer ${token}` } });
+  const peopleResponse = await request.get(`${apiUrl}/api/people?q=E2E-`, { headers });
   if (!peopleResponse.ok()) return;
   const people = (await peopleResponse.json()) as { id: string; first_name: string }[];
-  for (const person of people.filter(({ first_name }) => first_name === parentName || first_name === childName || first_name === monicaPersonName)) {
-    await request.delete(`${apiUrl}/api/people/${person.id}`, { headers: { Authorization: `Bearer ${token}` } });
+  for (const person of people.filter(({ first_name }) => first_name === parentName || first_name === childName || first_name === monicaPersonName || first_name === petHolderName)) {
+    await request.delete(`${apiUrl}/api/people/${person.id}`, { headers });
   }
-  const organizationsResponse = await request.get(`${apiUrl}/api/organizations`, { headers: { Authorization: `Bearer ${token}` } });
+  const organizationsResponse = await request.get(`${apiUrl}/api/organizations`, { headers });
   if (organizationsResponse.ok()) {
     const organizations = (await organizationsResponse.json()) as { id: string; name: string }[];
     for (const organization of organizations.filter(({ name }) => name === organizationName)) {
-      await request.delete(`${apiUrl}/api/organizations/${organization.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await request.delete(`${apiUrl}/api/organizations/${organization.id}`, { headers });
     }
   }
-  const capturesResponse = await request.get(`${apiUrl}/api/captures`, { headers: { Authorization: `Bearer ${token}` } });
+  const capturesResponse = await request.get(`${apiUrl}/api/captures`, { headers });
   if (capturesResponse.ok()) {
     const captures = (await capturesResponse.json()) as { id: string; original_text: string }[];
     for (const capture of captures.filter(({ original_text }) => original_text === captureText || original_text === chatCaptureText || original_text === chatFollowUpText)) {
-      await request.delete(`${apiUrl}/api/captures/${capture.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await request.delete(`${apiUrl}/api/captures/${capture.id}`, { headers });
     }
   }
-  const loansResponse = await request.get(`${apiUrl}/api/loans?open_only=false`, { headers: { Authorization: `Bearer ${token}` } });
+  const loansResponse = await request.get(`${apiUrl}/api/loans?open_only=false`, { headers });
   if (loansResponse.ok()) {
     const loans = (await loansResponse.json()) as { id: string; item_name: string }[];
     for (const loan of loans.filter(({ item_name }) => item_name === lentItemName || item_name === borrowedItemName)) {
-      await request.delete(`${apiUrl}/api/loans/${loan.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await request.delete(`${apiUrl}/api/loans/${loan.id}`, { headers });
     }
   }
-  const projectsResponse = await request.get(`${apiUrl}/api/projects?q=E2E-`, { headers: { Authorization: `Bearer ${token}` } });
+  const projectsResponse = await request.get(`${apiUrl}/api/projects?q=E2E-`, { headers });
   if (projectsResponse.ok()) {
     const projects = (await projectsResponse.json()) as { id: string; name: string }[];
     for (const project of projects.filter(({ name }) => name === projectName)) {
-      await request.delete(`${apiUrl}/api/projects/${project.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await request.delete(`${apiUrl}/api/projects/${project.id}`, { headers });
     }
   }
-  const eventsResponse = await request.get(`${apiUrl}/api/events`, { headers: { Authorization: `Bearer ${token}` } });
+  const eventsResponse = await request.get(`${apiUrl}/api/events`, { headers });
   if (eventsResponse.ok()) {
     const events = (await eventsResponse.json()) as { id: string; title: string }[];
-    for (const event of events.filter(({ title }) => title === journalEventTitle)) {
-      await request.delete(`${apiUrl}/api/events/${event.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    for (const event of events.filter(({ title }) => title === journalEventTitle || title === petEventTitle)) {
+      await request.delete(`${apiUrl}/api/events/${event.id}`, { headers });
     }
   }
 }
 
 test.afterEach(async ({ request }) => {
   await deleteCreatedPeople(request);
+});
+
+test("Tierprofile lassen sich anlegen, mit Mensch und Ereignis verbinden und bearbeiten", async ({ page, request }) => {
+  await login(page);
+  const loginResponse = await request.post(`${apiUrl}/api/auth/login`, { data: { username, password } });
+  const token = (await loginResponse.json()).access_token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const personResponse = await request.post(`${apiUrl}/api/people`, { headers, data: { first_name: petHolderName } });
+  const personId = ((await personResponse.json()) as { id: string }).id;
+  const eventResponse = await request.post(`${apiUrl}/api/events`, { headers, data: { title: petEventTitle, record_type: "experience", starts_at: "2026-11-22T10:00:00+01:00", participant_ids: [personId] } });
+  const eventId = ((await eventResponse.json()) as { id: string }).id;
+
+  await page.goto("/pets");
+  const create = page.locator(".pet-create");
+  if (await create.getAttribute("open") === null) await create.locator("summary").click();
+  const form = create.locator(".pet-form");
+  await form.locator("input[name=name]").fill(petName);
+  await form.locator("input[name=species]").fill("Hund");
+  await form.getByRole("combobox", { name: "Person verknüpfen" }).fill(petHolderName);
+  await form.getByRole("option", { name: petHolderName }).click();
+  await form.getByLabel("Ereignisse").selectOption(eventId);
+  await form.getByRole("button", { name: "Tierprofil anlegen" }).click();
+
+  const pet = page.locator(".pet-card").filter({ hasText: petName });
+  await expect(pet).toContainText("Hund");
+  await expect(pet).toContainText(petHolderName);
+  await expect(pet).toContainText(petEventTitle);
+  await pet.getByRole("button", { name: "Bearbeiten" }).click();
+  const editForm = page.locator(".pet-card .pet-form");
+  await editForm.locator("textarea[name=notes]").fill("Mag Spaziergänge am See");
+  await editForm.getByRole("button", { name: "Änderungen speichern" }).click();
+  await expect(pet).toContainText("Mag Spaziergänge am See");
 });
 
 test("Projektanhänge lassen sich in der Projektansicht verwalten", async ({ page }) => {

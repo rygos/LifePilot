@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from lifepilot.db import get_db
 from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files
 from lifepilot.entity_embedding_jobs import delete_entity_embedding
-from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, Event, Gift, JournalEntry, Loan, Memory, Person, Project, Relationship, Reminder, Task, User
+from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, Event, Gift, JournalEntry, Loan, Memory, Person, Pet, Project, Relationship, Reminder, Task, User
 from lifepilot.schemas import ApprovalOut, AttachmentResourceType
 from lifepilot.security import current_user
 
@@ -24,6 +24,7 @@ _RESOURCES = {
     "loan_delete": Loan,
     "gift_delete": Gift,
     "journal_delete": JournalEntry,
+    "pet_delete": Pet,
 }
 _ATTACHMENT_RESOURCES: dict[str, AttachmentResourceType] = {"people": "person", "memories": "memory", "conversations": "conversation", "events": "event", "projects": "project"}
 

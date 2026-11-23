@@ -160,6 +160,38 @@ class JournalEntryEvent(Base):
     event_id: Mapped[str] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
+class Pet(Base):
+    __tablename__ = "pets"
+    __table_args__ = (
+        CheckConstraint("sex IN ('female', 'male', 'unknown')", name="ck_pets_sex"),
+        Index("ix_pets_owner_name", "owner_id", "name"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    species: Mapped[str] = mapped_column(String(80))
+    breed: Mapped[str] = mapped_column(String(120), default="")
+    sex: Mapped[str] = mapped_column(String(16), default="unknown")
+    birthday: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_neutered: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+class PetPerson(Base):
+    __tablename__ = "pet_people"
+    __table_args__ = (CheckConstraint("relationship_type IN ('owner', 'caretaker', 'lives_with')", name="ck_pet_people_relationship_type"),)
+    pet_id: Mapped[str] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), primary_key=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(20), default="owner")
+
+class PetEvent(Base):
+    __tablename__ = "pet_events"
+    pet_id: Mapped[str] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
 class MemoryEmbedding(Base):
     __tablename__ = "memory_embeddings"
     memory_id: Mapped[str] = mapped_column(ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True)
