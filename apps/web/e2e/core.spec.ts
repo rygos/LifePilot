@@ -335,6 +335,7 @@ test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch 
   await login(page);
   await page.goto("/people");
   await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.locator("#people select[name=birthday_precision]").selectOption("exact");
   await page.locator("#people input[name=birthday]").fill("1990-01-01");
   await page.getByRole("button", { name: "Person hinzufügen" }).click();
   const personCard = page.locator(".person-card").filter({ hasText: parentName });
@@ -383,6 +384,38 @@ test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch 
   await page.locator(".membership-form select[name=organization_id]").selectOption({ label: organizationName });
   await page.locator(".membership-form").getByRole("button", { name: "Mitgliedschaft hinzufügen" }).click();
   await expect(page.locator(".organization-card").filter({ hasText: organizationName })).toContainText("Mitglied");
+});
+
+test("Beziehung im gleichen Ablauf anlegen, Teilgeburtstag speichern und Telefonat protokollieren", async ({ page }) => {
+  await login(page);
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(`E2E-Kontakt-${suffix}`);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await page.locator(".person-card").filter({ hasText: `E2E-Kontakt-${suffix}` }).click();
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
+
+  await page.locator(".relationship-target-mode label").nth(1).click();
+  await page.locator(".relationship-new-person input[name=new_first_name]").fill(`E2E-Neue-Person-${suffix}`);
+  await page.locator(".relationship-new-person select[name=birthday_precision]").selectOption("month_day");
+  await page.locator(".relationship-new-person input[name=birthday_month_day]").fill("2000-02-29");
+  await page.locator(".relationship-form select[name=relationship_type]").selectOption("friend");
+  await page.getByRole("button", { name: "Person anlegen und verbinden" }).click();
+  await expect(page.locator(".relationship-card-grid")).toContainText(`E2E-Neue-Person-${suffix}`);
+
+  await page.getByRole("button", { name: "Verlauf" }).click();
+  await page.getByRole("button", { name: "Telefonat festhalten" }).click();
+  await page.locator(".person-call-form textarea[name=notes]").fill("Über das Wochenende gesprochen");
+  await page.locator(".person-call-form input[name=duration_minutes]").fill("8");
+  await page.getByRole("button", { name: "Telefonat speichern" }).click();
+  await expect(page.locator(".person-call-history")).toContainText("Über das Wochenende gesprochen");
+  await expect(page.locator(".person-call-history")).toContainText("8 Minuten");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#f6f5f2");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#171a18");
 });
 
 test("Anmeldung, Beziehungen, Chat-Gedächtnisfragen und PWA-Offline-Shell funktionieren", async ({ page }) => {

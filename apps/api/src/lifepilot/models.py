@@ -30,13 +30,23 @@ class User(Base):
 
 class Person(Base):
     __tablename__ = "people"
-    __table_args__ = (Index("uq_people_one_self_profile_per_owner", "owner_id", unique=True, postgresql_where=text("is_self = true"), sqlite_where=text("is_self = true")),)
+    __table_args__ = (
+        Index("uq_people_one_self_profile_per_owner", "owner_id", unique=True, postgresql_where=text("is_self = true"), sqlite_where=text("is_self = true")),
+        CheckConstraint("birthday_precision IN ('exact', 'month_day', 'approximate', 'unknown')", name="ck_people_birthday_precision"),
+        CheckConstraint("contact_interval_days IS NULL OR contact_interval_days BETWEEN 1 AND 365", name="ck_people_contact_interval_days"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     first_name: Mapped[str] = mapped_column(String(120))
     last_name: Mapped[str] = mapped_column(String(120), default="")
     nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
     birthday: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    birthday_precision: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown", nullable=False)
+    birthday_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    birthday_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    birthday_approximate_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contact_interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     gender: Mapped[str] = mapped_column(String(20), default="unspecified", server_default="unspecified", nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -65,6 +75,17 @@ class PersonContactMethod(Base):
     value: Mapped[str] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     person: Mapped[Person] = relationship(back_populates="contact_methods")
+
+class PersonCallLog(Base):
+    __tablename__ = "person_call_logs"
+    __table_args__ = (Index("ix_person_call_logs_person_occurred", "owner_id", "person_id", "occurred_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -354,7 +375,7 @@ class Attachment(Base):
 
 class Reminder(Base):
     __tablename__ = "reminders"
-    __table_args__ = (UniqueConstraint("task_id"), UniqueConstraint("event_id"), UniqueConstraint("birthday_person_id", "birthday_year", name="uq_reminders_birthday_person_year"))
+    __table_args__ = (UniqueConstraint("task_id"), UniqueConstraint("event_id"), UniqueConstraint("birthday_person_id", "birthday_year", name="uq_reminders_birthday_person_year"), UniqueConstraint("contact_person_id", name="uq_reminders_contact_person"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(240))
@@ -363,6 +384,7 @@ class Reminder(Base):
     event_id: Mapped[str | None] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True)
     birthday_person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), nullable=True, index=True)
     birthday_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contact_person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), nullable=True, index=True)
     state: Mapped[str] = mapped_column(String(20), default="scheduled", index=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

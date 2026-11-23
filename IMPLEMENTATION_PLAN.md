@@ -26,14 +26,37 @@ Das GitHub-Repository war leer. Es gab keine vorhandene Anwendung oder Datenbank
 
 ## Abgleich mit Monica HQ (Stand 21.11.2026)
 
+### Screenshot-Abgleich Monica HQ 4.1.2 (23.11.2026)
+
+Geprüfte Referenzen im Repository: `tmp/Dashboard.png`, `tmp/neue-beziehung-hinzufuegen.png`, `tmp/person-hinzufuegen.png` und `tmp/person-profil-notizen.png`. Die Monica-Farbgebung wird nicht übernommen; `DESIGN.md` bleibt für Hell-/Dunkelpalette, Typografie und LifePilot-Komponenten maßgeblich.
+
+| Screenshot-Muster | LifePilot-Abgleich | Priorisierte Umsetzung |
+| --- | --- | --- |
+| Dashboard mit Drei-Monats-Ausblick, aktuellem Kontakt und Aufgabenbereichen | Tagesbriefing, Erinnerungen, Aufgaben und Schnellerfassung vorhanden; längerer Vorausblick fehlt | Geburtstage und Ereignisse der nächsten 90 Tage im Dashboard ergänzen; Profile und Eventdetails verlinken |
+| Beziehung anlegen: vorhandene oder neue Person wählen, Geburtsdatum mit unterschiedlicher Genauigkeit | Manuelle Beziehung verlangt eine vorhandene Person; Geburtstag ist bislang exakt oder leer | Neue Person transaktional im Beziehungsablauf anlegen; Geburtstag als genau, Monat/Tag, ungefähres Alter oder unbekannt speichern |
+| Person hinzufügen mit „weitere Person anlegen“ | Kurzformular enthält zentrale Felder; Folgeanlage und Kontaktimport fehlen | Nach dem Beziehungsablauf Folgeanlage ergänzen; Import bleibt spätere Priorität |
+| Profil mit klaren Abschnitten für Beziehungen, Kontaktverlauf, Erinnerungen, Aufgaben, Geschenke, Schulden und Dokumente | Profile zeigen die meisten relevanten LifePilot-Daten, aktuell aber als lange Ansicht; Geldschulden und Telefonprotokoll fehlen | Profil nach Übersicht, Verlauf, Planung und Dateien gliedern; Telefonprotokoll und konfigurierbare Kontaktintervalle ergänzen |
+| vCard-Export, Archivieren und Löschen | Export/Archiv fehlen; Löschen ist vorhanden | JSON/vCard-Export als Folgearbeit priorisieren; Archivierung später mit Wiederherstellungskonzept |
+
+Der frühere Funktionsabgleich wurde bei diesem Screenshot-Audit korrigiert: Favoriten, Labels und „Wie kennengelernt“ sind bereits implementiert und keine offenen Punkte mehr.
+
+### Umsetzung aus dem Screenshot-Abgleich
+
+- [x] Dashboard: 90-Tage-Ausblick mit Ereignissen und bekannten Geburtstagen, responsiv und mit Links zu Profilen bzw. Ereignisarchiv.
+- [x] Personenprofil: Tabs für Übersicht, Verlauf, Planung und Dateien; Identitätskopf bleibt sichtbar und die langen Inhalte sind sinnvoll getrennt.
+- [x] Geburtstage: genaues Datum, Tag/Monat ohne Jahr, ungefähres Alter oder unbekannt; keine erfundenen Jahreszahlen. Bekannte Geburtstage erscheinen auch im Ereigniskalender.
+- [x] Beziehungserfassung: bestehende Person suchen oder neue Person mitsamt Geburtstag und Beziehung transaktional in einem Ablauf anlegen.
+- [x] Kontaktpflege: Telefonate mit Datum, Dauer und Notiz protokollieren; optionale Kontaktintervalle erzeugen persistente Wiedervorlagen nach einem protokollierten Kontakt.
+- [x] Verifiziert: API-Suite 92 bestanden, 2 übersprungen; Next.js-Produktionsbuild; Browserablauf für neue Person/Beziehung, Teilgeburtstag und Telefonat bei 390 px sowie Prüfung der Light-/Dark-Farbtoken und des horizontalen Überlaufs; vollständige Alembic-Kette bis `0031` auf isoliertem PostgreSQL und SQLite.
+
 Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot bleibt ein persönliches Zweitgedächtnis mit KI, Graphbeziehungen und MCP. Grundlage sind die [aktuelle Produktseite](https://www.monicahq.com/en/), die [Monica-v3-Seite](https://www.monicahq.com/en/v3/) und das [Open-Source-Repository](https://github.com/monicahq/monica), nicht nur die frühere Funktionsliste der v4-Anwendung.
 
 | Monica-Funktion | LifePilot-Stand | Maßnahme |
 | --- | --- | --- |
 | Kontakte mit Profilfoto, Geburtstag, Beziehungen und Kontaktverlauf | Vorhanden; Ereignisse, Gespräche, Erinnerungen und Aufgaben erscheinen im Profil | Beibehalten und weiter zusammenführen |
-| Favoriten | Fehlte | Favoritenstatus samt Personenfilter ergänzen |
-| Labels/Tags und Suche danach | Fehlte | Benutzerdefinierte, normalisierte Labels pro Person ergänzen |
-| „Wie kennengelernt“ | Fehlte | Eigenes Profilfeld ergänzen |
+| Favoriten | Implementiert | Personen markieren und filtern |
+| Labels/Tags und Suche danach | Implementiert | Normalisierte, filter- und durchsuchbare Labels |
+| „Wie kennengelernt“ | Implementiert | Eigenes Profilfeld und Suche |
 | Mehrere E-Mail-Adressen, Telefonnummern und Adressen mit Beschriftung | Beschriftete zusätzliche E-Mail-, Telefon-, Adress-, Webseiten-, Messenger-, Social- und sonstige Kontaktwege; Suche, REST und MCP | Vorhanden |
 | Erinnerungen und Wiedervorlagen | Aufgaben-/Termin-Erinnerungen vorhanden; Geburtstage werden eine Woche vorher jährlich und in der Benutzerzeitzone vorgemerkt | Vorhanden; Vorlauf derzeit sieben Tage |
 | Aktivitäten und Journal | Chronologisches Tagebuch mit freiem Text, optionaler Selbsteinschätzung der Stimmung und Verknüpfungen zu Personen, Projekten und Ereignissen | Grundfunktion vorhanden; Import älterer Journaleinträge ist Folgearbeit |
@@ -45,7 +68,7 @@ Monica wird hier als persönliches CRM für Kontaktpflege verglichen; LifePilot 
 | Import/Export | Backup/Restore vorhanden; strukturierter Kontakt-/vCard-Export und Import sind nicht vollständig | Priorität 2: portabler JSON/vCard-Export |
 | Anrufdauer, Kontaktfrequenz, Stimmungsverfolgung, frei definierte Profilabschnitte | Nicht vollständig vorhanden | Nur nach Produktentscheidung; nicht stillschweigend auswerten oder soziale Ranglisten bauen |
 
-Die erste Umsetzung dieses Abgleichs ergänzt Favoriten, Labels und „Wie kennengelernt“ mit persistenter Migration, API und Profil-/Listenansicht. Die übrigen Monica-Funktionen sind in der Tabelle ausdrücklich als Lücken oder bewusste Folgeentscheidungen dokumentiert und gelten nicht als umgesetzt.
+Frühere Monica-Ausbaupunkte wie Favoriten, Labels und „Wie kennengelernt“ sind bereits umgesetzt. Die folgenden Punkte dokumentieren tatsächliche Lücken oder bewusste Folgeentscheidungen.
 
 ### Monica-Kontaktfunktionen: erster Ausbau
 

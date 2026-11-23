@@ -93,6 +93,11 @@ class PersonIn(BaseModel):
     last_name: str = ""
     nickname: str | None = None
     birthday: str | None = None
+    birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] = "unknown"
+    birthday_month: int | None = Field(default=None, ge=1, le=12)
+    birthday_day: int | None = Field(default=None, ge=1, le=31)
+    birthday_approximate_age: int | None = Field(default=None, ge=0, le=130)
+    contact_interval_days: int | None = Field(default=None, ge=1, le=365)
     gender: Gender | None = None
     email: str | None = None
     phone: str | None = None
@@ -104,6 +109,41 @@ class PersonIn(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=30)
     is_favorite: bool = False
     notes: str = ""
+
+    @model_validator(mode="after")
+    def validate_birthday_precision(self) -> Self:
+        if self.birthday:
+            try:
+                birth_date = date.fromisoformat(self.birthday)
+            except ValueError as error:
+                raise ValueError("Geburtstag muss ein gültiges Datum sein") from error
+            if self.birthday_precision == "unknown":
+                self.birthday_precision = "exact"
+            if self.birthday_precision != "exact":
+                raise ValueError("Ein genaues Geburtsdatum benötigt die Genauigkeit 'genau'")
+            self.birthday_month = birth_date.month
+            self.birthday_day = birth_date.day
+            self.birthday_approximate_age = None
+        elif self.birthday_precision == "exact":
+            raise ValueError("Bitte das genaue Geburtsdatum angeben")
+        elif self.birthday_precision == "month_day":
+            if self.birthday_month is None or self.birthday_day is None:
+                raise ValueError("Bitte Tag und Monat des Geburtstags angeben")
+            try:
+                date(2000, self.birthday_month, self.birthday_day)
+            except ValueError as error:
+                raise ValueError("Dieser Geburtstag ist kein gültiges Kalenderdatum") from error
+            self.birthday_approximate_age = None
+        elif self.birthday_precision == "approximate":
+            if self.birthday_approximate_age is None:
+                raise ValueError("Bitte das ungefähre Alter angeben")
+            self.birthday_month = None
+            self.birthday_day = None
+        else:
+            self.birthday_month = None
+            self.birthday_day = None
+            self.birthday_approximate_age = None
+        return self
 
     @field_validator("tags")
     @classmethod
@@ -299,6 +339,36 @@ class RelationshipIn(BaseModel):
     source_memory_id: str | None = None
     confirmed: bool = True
 
+class RelationshipWithPersonIn(BaseModel):
+    source_person_id: str
+    relationship_type: str = Field(min_length=1, max_length=100)
+    new_person: PersonIn
+
+class PersonCallIn(BaseModel):
+    occurred_at: datetime
+    duration_minutes: int | None = Field(default=None, ge=1, le=1440)
+    notes: str = Field(default="", max_length=5000)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def normalize_call_time(cls, value: datetime) -> datetime:
+        return as_utc(value) or value
+
+    @field_validator("notes")
+    @classmethod
+    def trim_call_notes(cls, value: str) -> str:
+        return value.strip()
+
+class PersonCallOut(PersonCallIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    person_id: str
+    created_at: datetime
+
+    @field_serializer("occurred_at", "created_at")
+    def serialize_call_dates_as_utc(self, value: datetime) -> datetime:
+        return as_utc(value) or value
+
 class UserPersonRelationshipIn(BaseModel):
     relationship_type: str = Field(min_length=1, max_length=100)
     valid_from: datetime | None = None
@@ -424,6 +494,10 @@ class LoanIn(BaseModel):
     condition_note: str = ""
     source_memory_id: str | None = None
 
+class RelationshipWithPersonOut(BaseModel):
+    person: PersonOut
+    relationship: RelationshipOut
+
 class LoanOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -520,6 +594,7 @@ class ReminderOut(BaseModel):
     event_id: str | None
     birthday_person_id: str | None = None
     birthday_year: int | None = None
+    contact_person_id: str | None = None
 
     @field_serializer("due_at", "snoozed_until")
     def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:

@@ -9,11 +9,12 @@ from lifepilot.db import engine
 from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_person_context_embeddings
 from lifepilot.models import ApprovalRequest, Conversation, Gift, Loan, Memory, Person, PersonContactMethod, Relationship, Task, User
-from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
+from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, EventIn, GiftIn, GiftOut, LoanIn, LoanOut, MemoryOut, PersonCallIn, PersonCallOut, PersonIn, PersonOut, ProjectOut, RelationshipIn, RelationshipOut, TaskIn, TaskOut
 from lifepilot.security import resolve_bearer_scopes, resolve_bearer_token_use, resolve_bearer_user
 from lifepilot.services import owned_person, search
 from lifepilot.relationship_language import refresh_relationship_labels
-from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_contact_method_create, person_contact_method_delete, person_contact_method_update, person_contact_methods, person_get, relationship_add, relationship_list
+from lifepilot.scheduler import sync_contact_followup
+from lifepilot.main import conversation_create, conversation_list, daily_briefing, gift_create, gift_list, loan_create, loan_list, loan_return, person_briefing, person_call_create, person_call_list, person_contact_method_create, person_contact_method_delete, person_contact_method_update, person_contact_methods, person_get, relationship_add, relationship_list
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -52,9 +53,9 @@ try:
         db.refresh(row)
         return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
     @mcp.tool()
-    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str = "", tags: list[str] | None = None, is_favorite: bool = False, notes: str = "") -> dict:
+    def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] = "unknown", birthday_month: int | None = None, birthday_day: int | None = None, birthday_approximate_age: int | None = None, contact_interval_days: int | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str = "", tags: list[str] | None = None, is_favorite: bool = False, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
-        data = PersonIn(first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, how_met=how_met, tags=tags or [], is_favorite=is_favorite, notes=notes)
+        data = PersonIn(first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, birthday_precision=birthday_precision, birthday_month=birthday_month, birthday_day=birthday_day, birthday_approximate_age=birthday_approximate_age, contact_interval_days=contact_interval_days, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, how_met=how_met, tags=tags or [], is_favorite=is_favorite, notes=notes)
         with mcp_session(owner_id) as db:
             row = Person(owner_id=owner_id, **data.model_dump(exclude_none=True)); db.add(row); db.commit(); db.refresh(row)
             return PersonOut.model_validate(row).model_dump(mode="json")
@@ -115,17 +116,34 @@ try:
             return PersonOut.model_validate(person_get(person_id, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="person_update")
-    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str | None = None, tags: list[str] | None = None, is_favorite: bool | None = None, notes: str | None = None) -> dict:
+    def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] | None = None, birthday_month: int | None = None, birthday_day: int | None = None, birthday_approximate_age: int | None = None, contact_interval_days: int | None = None, clear_contact_interval: bool = False, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str | None = None, tags: list[str] | None = None, is_favorite: bool | None = None, notes: str | None = None) -> dict:
         owner_id = mcp_user("memory:write")
         changes = {key: value for key, value in locals().copy().items() if key in PersonIn.model_fields and value is not None}
+        if clear_contact_interval:
+            changes["contact_interval_days"] = None
         with mcp_session(owner_id) as db:
             person = owned_person(db, person_id, db.get(User, owner_id))
+            previous_contact_interval = person.contact_interval_days
             for key, value in changes.items(): setattr(person, key, value)
             if "gender" in changes:
                 refresh_relationship_labels(db, owner_id, person)
+            sync_contact_followup(db, person, db.get(User, owner_id), reactivate_muted=person.contact_interval_days is not None and person.contact_interval_days != previous_contact_interval)
             db.commit(); db.refresh(person)
             enqueue_person_context_embeddings(db, person.id, owner_id)
             return PersonOut.model_validate(person).model_dump(mode="json")
+
+    @mcp.tool(name="person_call_search")
+    def person_call_search_tool(person_id: str) -> list[dict]:
+        owner_id = mcp_user()
+        with mcp_session(owner_id) as db:
+            return [PersonCallOut.model_validate(row).model_dump(mode="json") for row in person_call_list(person_id, db, db.get(User, owner_id))]
+
+    @mcp.tool(name="person_call_log")
+    def person_call_log_tool(person_id: str, occurred_at: str, duration_minutes: int | None = None, notes: str = "") -> dict:
+        owner_id = mcp_user("memory:write")
+        with mcp_session(owner_id) as db:
+            data = PersonCallIn(occurred_at=datetime.fromisoformat(occurred_at), duration_minutes=duration_minutes, notes=notes)
+            return PersonCallOut.model_validate(person_call_create(person_id, data, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="relationship_create")
     def relationship_create_mcp(source_person_id: str, target_person_id: str, relationship_type: str, inverse_relationship_type: str | None = None, source_memory_id: str | None = None, confirmed: bool = True) -> dict:

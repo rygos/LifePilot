@@ -13,14 +13,13 @@ function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function birthdayDateForYear(birthday: string, year: number): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday);
-  if (!match) return null;
-  const month = Number(match[2]);
-  const originalDay = Number(match[3]);
-  const day = month === 2 && originalDay === 29 && !((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 28 : originalDay;
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+function knownBirthdayForYear(person: Person, year: number): Date | null {
+  const month = person.birthday_precision === "exact" && person.birthday ? Number(person.birthday.slice(5, 7)) : person.birthday_month;
+  const day = person.birthday_precision === "exact" && person.birthday ? Number(person.birthday.slice(8, 10)) : person.birthday_day;
+  if (!month || !day) return null;
+  const resolvedDay = month === 2 && day === 29 && !((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 28 : day;
+  const date = new Date(year, month - 1, resolvedDay);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === resolvedDay ? date : null;
 }
 
 function localInput(value: string): string {
@@ -69,8 +68,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
   const monthEvents = useMemo(() => experiences.filter(event => new Date(event.starts_at).getFullYear() === month.getFullYear() && new Date(event.starts_at).getMonth() === month.getMonth()), [experiences, month]);
   const dayEvents = experiences.filter(event => dateKey(new Date(event.starts_at)) === day).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   const monthBirthdays = useMemo(() => people.flatMap(person => {
-    if (!person.birthday) return [];
-    const date = birthdayDateForYear(person.birthday, month.getFullYear());
+    const date = knownBirthdayForYear(person, month.getFullYear());
     return date && date.getMonth() === month.getMonth() ? [{ person, date, date_key: dateKey(date) }] : [];
   }).sort((left, right) => `${left.person.first_name} ${left.person.last_name}`.localeCompare(`${right.person.first_name} ${right.person.last_name}`, "de")), [month, people]);
   const dayBirthdays = monthBirthdays.filter(item => item.date_key === day);
@@ -131,7 +129,7 @@ export function EventArchive({ events, people, memories, token, api, request, on
           return <button type="button" key={key} className={`event-day${day === key ? " selected" : ""}${hasEvents || hasBirthdays ? " has-events" : ""}${hasBirthdays ? " has-birthdays" : ""}`} aria-pressed={day === key} onClick={() => { setDay(key); setSelectedId(null); setIsEditing(false); }}>{cell}{(hasEvents || hasBirthdays) && <i aria-label={markerLabel} />}</button>;
         })}</div>
         <h3 className="event-day-heading">{new Intl.DateTimeFormat("de-DE", { dateStyle: "full" }).format(new Date(`${day}T12:00:00`))}</h3>
-        {dayEvents.length || dayBirthdays.length ? <div className="event-day-list">{dayBirthdays.map(item => <a key={`birthday-${item.person.id}`} className="event-day-item birthday-day-item" href={`/people/${item.person.id}`}><strong>{item.person.first_name} {item.person.last_name}</strong><small>Geburtstag · wird {month.getFullYear() - Number(item.person.birthday?.slice(0, 4))} Jahre{item.person.nickname ? ` · „${item.person.nickname}“` : ""}</small></a>)}{dayEvents.map(item => <button key={item.id} type="button" className={`event-day-item${selected?.id === item.id ? " active" : ""}`} onClick={() => { setSelectedId(item.id); setIsEditing(false); }}><strong>{item.title}</strong><small>{new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(new Date(item.starts_at))}{item.location ? ` · ${item.location}` : ""}</small></button>)}</div> : <p className="empty">Für diesen Tag sind keine Ereignisse oder Geburtstage gespeichert.</p>}
+        {dayEvents.length || dayBirthdays.length ? <div className="event-day-list">{dayBirthdays.map(item => <a key={`birthday-${item.person.id}`} className="event-day-item birthday-day-item" href={`/people/${item.person.id}`}><strong>{item.person.first_name} {item.person.last_name}</strong><small>{item.person.birthday_precision === "exact" && item.person.birthday ? `Geburtstag · wird ${month.getFullYear() - Number(item.person.birthday.slice(0, 4))} Jahre` : "Geburtstag"}{item.person.nickname ? ` · „${item.person.nickname}“` : ""}</small></a>)}{dayEvents.map(item => <button key={item.id} type="button" className={`event-day-item${selected?.id === item.id ? " active" : ""}`} onClick={() => { setSelectedId(item.id); setIsEditing(false); }}><strong>{item.title}</strong><small>{new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(new Date(item.starts_at))}{item.location ? ` · ${item.location}` : ""}</small></button>)}</div> : <p className="empty">Für diesen Tag sind keine Ereignisse oder Geburtstage gespeichert.</p>}
       </section>
       <section className="event-detail" aria-label="Ereignisdetails">
         {!selected ? <p className="empty">{dayBirthdays.length ? "An diesem Tag haben Personen Geburtstag. Wähle einen Namen in der Tagesliste, um das Profil zu öffnen." : "Wähle ein Ereignis im Kalender aus oder halte ein neues fest."}</p> : <>

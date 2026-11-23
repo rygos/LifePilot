@@ -9,11 +9,11 @@
 .search-relationships{min-height:0;margin-bottom:16px}
 
 .shell[data-view] .content{min-width:0}
-.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.briefing-panel):not(.capture):not(#dashboard-panels):not(footer){display:none}
+.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.briefing-panel):not(.capture):not(.dashboard-upcoming-panel):not(#dashboard-panels):not(footer){display:none}
 .shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
-.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing){display:none}
+.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events){display:none}
 .shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(#memory-domain){display:none}
 .shell[data-view="memory"] #memory-domain>section:nth-child(2){display:none}
 .shell[data-view="memory"] #memory-domain{grid-template-columns:minmax(0,1fr)}
@@ -173,3 +173,52 @@
 .contact-method-edit-form input,.contact-method-create-form input,.contact-method-edit-form select,.contact-method-create-form select{width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
 .contact-method-item small{overflow-wrap:anywhere}
 @media(max-width:700px){.contact-method-edit-form,.contact-method-create-form{grid-template-columns:1fr 1fr}.contact-method-edit-form button,.contact-method-create-form button{min-height:44px}.contact-method-create-form button{grid-column:1/-1}}
+
+/* Monica-inspired information hierarchy; all colors use the existing LifePilot tokens. */
+.dashboard-upcoming-panel{margin:0 0 16px;min-height:0}
+.dashboard-upcoming-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px}
+.dashboard-upcoming-item{display:grid;grid-template-columns:72px minmax(0,1fr) 20px;align-items:center;gap:10px;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;background:var(--paper)}
+.dashboard-upcoming-item:hover{border-color:var(--green);background:var(--pale)}
+.dashboard-upcoming-item time{color:var(--green);font-weight:700;font-size:12px}
+.dashboard-upcoming-item strong,.dashboard-upcoming-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dashboard-upcoming-item small{margin-top:3px;color:var(--muted);font-size:11px}
+.dashboard-upcoming-item>span:last-child{color:var(--muted);text-align:right}
+.person-profile-tabs{display:flex;gap:6px;overflow-x:auto;margin:16px 0 0;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--paper);scrollbar-width:thin}
+.person-profile-tabs button{flex:none;min-height:40px;margin:0;padding:8px 14px;border-radius:8px;background:transparent;color:var(--muted)}
+.person-profile-tabs button.selected{background:var(--pale);color:var(--green)}
+.person-profile-tabs button:hover{background:var(--pale);color:var(--green)}
+.person-call-history{margin-top:12px;min-height:0}
+.person-call-history .panel-head{align-items:center}
+.person-call-history .panel-head button{margin:0}
+.person-call-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}
+.person-call-form label{display:grid;gap:6px;min-width:0;color:var(--muted);font-size:12px}
+.person-call-form label:nth-child(3){grid-column:1/-1}
+.person-call-form input,.person-call-form textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--paper);color:var(--ink);font:inherit}
+.person-call-form button{justify-self:start}
+.person-call-list{display:grid}
+.person-call-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.person-call-item strong,.person-call-item small{display:block}
+.person-call-item small{margin-top:4px;color:var(--muted);font-size:11px}
+.person-call-item p{margin:7px 0 0;line-height:1.55;white-space:pre-wrap}
+.person-call-item button{margin:0}
+.birthday-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;min-width:0;margin:0;padding:10px;border:1px solid var(--line);border-radius:9px}
+.birthday-fields legend{padding:0 5px;color:var(--muted);font-size:11px}
+.birthday-fields label{display:grid;gap:5px;min-width:0;color:var(--muted);font-size:11px}
+.birthday-fields label:first-of-type{grid-column:1/-1}
+.birthday-fields input,.birthday-fields select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}
+.birthday-fields small{font-size:10px;color:var(--muted)}
+.shell[data-view="person"][data-person-tab="history"] .person-profile:not(.editing)>:not(.person-profile-hero),
+.shell[data-view="person"][data-person-tab="planning"] .person-profile:not(.editing)>:not(.person-profile-hero),
+.shell[data-view="person"][data-person-tab="files"] .person-profile:not(.editing)>:not(.person-profile-hero){display:none}
+.shell[data-view="person"][data-person-tab="history"] .person-briefing>.person-planning-entry{display:none}
+.shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-history-entry,
+.shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-event-history{display:none}
+.shell[data-view="person"][data-person-tab="files"] .person-profile-tabs{margin-bottom:0}
+@media(max-width:850px){
+ .dashboard-upcoming-list{grid-template-columns:1fr}
+ .person-profile-tabs{position:sticky;top:0;z-index:4;background:var(--paper)}
+ .person-call-form{grid-template-columns:1fr}
+ .person-call-form label:nth-child(3){grid-column:auto}
+ .birthday-fields{grid-template-columns:1fr}
+ .birthday-fields label:first-of-type{grid-column:auto}
+}

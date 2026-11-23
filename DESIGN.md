@@ -32,6 +32,12 @@ Layout: Mobile navigation and administration - reach the three frequent areas di
 
 Layout: Event archive - scan a month, select a date, then inspect an event's context, participant cards, place and photos -> calendar grid with one selected-event detail region below it; the detail region switches between a read view and an edit form without repeating fields; scroll owner: document; anti-patterns: mixing future reminders into past memories, unattached attendee names, photos without owner-scoped access, nested scroll areas.
 
+Layout: Person profile - keep the person's identity visible while switching between profile details, timeline and planning context -> persistent identity header followed by a compact tab row and one focused content section; scroll owner: document; anti-patterns: repeating profile fields across tabs, hiding the edit action, unrelated data in one long stream, nested scroll areas.
+
+Layout: Dashboard and contact follow-up - see today's work and the next 90 days, then open a source record or log a call -> two-column responsive stack of daily briefing and upcoming birthdays/events, followed by compact action lists; scroll owner: document; anti-patterns: vanity metric tiles, dashboard sections repeated from their own routes, contact reminders dependent on an open browser tab.
+
+Layout: Relationship creation - connect a person to an existing contact or create the missing contact in the same flow -> relationship form with an explicit existing/new choice and one person summary; scroll owner: document; anti-patterns: requiring a user to leave the profile to create the other person, duplicate relationship labels, silently guessed exact birthdays.
+
 ## Screen brief: Dashboard scheduling controls
 
 - Primary action: save a task, appointment, or personal schedule preference.
@@ -40,6 +46,23 @@ Layout: Event archive - scan a month, select a date, then inspect an event's con
 - Excluded: calendar views, notification delivery preferences, and event recurrence.
 
 ## Screen briefs: Navigation update
+
+### Person profile and relationship capture
+
+- Primary action: inspect a person's saved context; edit profile details or add a relationship only when requested.
+- Information priorities: identity and contact routes; linked people and organizations; chronological, sourced history; next follow-up.
+- Left out on purpose: unrelated people, dashboard-wide tasks, and unsourced model guesses.
+- Required content: persistent portrait/name, age only when exact birth date is known, grouped relationship cards, person context, participated events, calls, contact interval, source-linked records, explicit edit mode, birthday precision (exact, month/day, approximate age, unknown).
+- Interaction: profile tabs switch overview/history/planning/files without duplicating the identity header; a relationship can target an existing person or atomically create a new one; a call log can be dated, optionally timed, and given a duration and note.
+- Data shape -> component: one selected person is a focused detail view; many linked records are grouped by purpose and ordered newest first; contact reminders are persisted independently of the browser session.
+
+### Dashboard upcoming view
+
+- Primary action: capture a thought or open the next due item.
+- Information priorities: today's briefing; next 90 days of events and known birthdays; open reminders and follow-ups.
+- Left out on purpose: product announcements, arbitrary activity counts, and data already visible in the global navigation.
+- Required content: upcoming dated events, annual birthdays from known month/day, birthday age only for exact dates, empty state, links to source profiles/events.
+- Data shape -> component: chronological items in one compact list; no decorative statistic tiles.
 
 ### People directory and person profile
 - Primary action: open a person profile from the directory; the profile's primary action is saving edits.

@@ -5,7 +5,7 @@ from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from redis import Redis
 from rq import Queue, Retry
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import engine
@@ -18,33 +18,38 @@ SCHEDULE_QUEUE_NAME: Final = "lifepilot"
 BIRTHDAY_REMINDER_DAYS: Final = 7
 
 
-def _birthday_in_year(birthday: date, year: int) -> date:
-    try:
-        return birthday.replace(year=year)
-    except ValueError:
-        return date(year, 2, 28)
-
-
 def _schedule_birthday_reminders(db: Session, now: datetime) -> int:
     created = 0
     people = db.execute(
         select(Person, User)
         .join(User, User.id == Person.owner_id)
-        .where(Person.is_self.is_(False), Person.birthday.is_not(None))
+        .where(Person.is_self.is_(False), or_(Person.birthday.is_not(None), Person.birthday_precision == "month_day"))
     ).all()
     for person, owner in people:
-        try:
-            birth_date = date.fromisoformat(person.birthday or "")
-        except ValueError:
+        if person.birthday_precision in {"exact", "unknown"} and person.birthday:
+            try:
+                birth_date = date.fromisoformat(person.birthday)
+            except ValueError:
+                continue
+            month, day = birth_date.month, birth_date.day
+        elif person.birthday_precision == "month_day" and person.birthday_month and person.birthday_day:
+            month, day = person.birthday_month, person.birthday_day
+        else:
             continue
         try:
             zone = ZoneInfo(owner.timezone_name)
         except ZoneInfoNotFoundError:
             zone = timezone.utc
         local_today = now.astimezone(zone).date()
-        occurrence = _birthday_in_year(birth_date, local_today.year)
+        try:
+            occurrence = date(local_today.year, month, day)
+        except ValueError:
+            occurrence = date(local_today.year, 2, 28)
         if occurrence < local_today:
-            occurrence = _birthday_in_year(birth_date, local_today.year + 1)
+            try:
+                occurrence = date(local_today.year + 1, month, day)
+            except ValueError:
+                occurrence = date(local_today.year + 1, 2, 28)
         reminder_date = max(local_today, occurrence - timedelta(days=BIRTHDAY_REMINDER_DAYS))
         due_at = datetime.combine(reminder_date, datetime_time(9), tzinfo=zone).astimezone(timezone.utc)
         reminder = db.scalar(
@@ -68,6 +73,34 @@ def _schedule_birthday_reminders(db: Session, now: datetime) -> int:
             reminder.due_at = due_at
     return created
 
+def sync_contact_followup(db: Session, person: Person, owner: User, reactivate_muted: bool = False) -> None:
+    reminder = db.scalar(select(Reminder).where(Reminder.contact_person_id == person.id))
+    if person.contact_interval_days is None:
+        if reminder is not None and reminder.state == "scheduled":
+            reminder.state = "muted"
+        return
+    if person.last_contact_at is None:
+        return
+    if reminder is not None and reminder.state == "muted" and not reactivate_muted:
+        return
+    try:
+        zone = ZoneInfo(owner.timezone_name)
+    except ZoneInfoNotFoundError:
+        zone = timezone.utc
+    last_contact = person.last_contact_at
+    if last_contact.tzinfo is None:
+        last_contact = last_contact.replace(tzinfo=timezone.utc)
+    due_date = last_contact.astimezone(zone).date() + timedelta(days=person.contact_interval_days)
+    due_at = datetime.combine(due_date, datetime_time(9), tzinfo=zone).astimezone(timezone.utc)
+    title = f"Bei {person.first_name} {person.last_name} melden".strip()
+    if reminder is None:
+        db.add(Reminder(owner_id=owner.id, title=title, due_at=due_at, contact_person_id=person.id))
+    else:
+        reminder.title = title
+        reminder.due_at = due_at
+        reminder.state = "scheduled"
+        reminder.snoozed_until = None
+
 def schedule_due_items(db: Session) -> int:
     created = 0
     tasks = db.scalars(select(Task).where(Task.status == "open", Task.due_at.is_not(None))).all()
@@ -83,8 +116,10 @@ def schedule_due_items(db: Session) -> int:
             db.add(Reminder(owner_id=event.owner_id, title=event.title, due_at=event.starts_at, event_id=event.id))
             created += 1
     created += _schedule_birthday_reminders(db, datetime.now(timezone.utc))
-    if created:
-        db.commit()
+    contacts = db.execute(select(Person, User).join(User, User.id == Person.owner_id).where(Person.contact_interval_days.is_not(None))).all()
+    for person, owner in contacts:
+        sync_contact_followup(db, person, owner)
+    db.commit()
     return created
 
 def enqueue_schedule_job(redis_client: Redis, queue_name: str = SCHEDULE_QUEUE_NAME):

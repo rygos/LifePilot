@@ -15,6 +15,7 @@ from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, Rem
 from lifepilot.config import settings
 from lifepilot.security import current_user
 from lifepilot.services import is_quiet_hours, owned_person
+from lifepilot.scheduler import sync_contact_followup
 
 router = APIRouter()
 
@@ -261,6 +262,10 @@ def reminder_update(reminder_id: str, data: ReminderAction, db: Session = Depend
     row.snoozed_until = data.snoozed_until
     if data.snoozed_until:
         row.state = "scheduled"
+    if data.state == "done" and row.contact_person_id:
+        person = owned_person(db, row.contact_person_id, user)
+        person.last_contact_at = datetime.now(timezone.utc)
+        sync_contact_followup(db, person, user, reactivate_muted=True)
     db.commit()
     db.refresh(row)
     return row

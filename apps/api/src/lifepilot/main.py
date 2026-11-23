@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
-from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonContactMethod, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
-from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
+from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonCallLog, PersonContactMethod, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
+from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonCallIn, PersonCallOut, PersonIn, PersonOut, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, RelationshipWithPersonIn, RelationshipWithPersonOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
 from lifepilot.security import create_token, current_user, hash_password, verify_password
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
+from lifepilot.scheduler import sync_contact_followup
 from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
 from lifepilot.planner import router as planner_router
 from lifepilot.event_media import router as event_media_router
@@ -240,6 +241,36 @@ def organization_membership_delete(organization_id: str, person_id: str, db: Ses
 def person_create(data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = Person(owner_id=user.id, **data.model_dump(exclude_none=True)); db.add(person); db.commit(); db.refresh(person); return person
 
+@app.get("/api/people/{person_id}/calls", response_model=list[PersonCallOut])
+def person_call_list(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    owned_person(db, person_id, user)
+    return db.scalars(select(PersonCallLog).where(PersonCallLog.owner_id == user.id, PersonCallLog.person_id == person_id).order_by(PersonCallLog.occurred_at.desc(), PersonCallLog.created_at.desc())).all()
+
+@app.post("/api/people/{person_id}/calls", response_model=PersonCallOut, status_code=201)
+def person_call_create(person_id: str, data: PersonCallIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    row = PersonCallLog(owner_id=user.id, person_id=person_id, **data.model_dump())
+    db.add(row)
+    if person.last_contact_at is None or data.occurred_at > person.last_contact_at:
+        person.last_contact_at = data.occurred_at
+    sync_contact_followup(db, person, user)
+    db.flush()
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="person_call_logs", resource_id=row.id, source="web"))
+    db.commit(); db.refresh(row)
+    return row
+
+@app.delete("/api/people/{person_id}/calls/{call_id}", status_code=204)
+def person_call_delete(person_id: str, call_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    person = owned_person(db, person_id, user)
+    row = db.scalar(select(PersonCallLog).where(PersonCallLog.id == call_id, PersonCallLog.owner_id == user.id, PersonCallLog.person_id == person_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Telefonat nicht gefunden")
+    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="person_call_logs", resource_id=row.id, source="web"))
+    db.delete(row); db.flush()
+    person.last_contact_at = db.scalar(select(PersonCallLog.occurred_at).where(PersonCallLog.owner_id == user.id, PersonCallLog.person_id == person_id).order_by(PersonCallLog.occurred_at.desc()).limit(1))
+    sync_contact_followup(db, person, user)
+    db.commit()
+
 @app.get("/api/people/{person_id}", response_model=PersonOut)
 def person_get(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return owned_person(db, person_id, user)
@@ -306,12 +337,14 @@ def person_life_events(person_id: str, db: Session = Depends(get_db), user: User
 @app.patch("/api/people/{person_id}", response_model=PersonOut)
 def person_update(person_id: str, data: PersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
+    previous_contact_interval = person.contact_interval_days
     for key, value in data.model_dump(exclude={"gender"}).items(): setattr(person, key, value)
     if data.gender is not None:
         person.gender = data.gender
         refresh_relationship_labels(db, user.id, person)
     if person.is_self:
         sync_account_from_self_person(person, user)
+    sync_contact_followup(db, person, user, reactivate_muted=person.contact_interval_days is not None and person.contact_interval_days != previous_contact_interval)
     db.commit(); db.refresh(person)
     enqueue_person_context_embeddings(db, person.id, user.id)
     return person
@@ -367,6 +400,19 @@ def relationship_list(db: Session = Depends(get_db), user: User = Depends(curren
 @app.post("/api/relationships", status_code=201)
 def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return relationship_create(db, user, data.source_person_id, data.target_person_id, data.relationship_type, data.source_memory_id, data.confirmed, data.inverse_relationship_type)
+
+@app.post("/api/relationships/with-new-person", response_model=RelationshipWithPersonOut, status_code=201)
+def relationship_add_with_new_person(data: RelationshipWithPersonIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    source = owned_person(db, data.source_person_id, user)
+    person = Person(owner_id=user.id, **data.new_person.model_dump(exclude_none=True))
+    db.add(person); db.flush()
+    relationship = relationship_create(db, user, source.id, person.id, data.relationship_type, None, True, commit=False)
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="people", resource_id=person.id, source="web"))
+    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="relationships", resource_id=relationship.id, source="web"))
+    db.commit(); db.refresh(person); db.refresh(relationship)
+    enqueue_entity_embedding("relationship", relationship.id, user.id)
+    relationship_out = RelationshipOut(id=relationship.id, source_person_id=source.id, source_person_name=f"{source.first_name} {source.last_name}".strip(), target_person_id=person.id, target_person_name=f"{person.first_name} {person.last_name}".strip(), relationship_type=relationship.relationship_type, inverse_relationship_type=relationship.inverse_relationship_type, confirmed=relationship.confirmed, source_memory_id=relationship.source_memory_id)
+    return RelationshipWithPersonOut(person=PersonOut.model_validate(person), relationship=relationship_out)
 
 @app.delete("/api/relationships/{relationship_id}", status_code=204)
 def relationship_delete(relationship_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -540,7 +586,7 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
         "timezone": user.timezone_name,
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
         "today_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in events],
-        "upcoming_reminders": [{"id": reminder.id, "title": reminder.title, "due_at": reminder.due_at, "state": reminder.state, "source_type": "task" if reminder.task_id else "event" if reminder.event_id else "reminder", "source_id": reminder.task_id or reminder.event_id or reminder.id} for reminder in reminders],
+        "upcoming_reminders": [{"id": reminder.id, "title": reminder.title, "due_at": reminder.due_at, "state": reminder.state, "source_type": "task" if reminder.task_id else "event" if reminder.event_id else "contact" if reminder.contact_person_id else "reminder", "source_id": reminder.task_id or reminder.event_id or reminder.contact_person_id or reminder.id} for reminder in reminders],
     }
 
 @app.get("/api/audit", response_model=list[AuditEventView])
