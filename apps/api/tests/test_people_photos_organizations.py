@@ -44,6 +44,22 @@ def test_person_photo_upload_is_persisted_and_owner_scoped(client, auth, tmp_pat
     assert client.post(f"/api/people/{person['id']}/photo", files={"file": ("fake.jpg", b"not an image", "image/jpeg")}, headers=auth).status_code == 415
 
 
+def test_person_photo_upload_applies_exif_orientation(client, auth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    person = client.post("/api/people", json={"first_name": "Ausrichtung"}, headers=auth).json()
+    image = Image.new("RGB", (20, 10), color="green")
+    exif = Image.Exif()
+    exif[274] = 6
+    original = BytesIO()
+    image.save(original, format="JPEG", exif=exif)
+
+    uploaded = client.post(f"/api/people/{person['id']}/photo", files={"file": ("portrait.jpg", original.getvalue(), "image/jpeg")}, headers=auth)
+    assert uploaded.status_code == 200
+    saved = client.get(f"/api/people/{person['id']}/photo", headers=auth)
+    with Image.open(BytesIO(saved.content)) as normalized:
+        assert normalized.size == (10, 20)
+
+
 def test_club_memberships_include_self_and_are_owner_scoped(client, auth):
     self_profile = client.get("/api/profile", headers=auth).json()["self_person_id"]
     contact = client.post("/api/people", json={"first_name": "Vereins", "last_name": "Freund"}, headers=auth).json()

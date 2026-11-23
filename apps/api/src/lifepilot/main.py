@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile,
 from starlette.responses import Response, FileResponse
 from pathlib import Path
 from uuid import uuid4
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -135,6 +135,7 @@ async def person_photo_upload(person_id: str, file: UploadFile = File(...), db: 
         with Image.open(io.BytesIO(contents)) as image:
             if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 40_000_000:
                 raise HTTPException(status_code=415, detail="Bitte ein JPEG-, PNG- oder WebP-Bild unter 40 Megapixeln wählen")
+            image = ImageOps.exif_transpose(image)
             image.thumbnail((2048, 2048))
             normalized = image.convert("RGB")
             output = io.BytesIO()

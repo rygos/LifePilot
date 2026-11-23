@@ -38,6 +38,8 @@ Layout: Dashboard and contact follow-up - see today's work and the next 90 days,
 
 Layout: Relationship creation - connect a person to an existing contact or create the missing contact in the same flow -> relationship form with an explicit existing/new choice and one person summary; scroll owner: document; anti-patterns: requiring a user to leave the profile to create the other person, duplicate relationship labels, silently guessed exact birthdays.
 
+Layout: Profile photo crop - select a photo, refine a circular portrait crop, then save the square source image -> focused modal with a circular crop window, direct pointer/touch panning, zoom and 45-degree rotation controls; scroll owner: modal content; anti-patterns: saving the original before review, hiding the crop boundary, or applying image metadata rotation twice.
+
 ## Screen brief: Dashboard scheduling controls
 
 - Primary action: save a task, appointment, or personal schedule preference.
@@ -70,6 +72,13 @@ Layout: Relationship creation - connect a person to an existing contact or creat
 - Left out on purpose: tasks, events, gifts, and loans unrelated to the selected person.
 - Required content: first and last name, nickname, birthday, gender, email, phone, address, work, organization, notes, photo upload, age, search, filters, sorting, relationships grouped by family/friends/work/other, clickable linked profiles, gender-derived relationship labels, club and organization memberships (including the user's self profile), profile update, relationship add/remove, person delete with confirmation.
 - Data shape -> component: many contacts use a filter bar and responsive card grid; one selected person is a dedicated detail view with prominent photo, edit form, grouped relationship cards, membership cards, and sourced context.
+
+### Profile photo crop
+- Primary action: save the reviewed portrait crop.
+- Information priorities: crop result; pan, zoom and rotation controls; clear cancel action.
+- Left out on purpose: face detection, automatic subject selection, and image filters.
+- Required content: circular preview mask, drag/touch panning, zoom slider, 45-degree rotation steps, cancel and save controls, orientation-correct image decoding.
+- Data shape -> component: one selected image is edited in a focused modal; a square crop is saved so existing circular avatar rendering stays consistent.
 
 ### Planning
 - Primary action: save a task or appointment.

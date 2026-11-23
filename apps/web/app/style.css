@@ -248,10 +248,33 @@
 .contact-method-item{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .inline-contact-edit{flex:0 0 auto;min-width:38px;font-size:17px}
 .profile-photo-upload{max-width:none;margin-left:auto}
+.photo-crop-backdrop{z-index:1002}
+.photo-crop-dialog{display:grid;gap:16px;width:min(100%,480px);max-height:min(92dvh,760px);overflow:auto;padding:24px;background:var(--paper);box-shadow:0 24px 80px rgb(0 0 0 / .3)}
+.photo-crop-dialog h2{margin:.25rem 0 0;font-size:clamp(20px,3vw,27px)}
+.photo-crop-dialog>.muted{margin:0;line-height:1.5}
+.photo-crop-window{position:relative;justify-self:center;width:min(100%,320px);aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:50%;background:var(--pale);touch-action:none}
+.photo-crop-window canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+.photo-crop-window canvas:active{cursor:grabbing}
+.photo-crop-window canvas:focus-visible{outline:3px solid var(--green);outline-offset:-4px}
+.photo-crop-loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none}
+.photo-crop-controls{display:grid;gap:12px}
+.photo-crop-zoom{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;color:var(--muted)}
+.photo-crop-zoom output{color:var(--ink);font-variant-numeric:tabular-nums}
+.photo-crop-zoom input{grid-column:1/-1;width:100%;accent-color:var(--green)}
+.photo-crop-rotation{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted)}
+.photo-crop-rotation>div{display:flex;gap:8px}
+.photo-crop-rotation button,.photo-crop-dialog .panel-head .quiet{min-width:44px;min-height:44px;margin:0}
+.photo-crop-dialog .dialog-actions{gap:8px;padding-top:4px}
+.photo-crop-dialog .dialog-actions button{min-height:44px}
+.photo-crop-dialog button:disabled{cursor:not-allowed;opacity:.65}
+.photo-crop-error{margin:0;color:#8b3d35}
 @media(max-width:700px){
  .profile-edit-dialog{padding:17px}
  .profile-dialog-form,.profile-dialog-form .relationship-new-person{grid-template-columns:1fr}
  .profile-dialog-form .relationship-target-mode,.profile-dialog-form .relationship-target-picker,.profile-dialog-form .relationship-new-person,.profile-dialog-form>label:last-of-type,.profile-dialog-form .dialog-actions,.profile-dialog-form .birthday-fields{grid-column:auto}
  .profile-photo-upload{margin-left:0}
+ .photo-crop-dialog{padding:16px}
+ .photo-crop-window{width:min(100%,280px)}
+ .photo-crop-rotation{align-items:flex-start;flex-direction:column}
  .inline-edit-trigger{opacity:1}
 }
