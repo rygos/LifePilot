@@ -117,7 +117,7 @@
 .person-event-item h4{margin:0 0 5px;font-size:14px}
 .person-event-item p{margin:0 0 7px;color:var(--muted);font-size:13px;line-height:1.55;white-space:pre-wrap}
 .person-event-item time{color:var(--muted);font-size:11px}
-.person-profile:not(.editing) .membership-form,.person-profile:not(.editing) .membership-create-form,.person-profile:not(.editing) .owner-relationship-form,.person-profile:not(.editing) .relationship-form,.person-profile:not(.editing) .relationship-card-remove,.person-profile:not(.editing) .organization-card>button,.person-profile:not(.editing) .relationship-section>.list-item>button{display:none}
+
 @media(max-width:600px){.person-facts-grid{grid-template-columns:1fr}.person-profile-actions{margin-left:auto}}
 
 .mobile-primary-nav,.mobile-more-backdrop{display:none}
@@ -207,9 +207,9 @@
 .birthday-fields label:first-of-type{grid-column:1/-1}
 .birthday-fields input,.birthday-fields select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}
 .birthday-fields small{font-size:10px;color:var(--muted)}
-.shell[data-view="person"][data-person-tab="history"] .person-profile-content:not(.editing),
-.shell[data-view="person"][data-person-tab="planning"] .person-profile-content:not(.editing),
-.shell[data-view="person"][data-person-tab="files"] .person-profile-content:not(.editing){display:none}
+.shell[data-view="person"][data-person-tab="history"] .person-profile-content,
+.shell[data-view="person"][data-person-tab="planning"] .person-profile-content,
+.shell[data-view="person"][data-person-tab="files"] .person-profile-content{display:none}
 .shell[data-view="person"][data-person-tab="history"] .person-briefing>.person-planning-entry{display:none}
 .shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-history-entry,
 .shell[data-view="person"][data-person-tab="planning"] .person-briefing>.person-event-history{display:none}
@@ -221,4 +221,37 @@
  .person-call-form label:nth-child(3){grid-column:auto}
  .birthday-fields{grid-template-columns:1fr}
  .birthday-fields label:first-of-type{grid-column:auto}
+}
+
+/* Inline profile editing */
+.inline-edit-field dd{min-width:0}
+.inline-edit-value{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-height:28px}
+.inline-edit-trigger{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:30px;height:30px;margin:-5px -5px 0 0;padding:0;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--muted);opacity:.68}
+.inline-edit-trigger:hover,.inline-edit-trigger:focus-visible{border-color:var(--line);background:var(--paper);color:var(--ink);opacity:1}
+.inline-edit-form{display:grid;gap:8px}
+.inline-edit-form input,.inline-edit-form select,.inline-edit-form textarea,.profile-dialog-form input,.profile-dialog-form select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--paper);color:var(--ink);font:inherit}
+.inline-edit-form textarea{min-height:76px;resize:vertical}
+.inline-edit-actions,.profile-section-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.inline-edit-actions button{min-height:34px;padding:7px 10px;font-size:12px}
+.inline-birthday-form .birthday-fields{margin:0}
+.profile-section-actions{margin-top:12px}
+.profile-edit-dialog{display:grid;gap:18px;width:min(100%,620px);max-height:min(88vh,900px);overflow:auto;padding:22px;background:var(--paper);box-shadow:0 24px 80px rgb(0 0 0 / .3)}
+.profile-edit-dialog h2{margin:.25rem 0 0;font-size:clamp(20px,3vw,27px)}
+.profile-dialog-backdrop{z-index:1001}
+.profile-dialog-form{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:12px;margin:0}
+.profile-dialog-form label{display:grid;gap:6px;min-width:0;color:var(--muted);font-size:12px}
+.profile-dialog-form .relationship-target-mode,.profile-dialog-form .relationship-target-picker,.profile-dialog-form .relationship-new-person,.profile-dialog-form>label:last-of-type,.profile-dialog-form .dialog-actions{grid-column:1/-1}
+.profile-dialog-form .relationship-new-person{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.profile-dialog-form .birthday-fields{grid-column:1/-1}
+.profile-dialog-form .dialog-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-top:8px}
+.profile-dialog-form .dialog-actions button{min-height:40px}
+.contact-method-item{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.inline-contact-edit{flex:0 0 auto;min-width:38px;font-size:17px}
+.profile-photo-upload{max-width:none;margin-left:auto}
+@media(max-width:700px){
+ .profile-edit-dialog{padding:17px}
+ .profile-dialog-form,.profile-dialog-form .relationship-new-person{grid-template-columns:1fr}
+ .profile-dialog-form .relationship-target-mode,.profile-dialog-form .relationship-target-picker,.profile-dialog-form .relationship-new-person,.profile-dialog-form>label:last-of-type,.profile-dialog-form .dialog-actions,.profile-dialog-form .birthday-fields{grid-column:auto}
+ .profile-photo-upload{margin-left:0}
+ .inline-edit-trigger{opacity:1}
 }
