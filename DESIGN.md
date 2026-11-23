@@ -38,7 +38,7 @@ Layout: Dashboard and contact follow-up - see today's work and the next 90 days,
 
 Layout: Relationship creation - connect a person to an existing contact or create the missing contact in the same flow -> relationship form with an explicit existing/new choice and one person summary; scroll owner: document; anti-patterns: requiring a user to leave the profile to create the other person, duplicate relationship labels, silently guessed exact birthdays.
 
-Layout: Profile photo crop - select a photo, refine a circular portrait crop, then save the square source image -> focused modal with a circular crop window, direct pointer/touch panning, zoom and 45-degree rotation controls; scroll owner: modal content; anti-patterns: saving the original before review, hiding the crop boundary, or applying image metadata rotation twice.
+Layout: Profile photo crop - select a file or paste a copied image, refine its circular portrait crop, then save the square result -> profile actions offer file selection and clipboard paste; an empty focused dialog provides a paste target, and a loaded image shows the circular crop window, pan, zoom and 45-degree rotation controls; scroll owner: modal content; anti-patterns: saving the original before review, hiding the crop boundary, or applying image metadata rotation twice.
 
 ## Screen brief: Dashboard scheduling controls
 
@@ -77,7 +77,7 @@ Layout: Profile photo crop - select a photo, refine a circular portrait crop, th
 - Primary action: save the reviewed portrait crop.
 - Information priorities: crop result; pan, zoom and rotation controls; clear cancel action.
 - Left out on purpose: face detection, automatic subject selection, and image filters.
-- Required content: circular preview mask, drag/touch panning, zoom slider, 45-degree rotation steps, cancel and save controls, orientation-correct image decoding.
+- Required content: file selection and clipboard paste, circular preview mask, drag/touch panning, zoom slider, 45-degree rotation steps, cancel and save controls, orientation-correct image decoding.
 - Data shape -> component: one selected image is edited in a focused modal; a square crop is saved so existing circular avatar rendering stays consistent.
 
 ### Planning

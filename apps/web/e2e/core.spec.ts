@@ -386,6 +386,33 @@ test("Personenkarten, Profilfoto und Vereinsmitgliedschaften funktionieren auch 
   await expect(page.locator(".organization-card").filter({ hasText: organizationName })).toContainText("Mitglied");
 });
 
+test("Profilbild lässt sich ohne Dateidialog aus der Zwischenablage einfügen", async ({ page }) => {
+  await login(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/people");
+  await page.locator("#people input[name=first_name]").fill(parentName);
+  await page.getByRole("button", { name: "Person hinzufügen" }).click();
+  await page.locator(".person-card").filter({ hasText: parentName }).click();
+  await page.getByRole("button", { name: "Bild einfügen" }).click();
+  const pasteField = page.getByLabel("Bild aus Zwischenablage einfügen");
+  await expect(pasteField).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+
+  const image = Array.from(await readFile("public/icon-192.png"));
+  await page.evaluate(bytes => {
+    const target = document.querySelector<HTMLTextAreaElement>(".photo-paste-field");
+    if (!target) throw new Error("Zwischenablagefeld ist nicht verfügbar.");
+    const clipboard = new DataTransfer();
+    clipboard.items.add(new File([new Uint8Array(bytes)], "kopiertes-bild.png", { type: "image/png" }));
+    target.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
+  }, image);
+
+  await expect(page.locator(".photo-crop-window canvas")).toBeVisible();
+  await page.getByRole("button", { name: "Bild übernehmen" }).click();
+  await expect(page.getByRole("dialog", { name: "Profilbild zuschneiden" })).toHaveCount(0);
+  await expect(page.locator(".person-profile-hero .avatar-photo")).toBeVisible();
+});
+
 test("Beziehung im gleichen Ablauf anlegen, Teilgeburtstag speichern und Telefonat protokollieren", async ({ page }) => {
   await login(page);
   await page.goto("/people");
