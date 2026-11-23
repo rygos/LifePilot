@@ -58,6 +58,15 @@ Layout: Profile photo crop - select a file or paste a copied image, refine its c
 - Interaction: profile tabs switch overview/history/planning/files without duplicating the identity header; a relationship can target an existing person or atomically create a new one; a call log can be dated, optionally timed, and given a duration and note.
 - Data shape -> component: one selected person is a focused detail view; many linked records are grouped by purpose and ordered newest first; contact reminders are persisted independently of the browser session.
 
+### Family tree
+
+- Primary action: understand how the selected person connects to known family members.
+- Information priorities: the selected person, parents and ancestors, children and descendants, spouses/partners, siblings, and the relationship labels between them.
+- Left out on purpose: friends, colleagues, organizations, and inferred links that are not saved as relationships.
+- Required content: all connected family relationships in one scrollable diagram; profile photos and names; links to each person's profile; a visible indication for unconfirmed relationships; a useful empty state.
+- Interaction: open from a person profile; selecting a person node opens that profile; close returns to the original profile.
+- Data shape -> component: generations are positioned by parent-child direction, and spouses, partners, and siblings share a generation; confirmed links use solid lines and pending links use dashed lines.
+
 ### Dashboard upcoming view
 
 - Primary action: capture a thought or open the next due item.

@@ -353,6 +353,12 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Portainer-Git-Webhook als Adminaktion einrichten; Updates beziehen den aktuellen Commit und führen Alembic-Migrationen vor dem Start der API aus.
 - [x] Migration 0022 auf lokaler und Server-PostgreSQL-Datenbank ausführen und `ryg` in beiden Datenbanken zum Administrator machen.
 
+## Familien-Stammbaum
+
+- [x] Geschützten API-Endpunkt für den vollständigen zusammenhängenden Familiengraphen ergänzen; Freunde, Kolleg:innen und fremde Benutzerdaten bleiben ausgeschlossen.
+- [x] Im Personenprofil ein responsives, scrollbares Generationsdiagramm mit Profilbildern, anklickbaren Profilen und sichtbarem Bestätigungsstatus ergänzen.
+- [x] Backendtests für Generationen, Beziehungen, Ausschlüsse und Benutzertrennung; Playwright-Test für Anzeige und Profilnavigation.
+
 ## Administration mobil und Versionsvergleich
 
 - [x] Adminroute auf Benutzerverwaltung und Wartung begrenzen, damit Dashboard- und Planungsbereiche dort nicht zusätzlich erscheinen.

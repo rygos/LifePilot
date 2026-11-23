@@ -288,3 +288,26 @@
  .photo-crop-rotation{align-items:flex-start;flex-direction:column}
  .inline-edit-trigger{opacity:1}
 }
+
+.family-tree-open{border:1px solid var(--line);background:var(--paper);color:var(--ink);white-space:nowrap}
+.family-tree-open:hover{background:var(--pale);color:var(--green)}
+.family-tree-backdrop{z-index:1002}
+.family-tree-dialog{display:flex;flex-direction:column;gap:16px;width:min(96vw,1180px);max-height:min(90vh,900px);padding:22px;background:var(--paper);box-shadow:0 24px 80px rgb(0 0 0 / .3)}
+.family-tree-dialog h2{margin:.25rem 0;font:600 24px 'Playfair Display',serif}
+.family-tree-legend{display:flex;align-items:center;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.family-tree-legend span{display:inline-flex;align-items:center;gap:7px}
+.family-tree-legend i{display:inline-block;width:24px;border-top:2px solid var(--green)}
+.family-tree-legend i.unconfirmed{border-top-style:dashed}
+.family-tree-scroll{overflow:auto;min-height:220px;max-height:calc(90vh - 190px);border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.family-tree-canvas{position:relative;min-width:100%;min-height:100%;}
+.family-tree-lines{position:absolute;inset:0;overflow:visible;pointer-events:none}
+.family-tree-edge{fill:none;stroke:var(--green);stroke-width:2}
+.family-tree-edge.pending{stroke-dasharray:6 5;stroke:var(--muted)}
+.family-tree-edge-label{fill:var(--muted);font-size:11px;text-anchor:middle}
+.family-tree-node{position:absolute;z-index:1;display:flex;width:184px;min-height:104px;align-items:center;flex-direction:column;gap:4px;padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-align:center;text-decoration:none;box-shadow:0 4px 14px rgb(0 0 0 / .06)}
+.family-tree-node:hover{border-color:var(--green);background:var(--pale)}
+.family-tree-node.current{outline:2px solid var(--green);outline-offset:2px}
+.family-tree-photo{width:48px!important;height:48px!important;border-radius:50%;font-size:18px!important}
+.family-tree-node-name{max-width:100%;font-weight:650;overflow-wrap:anywhere}
+.family-tree-node-meta{color:var(--muted);font-size:11px}
+@media(max-width:850px){.family-tree-dialog{width:calc(100vw - 20px);max-height:94vh;padding:16px}.family-tree-dialog h2{font-size:20px}.family-tree-scroll{max-height:calc(94vh - 205px)}.family-tree-legend{gap:9px}.family-tree-open{white-space:normal}}

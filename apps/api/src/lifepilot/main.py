@@ -34,6 +34,7 @@ from lifepilot.journal_routes import router as journal_router
 from lifepilot.pet_routes import router as pet_router
 from lifepilot.auth_routes import router as auth_router
 from lifepilot.admin_routes import router as admin_router
+from lifepilot.family_tree_routes import router as family_tree_router
 from lifepilot.revisions import history, record_conversation_revision
 from lifepilot.update_state import complete_pending_update
 
@@ -70,6 +71,7 @@ app.include_router(journal_router)
 app.include_router(pet_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(family_tree_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
