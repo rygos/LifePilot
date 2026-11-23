@@ -32,14 +32,21 @@ test("Stammbaum zeigt mehrere Generationen und öffnet Personenprofile", async (
     const grandparent = await makePerson("Großelternteil");
     const parent = await makePerson("Elternteil");
     const root = await makePerson("Ausgangspunkt");
+    const partner = await makePerson("Partnerperson");
     const child = await makePerson("Nachkomme");
+    const sibling = await makePerson("Geschwister");
     const relation = async (source: { id: string }, target: { id: string }, relationship_type: string) => {
       const response = await request.post(`${apiUrl}/api/relationships`, { headers, data: { source_person_id: source.id, target_person_id: target.id, relationship_type } });
       expect(response.status()).toBe(201);
     };
     await relation(grandparent, parent, "parent");
     await relation(root, parent, "child");
+    await relation(root, partner, "spouse");
     await relation(root, child, "parent");
+    await relation(partner, child, "parent");
+    await relation(root, sibling, "parent");
+    await relation(partner, sibling, "parent");
+    await relation(child, sibling, "sibling");
 
     await page.goto(`/people/${root.id}`);
     await expect(page.getByRole("heading", { level: 2, name: new RegExp(`Ausgangspunkt-${suffix}`) })).toBeVisible();
@@ -48,6 +55,13 @@ test("Stammbaum zeigt mehrere Generationen und öffnet Personenprofile", async (
     await expect(dialog).toContainText(`Großelternteil-${suffix}`);
     await expect(dialog).toContainText(`Elternteil-${suffix}`);
     await expect(dialog).toContainText(`Nachkomme-${suffix}`);
+    await expect(dialog).toContainText(`Geschwister-${suffix}`);
+    await expect(dialog.locator(".family-tree-edge")).toHaveCount(3);
+    await expect(dialog.locator(".family-tree-edge-label")).toHaveCount(0);
+    const childCards = dialog.locator(".family-tree-node").filter({ hasText: new RegExp(`(Nachkomme|Geschwister)-${suffix}`) });
+    const childBoxes = await Promise.all([childCards.nth(0).boundingBox(), childCards.nth(1).boundingBox()]);
+    if (!childBoxes[0] || !childBoxes[1]) throw new Error("Die Geschwisterkarten sind nicht sichtbar.");
+    expect(Math.abs(childBoxes[0].y - childBoxes[1].y)).toBeLessThanOrEqual(142);
     await dialog.getByRole("link", { name: new RegExp(`Nachkomme-${suffix}`) }).click();
     await expect(page).toHaveURL(new RegExp(`/people/${child.id}$`));
   } finally {

@@ -65,7 +65,7 @@ Layout: Profile photo crop - select a file or paste a copied image, refine its c
 - Left out on purpose: friends, colleagues, organizations, and inferred links that are not saved as relationships.
 - Required content: all connected family relationships in one scrollable diagram; profile photos and names; links to each person's profile; a visible indication for unconfirmed relationships; a useful empty state.
 - Interaction: open from a person profile; selecting a person node opens that profile; close returns to the original profile.
-- Data shape -> component: generations are positioned by parent-child direction, and spouses, partners, and siblings share a generation; confirmed links use solid lines and pending links use dashed lines.
+- Data shape -> component: generations are positioned by parent-child direction; parents with shared children form one visual family unit with a shared connector, and children with the same parents stay together without redundant sibling lines. Confirmed family units use solid lines and pending units use dashed lines. This is a display projection over the saved pairwise relationships, so no source relationship is rewritten.
 
 ### Dashboard upcoming view
 

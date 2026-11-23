@@ -303,6 +303,7 @@
 .family-tree-lines{position:absolute;inset:0;overflow:visible;pointer-events:none}
 .family-tree-edge{fill:none;stroke:var(--green);stroke-width:2}
 .family-tree-edge.pending{stroke-dasharray:6 5;stroke:var(--muted)}
+.family-tree-union{fill:var(--green);stroke:var(--paper);stroke-width:2}
 .family-tree-edge-label{fill:var(--muted);font-size:11px;text-anchor:middle}
 .family-tree-node{position:absolute;z-index:1;display:flex;width:184px;min-height:104px;align-items:center;flex-direction:column;gap:4px;padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-align:center;text-decoration:none;box-shadow:0 4px 14px rgb(0 0 0 / .06)}
 .family-tree-node:hover{border-color:var(--green);background:var(--pale)}

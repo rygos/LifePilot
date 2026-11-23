@@ -32,14 +32,20 @@ const FAMILY_TYPES: Record<string, string> = {
   "frau von": "Ehepartnerin", "mann von": "Ehepartner", "wife of": "Ehepartnerin", "husband of": "Ehepartner",
   "partnerin von": "Partnerin", "partner von": "Partner", "partnerperson von": "Partnerperson",
   "bruder von": "Bruder", "schwester von": "Schwester", "geschwister von": "Geschwister",
-  "sibling of": "Geschwister", "brother of": "Bruder", "sister of": "Schwester",
+  sibling: "Geschwister", "sibling of": "Geschwister", "brother of": "Bruder", "sister of": "Schwester",
 };
+
+const SIBLING_TYPES = new Set(["sibling", "sibling of", "geschwister", "geschwister von", "bruder von", "schwester von", "brother of", "sister of"]);
 
 function category(label: string): "parent" | "child" | "peer" {
   const normalized = label.toLocaleLowerCase("de-DE").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (["mutter von", "vater von", "elternteil von", "parent of", "eltern von"].includes(normalized)) return "parent";
   if (["tochter von", "sohn von", "kind von", "child of"].includes(normalized)) return "child";
   return "peer";
+}
+
+function isSibling(label: string): boolean {
+  return SIBLING_TYPES.has(label.toLocaleLowerCase("de-DE").replace(/[^\p{L}\p{N}]+/gu, " ").trim());
 }
 
 function ageLabel(person: FamilyTreePerson): string | null {
@@ -91,15 +97,42 @@ export function FamilyTreeDialog({
       else if (reverse === "parent") { parentId = edge.target_person_id; childId = edge.source_person_id; }
       else if (reverse === "child") { parentId = edge.source_person_id; childId = edge.target_person_id; }
       else { parentId = edge.source_person_id; childId = edge.target_person_id; peer = true; }
-      return peopleById.has(parentId) && peopleById.has(childId) ? [{ ...edge, parentId, childId, peer }] : [];
+      return peopleById.has(parentId) && peopleById.has(childId) ? [{ ...edge, parentId, childId, peer, sibling: isSibling(edge.relationship_type) || isSibling(edge.inverse_relationship_type) }] : [];
+    });
+    const parentsByChild = new Map<string, Set<string>>();
+    for (const edge of edges.filter(item => !item.peer)) {
+      const parents = parentsByChild.get(edge.childId) ?? new Set<string>();
+      parents.add(edge.parentId);
+      parentsByChild.set(edge.childId, parents);
+    }
+    const familyUnitsByParents = new Map<string, { parentIds: string[]; childIds: string[]; confirmed: boolean }>();
+    for (const [childId, parentSet] of parentsByChild) {
+      const parentIds = [...parentSet].sort();
+      const key = parentIds.join("|");
+      const unit = familyUnitsByParents.get(key) ?? { parentIds, childIds: [], confirmed: true };
+      unit.childIds.push(childId);
+      unit.confirmed = unit.confirmed && edges.filter(edge => !edge.peer && edge.childId === childId).every(edge => edge.confirmed);
+      familyUnitsByParents.set(key, unit);
+    }
+    const familyUnits = [...familyUnitsByParents.values()].filter(unit => unit.parentIds.length > 0);
+    // Siblings with a shared recorded parent are already connected through that parent.
+    // Keep a direct sibling link only when no parent link explains the relationship.
+    const visibleEdges = edges.filter(edge => {
+      if (!edge.sibling) return true;
+      const sourceParents = parentsByChild.get(edge.source_person_id) ?? new Set<string>();
+      const targetParents = parentsByChild.get(edge.target_person_id) ?? new Set<string>();
+      return ![...sourceParents].some(parentId => targetParents.has(parentId));
+    }).filter(edge => {
+      if (!edge.peer || edge.sibling) return true;
+      return !familyUnits.some(unit => unit.parentIds.includes(edge.source_person_id) && unit.parentIds.includes(edge.target_person_id));
     });
     const generations = new Map<string, number>([[tree.root_person_id, 0]]);
     const queue = [tree.root_person_id];
     while (queue.length) {
       const current = queue.shift()!;
       const currentGeneration = generations.get(current)!;
-      for (const edge of edges) {
-        const adjacent = edge.parentId === current ? edge.childId : edge.childId === current ? edge.parentId : edge.peer && edge.parentId === current ? edge.childId : edge.peer && edge.childId === current ? edge.parentId : null;
+      for (const edge of visibleEdges) {
+        const adjacent = edge.parentId === current ? edge.childId : edge.childId === current ? edge.parentId : null;
         if (!adjacent || generations.has(adjacent)) continue;
         const nextGeneration = edge.peer ? currentGeneration : edge.parentId === current ? currentGeneration + 1 : currentGeneration - 1;
         generations.set(adjacent, nextGeneration);
@@ -111,15 +144,23 @@ export function FamilyTreeDialog({
       const generation = generations.get(item.id) ?? 0;
       groups.set(generation, [...(groups.get(generation) ?? []), item]);
     }
-    for (const group of groups.values()) group.sort((a, b) => a.id === tree.root_person_id ? -1 : b.id === tree.root_person_id ? 1 : `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, "de"));
+    for (const [generation, group] of groups) group.sort((a, b) => {
+      if (a.id === tree.root_person_id) return -1;
+      if (b.id === tree.root_person_id) return 1;
+      const parentKey = (personId: string) => [...(parentsByChild.get(personId) ?? [])].sort().join("|");
+      const aKey = parentKey(a.id);
+      const bKey = parentKey(b.id);
+      if (generation > 0 && aKey !== bKey) return aKey.localeCompare(bKey);
+      return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, "de");
+    });
     const minGeneration = Math.min(...groups.keys());
     const maxGeneration = Math.max(...groups.keys());
     const maxRows = Math.max(...[...groups.values()].map(group => group.length), 1);
-    const columnWidth = 232;
+    const columnWidth = 280;
     const rowHeight = 142;
     const positions: PositionedPerson[] = [];
     for (const [generation, group] of groups) group.forEach((item, index) => positions.push({ person: item, generation, x: (generation - minGeneration) * columnWidth + 20, y: index * rowHeight + 28 }));
-    return { edges, positions, byId: new Map(positions.map(item => [item.person.id, item])), width: (maxGeneration - minGeneration + 1) * columnWidth + 40, height: maxRows * rowHeight + 48 };
+    return { edges: visibleEdges.filter(edge => edge.peer), familyUnits, positions, byId: new Map(positions.map(item => [item.person.id, item])), width: (maxGeneration - minGeneration + 1) * columnWidth + 40, height: maxRows * rowHeight + 48 };
   }, [tree]);
 
   useEffect(() => {
@@ -137,6 +178,21 @@ export function FamilyTreeDialog({
       {tree && layout && <div className="family-tree-scroll" aria-label="Stammbaumdiagramm">
         <div className="family-tree-canvas" style={{ width: layout.width, height: layout.height }}>
           <svg className="family-tree-lines" width={layout.width} height={layout.height} aria-hidden="true">
+            {layout.familyUnits.map((unit, unitIndex) => {
+              const parents = unit.parentIds.map(id => layout.byId.get(id)).filter((item): item is PositionedPerson => Boolean(item));
+              const children = unit.childIds.map(id => layout.byId.get(id)).filter((item): item is PositionedPerson => Boolean(item));
+              if (!parents.length || !children.length) return null;
+              const laneX = Math.min(...parents.map(item => item.x)) + 200 + (unitIndex % 3) * 16;
+              const parentYs = parents.map(item => item.y + 52);
+              const childYs = children.map(item => item.y + 52);
+              const allYs = [...parentYs, ...childYs];
+              const d = [
+                `M ${laneX} ${Math.min(...allYs)} L ${laneX} ${Math.max(...allYs)}`,
+                ...parents.map(item => `M ${item.x + 184} ${item.y + 52} L ${laneX} ${item.y + 52}`),
+                ...children.map(item => `M ${laneX} ${item.y + 52} L ${item.x} ${item.y + 52}`),
+              ].join(" ");
+              return <g key={`family-${unitIndex}`}><path d={d} className={unit.confirmed ? "family-tree-edge" : "family-tree-edge pending"} /><circle cx={laneX} cy={(Math.min(...parentYs) + Math.max(...parentYs)) / 2} r="4" className="family-tree-union" /></g>;
+            })}
             {layout.edges.map(edge => {
               const from = layout.byId.get(edge.parentId); const to = layout.byId.get(edge.childId);
               if (!from || !to) return null;

@@ -358,6 +358,8 @@ Alle fachlichen Datensätze gehören einem Benutzer (`owner_id`) und jeder Repos
 - [x] Geschützten API-Endpunkt für den vollständigen zusammenhängenden Familiengraphen ergänzen; Freunde, Kolleg:innen und fremde Benutzerdaten bleiben ausgeschlossen.
 - [x] Im Personenprofil ein responsives, scrollbares Generationsdiagramm mit Profilbildern, anklickbaren Profilen und sichtbarem Bestätigungsstatus ergänzen.
 - [x] Backendtests für Generationen, Beziehungen, Ausschlüsse und Benutzertrennung; Playwright-Test für Anzeige und Profilnavigation.
+- [x] Diagramm als Familienverbände mit gemeinsamem Eltern-Kind-Bus darstellen; redundante Geschwister- und Partnerlinien ausblenden und Geschwister nach gemeinsamen Eltern gruppieren.
+- [x] Astwerk als Referenz für Familienverbände mit gemeinsamen Kindern statt direkter Geschwisterkanten ausgewertet.
 
 ## Administration mobil und Versionsvergleich
 
