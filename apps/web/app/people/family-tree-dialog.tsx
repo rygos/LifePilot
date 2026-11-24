@@ -24,7 +24,7 @@ type FamilyTreeRelationship = {
 
 export type FamilyTree = { root_person_id: string; people: FamilyTreePerson[]; relationships: FamilyTreeRelationship[] };
 type PositionedPerson = { person: FamilyTreePerson; generation: number; x: number; y: number };
-type PositionedFamilyUnit = { parentIds: string[]; childIds: string[]; confirmed: boolean; laneX: number };
+type PositionedFamilyUnit = { parentIds: string[]; childIds: string[]; confirmed: boolean; laneX: number; branchIndex: number };
 
 const FAMILY_TYPES: Record<string, string> = {
   "mutter von": "Mutter", "vater von": "Vater", "elternteil von": "Elternteil", "parent of": "Elternteil",
@@ -199,7 +199,7 @@ export function FamilyTreeDialog({
     for (const [sourceGeneration, units] of familyUnitsByGeneration) {
       const orderedUnits = [...units].sort((a, b) => `${a.parentIds.join("|")}:${a.childIds.join("|")}`.localeCompare(`${b.parentIds.join("|")}:${b.childIds.join("|")}`));
       const sourceX = (sourceGeneration - minGeneration) * columnWidth + 20;
-      orderedUnits.forEach((unit, index) => familyUnitsWithLanes.push({ ...unit, laneX: sourceX + 200 + index * laneSpacing }));
+      orderedUnits.forEach((unit, index) => familyUnitsWithLanes.push({ ...unit, laneX: sourceX + 200 + index * laneSpacing, branchIndex: index % 4 }));
     }
     return { edges: visibleEdges.filter(edge => edge.peer), familyUnits: familyUnitsWithLanes, positions, byId, width: (maxGeneration - minGeneration + 1) * columnWidth + 40, height: maxBottom + 20 };
   }, [tree]);
@@ -213,7 +213,7 @@ export function FamilyTreeDialog({
   return <div className="dialog-backdrop profile-dialog-backdrop family-tree-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="card family-tree-dialog" role="dialog" aria-modal="true" aria-labelledby="family-tree-title">
       <div className="panel-head"><div><span className="eyebrow">FAMILIE</span><h2 id="family-tree-title">Stammbaum von {person.first_name} {person.last_name}</h2><p className="muted">Vorfahren, Nachkommen und verbundene Familienmitglieder</p></div><button type="button" className="quiet" onClick={onClose} aria-label="Stammbaum schließen">×</button></div>
-      <div className="family-tree-legend"><span><i /> Bestätigt</span><span><i className="unconfirmed" /> Noch unbestätigt</span><span>Jede Karte öffnet das Personenprofil.</span></div>
+      <div className="family-tree-legend"><span><i /> Bestätigt</span><span><i className="unconfirmed" /> Noch unbestätigt</span><span>Farben unterscheiden Familiengruppen.</span><span>Jede Karte öffnet das Personenprofil.</span></div>
       {error && <p className="error" role="alert">{error}</p>}
       {!tree && !error && <p className="empty" role="status">Stammbaum wird geladen …</p>}
       {tree && layout && <div className="family-tree-scroll" aria-label="Stammbaumdiagramm">
@@ -232,7 +232,8 @@ export function FamilyTreeDialog({
                 ...parents.map(item => `M ${item.x + 184} ${item.y + 52} L ${laneX} ${item.y + 52}`),
                 ...children.map(item => `M ${laneX} ${item.y + 52} L ${item.x} ${item.y + 52}`),
               ].join(" ");
-              return <g key={`family-${unitIndex}`}><path d={d} className={unit.confirmed ? "family-tree-edge" : "family-tree-edge pending"} /><circle cx={laneX} cy={(Math.min(...parentYs) + Math.max(...parentYs)) / 2} r="4" className="family-tree-union" /></g>;
+              const familyClass = `family-tree-edge branch-${unit.branchIndex}${unit.confirmed ? "" : " pending"}`;
+              return <g key={`family-${unitIndex}`}><path d={d} className="family-tree-edge-halo" /><path d={d} className={familyClass} /><circle cx={laneX} cy={(Math.min(...parentYs) + Math.max(...parentYs)) / 2} r="4" className={`family-tree-union branch-${unit.branchIndex}`} /></g>;
             })}
             {layout.edges.map(edge => {
               const from = layout.byId.get(edge.parentId); const to = layout.byId.get(edge.childId);
@@ -241,7 +242,7 @@ export function FamilyTreeDialog({
               const middle = edge.peer ? a.x + 54 : (a.x + b.x) / 2;
               const d = edge.peer ? `M ${a.x} ${a.y} C ${a.x + 54} ${a.y}, ${b.x + 238} ${b.y}, ${b.x + 184} ${b.y}` : `M ${a.x} ${a.y} C ${middle} ${a.y}, ${middle} ${b.y}, ${b.x} ${b.y}`;
               const label = edge.peer ? FAMILY_TYPES[edge.relationship_type.toLocaleLowerCase("de-DE")] ?? FAMILY_TYPES[edge.inverse_relationship_type.toLocaleLowerCase("de-DE")] ?? "Familie" : "";
-              return <g key={edge.id}><path d={d} className={edge.confirmed ? "family-tree-edge" : "family-tree-edge pending"} />{label && <text x={middle} y={Math.min(a.y, b.y) - 8} className="family-tree-edge-label">{label}</text>}</g>;
+              return <g key={edge.id}><path d={d} className="family-tree-edge-halo" /><path d={d} className={edge.confirmed ? "family-tree-edge" : "family-tree-edge pending"} />{label && <text x={middle} y={Math.min(a.y, b.y) - 8} className="family-tree-edge-label">{label}</text>}</g>;
             })}
           </svg>
           {layout.positions.map(({ person: node, x, y }) => <a key={node.id} className={`family-tree-node${node.id === tree.root_person_id ? " current" : ""}`} href={`/people/${node.id}`} style={{ left: x, top: y }} aria-label={`Profil von ${node.first_name} ${node.last_name} öffnen`}>

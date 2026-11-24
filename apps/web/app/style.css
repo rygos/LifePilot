@@ -301,9 +301,16 @@
 .family-tree-scroll{overflow:auto;min-height:220px;max-height:calc(90vh - 190px);border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .family-tree-canvas{position:relative;min-width:100%;min-height:100%;}
 .family-tree-lines{position:absolute;inset:0;overflow:visible;pointer-events:none}
-.family-tree-edge{fill:none;stroke:var(--green);stroke-width:2}
-.family-tree-edge.pending{stroke-dasharray:6 5;stroke:var(--muted)}
-.family-tree-union{fill:var(--green);stroke:var(--paper);stroke-width:2}
+.family-tree-edge-halo{fill:none;stroke:var(--bg);stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.family-tree-edge{fill:none;stroke:var(--green);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.family-tree-edge.branch-1,.family-tree-union.branch-1{stroke:color-mix(in srgb,var(--accent) 62%,var(--ink))}
+.family-tree-edge.branch-2,.family-tree-union.branch-2{stroke:var(--muted)}
+.family-tree-edge.branch-3,.family-tree-union.branch-3{stroke:var(--ink)}
+.family-tree-edge.pending{stroke-dasharray:6 5;opacity:.82}
+.family-tree-union{fill:var(--paper);stroke:var(--green);stroke-width:2.5}
+.family-tree-union.branch-1{fill:color-mix(in srgb,var(--accent) 62%,var(--ink))}
+.family-tree-union.branch-2{fill:var(--muted)}
+.family-tree-union.branch-3{fill:var(--ink)}
 .family-tree-edge-label{fill:var(--muted);font-size:11px;text-anchor:middle}
 .family-tree-node{position:absolute;z-index:1;display:flex;width:184px;min-height:104px;align-items:center;flex-direction:column;gap:4px;padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-align:center;text-decoration:none;box-shadow:0 4px 14px rgb(0 0 0 / .06)}
 .family-tree-node:hover{border-color:var(--green);background:var(--pale)}
