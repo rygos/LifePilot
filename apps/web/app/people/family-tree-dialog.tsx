@@ -24,6 +24,7 @@ type FamilyTreeRelationship = {
 
 export type FamilyTree = { root_person_id: string; people: FamilyTreePerson[]; relationships: FamilyTreeRelationship[] };
 type PositionedPerson = { person: FamilyTreePerson; generation: number; x: number; y: number };
+type PositionedFamilyUnit = { parentIds: string[]; childIds: string[]; confirmed: boolean; laneX: number };
 
 const FAMILY_TYPES: Record<string, string> = {
   "mutter von": "Mutter", "vater von": "Vater", "elternteil von": "Elternteil", "parent of": "Elternteil",
@@ -114,7 +115,9 @@ export function FamilyTreeDialog({
       unit.confirmed = unit.confirmed && edges.filter(edge => !edge.peer && edge.childId === childId).every(edge => edge.confirmed);
       familyUnitsByParents.set(key, unit);
     }
-    const familyUnits = [...familyUnitsByParents.values()].filter(unit => unit.parentIds.length > 0);
+    const familyUnits = [...familyUnitsByParents.values()]
+      .filter(unit => unit.parentIds.length > 0)
+      .map(unit => ({ ...unit, childIds: [...unit.childIds].sort() }));
     // Siblings with a shared recorded parent are already connected through that parent.
     // Keep a direct sibling link only when no parent link explains the relationship.
     const visibleEdges = edges.filter(edge => {
@@ -144,23 +147,61 @@ export function FamilyTreeDialog({
       const generation = generations.get(item.id) ?? 0;
       groups.set(generation, [...(groups.get(generation) ?? []), item]);
     }
-    for (const [generation, group] of groups) group.sort((a, b) => {
-      if (a.id === tree.root_person_id) return -1;
-      if (b.id === tree.root_person_id) return 1;
-      const parentKey = (personId: string) => [...(parentsByChild.get(personId) ?? [])].sort().join("|");
-      const aKey = parentKey(a.id);
-      const bKey = parentKey(b.id);
-      if (generation > 0 && aKey !== bKey) return aKey.localeCompare(bKey);
-      return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, "de");
-    });
+    const clusterKey = (item: FamilyTreePerson) => {
+      const recordedParentIds = [...(parentsByChild.get(item.id) ?? [])].sort();
+      if (recordedParentIds.length) return `parents:${recordedParentIds.join("|")}`;
+      const parentUnits = familyUnits
+        .filter(unit => unit.parentIds.includes(item.id))
+        .sort((a, b) => {
+          const aRootFamily = a.parentIds.includes(tree.root_person_id) && a.parentIds.length > 1;
+          const bRootFamily = b.parentIds.includes(tree.root_person_id) && b.parentIds.length > 1;
+          return Number(bRootFamily) - Number(aRootFamily) || a.childIds.join("|").localeCompare(b.childIds.join("|"));
+        });
+      const chosenUnit = parentUnits[0];
+      return chosenUnit ? `parents:${chosenUnit.parentIds.join("|")}` : `person:${item.id}`;
+    };
     const minGeneration = Math.min(...groups.keys());
     const maxGeneration = Math.max(...groups.keys());
-    const maxRows = Math.max(...[...groups.values()].map(group => group.length), 1);
-    const columnWidth = 280;
+    const familyUnitsByGeneration = new Map<number, typeof familyUnits>();
+    for (const unit of familyUnits) {
+      const sourceGeneration = Math.min(...unit.parentIds.map(id => generations.get(id) ?? 0));
+      familyUnitsByGeneration.set(sourceGeneration, [...(familyUnitsByGeneration.get(sourceGeneration) ?? []), unit]);
+    }
+    const laneSpacing = 26;
+    const columnWidth = Math.max(280, ...[...familyUnitsByGeneration.values()].map(units => 232 + Math.max(0, units.length - 1) * laneSpacing));
     const rowHeight = 142;
     const positions: PositionedPerson[] = [];
-    for (const [generation, group] of groups) group.forEach((item, index) => positions.push({ person: item, generation, x: (generation - minGeneration) * columnWidth + 20, y: index * rowHeight + 28 }));
-    return { edges: visibleEdges.filter(edge => edge.peer), familyUnits, positions, byId: new Map(positions.map(item => [item.person.id, item])), width: (maxGeneration - minGeneration + 1) * columnWidth + 40, height: maxRows * rowHeight + 48 };
+    let maxBottom = 0;
+    for (const [generation, group] of groups) {
+      const clusters = new Map<string, FamilyTreePerson[]>();
+      for (const item of group) {
+        const key = clusterKey(item);
+        clusters.set(key, [...(clusters.get(key) ?? []), item]);
+      }
+      const orderedClusters = [...clusters.entries()].sort(([aKey, aPeople], [bKey, bPeople]) => {
+        const aHasRoot = aPeople.some(item => item.id === tree.root_person_id);
+        const bHasRoot = bPeople.some(item => item.id === tree.root_person_id);
+        return Number(bHasRoot) - Number(aHasRoot) || aKey.localeCompare(bKey);
+      });
+      let rowY = 28;
+      for (const [, people] of orderedClusters) {
+        people.sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, "de"));
+        for (const item of people) {
+          positions.push({ person: item, generation, x: (generation - minGeneration) * columnWidth + 20, y: rowY });
+          rowY += rowHeight;
+        }
+        rowY += 88;
+      }
+      maxBottom = Math.max(maxBottom, rowY);
+    }
+    const byId = new Map(positions.map(item => [item.person.id, item]));
+    const familyUnitsWithLanes: PositionedFamilyUnit[] = [];
+    for (const [sourceGeneration, units] of familyUnitsByGeneration) {
+      const orderedUnits = [...units].sort((a, b) => `${a.parentIds.join("|")}:${a.childIds.join("|")}`.localeCompare(`${b.parentIds.join("|")}:${b.childIds.join("|")}`));
+      const sourceX = (sourceGeneration - minGeneration) * columnWidth + 20;
+      orderedUnits.forEach((unit, index) => familyUnitsWithLanes.push({ ...unit, laneX: sourceX + 200 + index * laneSpacing }));
+    }
+    return { edges: visibleEdges.filter(edge => edge.peer), familyUnits: familyUnitsWithLanes, positions, byId, width: (maxGeneration - minGeneration + 1) * columnWidth + 40, height: maxBottom + 20 };
   }, [tree]);
 
   useEffect(() => {
@@ -182,7 +223,7 @@ export function FamilyTreeDialog({
               const parents = unit.parentIds.map(id => layout.byId.get(id)).filter((item): item is PositionedPerson => Boolean(item));
               const children = unit.childIds.map(id => layout.byId.get(id)).filter((item): item is PositionedPerson => Boolean(item));
               if (!parents.length || !children.length) return null;
-              const laneX = Math.min(...parents.map(item => item.x)) + 200 + (unitIndex % 3) * 16;
+              const laneX = unit.laneX;
               const parentYs = parents.map(item => item.y + 52);
               const childYs = children.map(item => item.y + 52);
               const allYs = [...parentYs, ...childYs];

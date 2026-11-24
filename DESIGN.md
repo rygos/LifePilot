@@ -40,6 +40,8 @@ Layout: Relationship creation - connect a person to an existing contact or creat
 
 Layout: Profile photo crop - select a file or paste a copied image, refine its circular portrait crop, then save the square result -> profile actions offer file selection and clipboard paste; an empty focused dialog provides a paste target, and a loaded image shows the circular crop window, pan, zoom and 45-degree rotation controls; scroll owner: modal content; anti-patterns: saving the original before review, hiding the crop boundary, or applying image metadata rotation twice.
 
+Layout: Family tree diagram - follow each parent group to its children without mistaking nearby branches for relationships -> shared-parent child groups stay together, separate family groups receive a visible vertical gap, and each parent group uses its own connector lane between generations; scroll owner: the diagram container; anti-patterns: overlapping family lanes, direct sibling lines when shared parents already explain the link, or lines passing close enough to imply an unrelated connection.
+
 ## Screen brief: Dashboard scheduling controls
 
 - Primary action: save a task, appointment, or personal schedule preference.
@@ -66,6 +68,7 @@ Layout: Profile photo crop - select a file or paste a copied image, refine its c
 - Required content: all connected family relationships in one scrollable diagram; profile photos and names; links to each person's profile; a visible indication for unconfirmed relationships; a useful empty state.
 - Interaction: open from a person profile; selecting a person node opens that profile; close returns to the original profile.
 - Data shape -> component: generations are positioned by parent-child direction; parents with shared children form one visual family unit with a shared connector, and children with the same parents stay together without redundant sibling lines. Confirmed family units use solid lines and pending units use dashed lines. This is a display projection over the saved pairwise relationships, so no source relationship is rewritten.
+- Layout: generation columns widen when they need additional family lanes; distinct parent groups have separate horizontal connector tracks and a visible vertical gap from the next family group; the diagram container owns scrolling.
 
 ### Dashboard upcoming view
 
