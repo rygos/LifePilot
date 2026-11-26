@@ -30,6 +30,9 @@ services:
     build: ./apps/api
     restart: unless-stopped
     environment:
+      LOGIN_GLOBAL_PER_MINUTE: ${LOGIN_GLOBAL_PER_MINUTE:-300}
+      LOGIN_PEER_PER_MINUTE: ${LOGIN_PEER_PER_MINUTE:-60}
+      LOGIN_ACCOUNT_PER_10_MINUTES: ${LOGIN_ACCOUNT_PER_10_MINUTES:-10}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-lifepilot}@db:5432/${POSTGRES_DB:-lifepilot}}
       PGPASSWORD: ${POSTGRES_PASSWORD:-${SECRET_KEY}}

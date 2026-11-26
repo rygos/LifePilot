@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile, File
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.responses import Response, FileResponse
 from pathlib import Path
 from uuid import uuid4
@@ -16,7 +18,8 @@ from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
 from lifepilot.models import AuditEvent, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonCallLog, PersonContactMethod, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User, UserPersonRelationship, Organization, PersonOrganization
 from lifepilot.schemas import ContactMethodIn, ContactMethodOut, ConversationIn, ConversationOut, ConversationPatch, Credentials, EventIn, EventOut, GiftIn, GiftOut, LoanIn, LoanOut, MCPTokenRequest, MemoryIn, MemoryOut, PersonCallIn, PersonCallOut, PersonIn, PersonOut, PersonPatch, ProfileOut, ProfileUpdate, RelationshipIn, RelationshipOut, RelationshipWithPersonIn, RelationshipWithPersonOut, TaskIn, TaskOut, Token, UserPersonRelationshipIn, UserPersonRelationshipOut, OrganizationIn, OrganizationOut, MembershipIn, MembershipOut
-from lifepilot.security import create_token, current_user, hash_password, verify_password
+from lifepilot.security import create_token, current_user, hash_password, validate_secret_key, validate_bootstrap_password
+from lifepilot.login_guard import authenticate, LoginBodyLimit
 from lifepilot.services import ensure_self_person, owned_person, relationship_create, search, sync_account_from_self_person, sync_self_person_from_account
 from lifepilot.scheduler import sync_contact_followup
 from lifepilot.relationship_language import owner_relationship_label, refresh_relationship_labels
@@ -65,9 +68,11 @@ from lifepilot.family_routes import router as family_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_secret_key()
     Base.metadata.create_all(bind=engine)
     with Session(engine) as db:
         if db.scalar(select(User).where(User.username == settings.life_pilot_bootstrap_username)) is None:
+            validate_bootstrap_password()
             first_user = db.scalar(select(User.id).limit(1)) is None
             db.add(User(username=settings.life_pilot_bootstrap_username, password_hash=hash_password(settings.life_pilot_bootstrap_password), role="admin" if first_user else "user"))
             db.flush()
@@ -78,6 +83,13 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedächtnis", version="0.1.0", lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_error(request: Request, exc: RequestValidationError):
+    # Never echo passwords, tokens, private document text or custom exception context.
+    return JSONResponse(status_code=422, content={"detail": [{"loc": list(e["loc"]), "msg": str(e["msg"]), "type": e["type"]} for e in exc.errors()]}, headers={"Cache-Control":"no-store"})
+
+app.add_middleware(LoginBodyLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.web_origin.split(",") if origin.strip()],
@@ -142,23 +154,23 @@ def readiness():
     return {"status": "ready"}
 
 @app.post("/api/auth/token", response_model=Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == form.username, User.deleted_at.is_(None)))
-    if user is None or not verify_password(form.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+def login(request: Request, response: Response, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate(db, request, form.username, form.password)
+    response.headers["Cache-Control"] = "no-store"
     ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id, token_version=user.token_version)}
 
 @app.post("/api/auth/login", response_model=Token)
-def login_json(data: Credentials, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == data.username, User.deleted_at.is_(None)))
-    if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+def login_json(data: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+    user = authenticate(db, request, data.username, data.password)
+    response.headers["Cache-Control"] = "no-store"
     ensure_self_person(db, user); db.commit()
     return {"access_token": create_token(user.id, token_version=user.token_version)}
 
 @app.post("/api/auth/mcp-token", response_model=Token)
-def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == data.username, User.deleted_at.is_(None)))
-    if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+def mcp_token(data: MCPTokenRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    user = authenticate(db, request, data.username, data.password)
+    response.headers["Cache-Control"] = "no-store"
     ensure_self_person(db, user); db.commit()
     scopes = ["memory:read"]
     if data.access == "read_write": scopes.append("memory:write")
@@ -706,6 +718,7 @@ except ImportError:
     mcp = None
 
 def run_mcp():
+    validate_secret_key()
     import uvicorn
     if mcp is None: raise RuntimeError("MCP SDK ist nicht verfügbar")
     uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=settings.mcp_port)

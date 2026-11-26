@@ -11,6 +11,8 @@ os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
 os.environ["SECRET_KEY"] = "test-secret-key-with-adequate-length"
 os.environ["LIFE_PILOT_BOOTSTRAP_USERNAME"] = "testuser"
 os.environ["LIFE_PILOT_BOOTSTRAP_PASSWORD"] = "test-password"
+os.environ["LOGIN_PEER_PER_MINUTE"] = "1000"
+os.environ["LOGIN_GLOBAL_PER_MINUTE"] = "2000"
 
 from lifepilot.db import Base, engine
 from lifepilot.main import app

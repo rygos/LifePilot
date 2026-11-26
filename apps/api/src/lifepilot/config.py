@@ -4,6 +4,9 @@ from pydantic import Field
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     secret_key: str = "development-only-change-me"
+    login_global_per_minute: int = Field(default=300, ge=10, le=5000)
+    login_peer_per_minute: int = Field(default=60, ge=5, le=5000)
+    login_account_per_10_minutes: int = Field(default=10, ge=3, le=100)
     database_url: str = "sqlite:///./lifepilot.db"
     redis_url: str = ""
     life_pilot_bootstrap_username: str = "admin"

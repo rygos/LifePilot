@@ -936,3 +936,10 @@ class FamilyItem(Base):
     status: Mapped[str] = mapped_column(String(12), default="open")
     revision: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LoginBudget(Base):
+    __tablename__ = "login_budgets"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[int] = mapped_column(Integer, index=True)

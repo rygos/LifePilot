@@ -70,7 +70,10 @@ def test_admin_can_soft_delete_restore_and_permanently_delete_user(client: TestC
     restored = client.post(f"/api/admin/users/{target_id}/restore", headers=admin_headers)
     assert restored.status_code == 200
     assert restored.json()["deleted_at"] is None
-    assert client.get("/api/auth/me", headers=target_headers).status_code == 200
+    assert client.get("/api/auth/me", headers=target_headers).status_code == 401
+    fresh = client.post("/api/auth/login", json={"username": deleted_user["username"], "password":"test-password-for-admin"})
+    assert fresh.status_code == 200
+    assert client.get("/api/auth/me",headers={"Authorization":"Bearer "+fresh.json()["access_token"]}).status_code == 200
 
     deleted_again = client.delete(f"/api/admin/users/{target_id}", headers=admin_headers)
     assert deleted_again.status_code == 200

@@ -2,6 +2,7 @@ from typing import Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
@@ -36,6 +37,10 @@ def change_password(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ) -> PasswordChangeResponse:
+    version = user.token_version
+    user = db.scalar(select(User).where(User.id==user.id,User.deleted_at.is_(None)).with_for_update().execution_options(populate_existing=True))
+    if user is None or user.token_version != version:
+        raise HTTPException(401,"Ungültige Anmeldung")
     if not verify_password(data.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Das aktuelle Passwort ist falsch")
     user.password_hash = hash_password(data.new_password)

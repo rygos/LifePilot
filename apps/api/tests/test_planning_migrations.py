@@ -17,7 +17,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
     engine = create_engine(database_url)
     try:
         inspector = inspect(engine)
-        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins", "routines", "routine_steps", "routine_completions", "capture_keys", "push_subscriptions", "dav_keys", "temporal_facts", "fact_conflict_decisions", "face_training_cards", "document_indexes", "document_pages", "decision_entries", "decision_reviews", "places", "place_entries", "inventory_items", "inventory_history", "inventory_loans", "trash_entries", "family_spaces", "family_memberships", "family_shares", "family_items"}.issubset(inspector.get_table_names())
+        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins", "routines", "routine_steps", "routine_completions", "capture_keys", "push_subscriptions", "dav_keys", "temporal_facts", "fact_conflict_decisions", "face_training_cards", "document_indexes", "document_pages", "decision_entries", "decision_reviews", "places", "place_entries", "inventory_items", "inventory_history", "inventory_loans", "trash_entries", "family_spaces", "family_memberships", "family_shares", "family_items", "login_budgets"}.issubset(inspector.get_table_names())
         assert "value_key" in {column["name"] for column in inspector.get_columns("temporal_facts")}
         assert "scope" in {column["name"] for column in inspector.get_columns("capture_keys")}
         assert "client_request_id" in {column["name"] for column in inspector.get_columns("captures")}
@@ -28,6 +28,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
         )
         command.downgrade(config, "0032_token_version")
         inspector = inspect(engine)
+        assert "login_budgets" not in inspector.get_table_names()
         assert not {"family_spaces", "family_memberships", "family_shares", "family_items"}.intersection(inspector.get_table_names())
         assert "trash_entries" not in inspector.get_table_names()
         assert not {"inventory_items", "inventory_history", "inventory_loans"}.intersection(inspector.get_table_names())

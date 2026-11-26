@@ -11,8 +11,8 @@ def as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 class Credentials(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1,max_length=120)
+    password: str = Field(min_length=1,max_length=1024)
 class MCPTokenRequest(Credentials):
     access: str = Field(default="read_only", pattern="^(read_only|read_write)$")
     family_read: bool = False

@@ -7,7 +7,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifepilot.config import settings
@@ -149,6 +149,18 @@ def require_admin(user: User = Depends(current_user)) -> User:
     return user
 
 
+def lock_active_admins(db: Session, actor: User) -> int:
+    # A stable lock order serializes role changes and account deactivations in PostgreSQL.
+    ids = list(db.scalars(select(User.id).where(User.role=="admin",User.deleted_at.is_(None)).order_by(User.id).with_for_update()))
+    if actor.id not in ids:
+        raise HTTPException(403,"Administratorrechte erforderlich")
+    return len(ids)
+
+
+def locked_user(db: Session, user_id: str):
+    return db.scalar(select(User).where(User.id==user_id).with_for_update().execution_options(populate_existing=True))
+
+
 @router.get("/users", response_model=list[AdminUserView])
 def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[AdminUserView]:
     users = db.scalars(select(User).order_by(User.deleted_at.is_not(None), User.username)).all()
@@ -162,7 +174,8 @@ def update_user_role(
     db: Session = Depends(get_db),
     actor: User = Depends(require_admin),
 ) -> AdminUserView:
-    target = db.get(User, user_id)
+    active_admins = lock_active_admins(db, actor)
+    target = locked_user(db, user_id)
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     if target.deleted_at is not None:
@@ -170,8 +183,7 @@ def update_user_role(
     if target.role == data.role:
         return AdminUserView.model_validate(target)
     if target.role == "admin" and data.role == "user":
-        admin_count = db.scalar(select(func.count()).select_from(User).where(User.role == "admin")) or 0
-        if admin_count <= 1:
+        if active_admins <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein Administrator muss bestehen bleiben")
     target.role = data.role
     db.add(AuditEvent(owner_id=actor.id, action="update", resource_type="user_role", resource_id=target.id, source="web"))
@@ -182,16 +194,17 @@ def update_user_role(
 
 @router.delete("/users/{user_id}", response_model=AdminUserView)
 def soft_delete_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> AdminUserView:
-    target = db.get(User, user_id)
+    active_admins = lock_active_admins(db, actor)
+    target = locked_user(db, user_id)
     if target is None or target.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aktiver Benutzer nicht gefunden")
     if target.id == actor.id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Das eigene Administratorkonto kann hier nicht gelöscht werden")
     if target.role == "admin":
-        active_admins = db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.deleted_at.is_(None))) or 0
         if active_admins <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein aktiver Administrator muss bestehen bleiben")
     target.deleted_at = datetime.now().astimezone()
+    target.token_version += 1
     db.add(AuditEvent(owner_id=actor.id, action="soft_delete", resource_type="user", resource_id=target.id, source="admin"))
     db.commit()
     db.refresh(target)
@@ -200,10 +213,12 @@ def soft_delete_user(user_id: str, db: Session = Depends(get_db), actor: User = 
 
 @router.post("/users/{user_id}/restore", response_model=AdminUserView)
 def restore_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> AdminUserView:
-    target = db.get(User, user_id)
+    active_admins = lock_active_admins(db, actor)
+    target = locked_user(db, user_id)
     if target is None or target.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gelöschter Benutzer nicht gefunden")
     target.deleted_at = None
+    target.token_version += 1
     db.add(AuditEvent(owner_id=actor.id, action="restore", resource_type="user", resource_id=target.id, source="admin"))
     db.commit()
     db.refresh(target)
@@ -212,13 +227,13 @@ def restore_user(user_id: str, db: Session = Depends(get_db), actor: User = Depe
 
 @router.delete("/users/{user_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
 def permanently_delete_user(user_id: str, db: Session = Depends(get_db), actor: User = Depends(require_admin)) -> None:
-    target = db.get(User, user_id)
+    active_admins = lock_active_admins(db, actor)
+    target = locked_user(db, user_id)
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     if target.id == actor.id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Das eigene Administratorkonto kann hier nicht gelöscht werden")
     if target.role == "admin" and target.deleted_at is None:
-        active_admins = db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.deleted_at.is_(None))) or 0
         if active_admins <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein aktiver Administrator muss bestehen bleiben")
     target_id = target.id
