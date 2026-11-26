@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import Text, or_, select
 from sqlalchemy.orm import Session
 from lifepilot.audit import ACTOR_KEY
+from lifepilot.mcp_permissions import permits, TRANSPORT_SCOPE
 from lifepilot.approval_policy import queue as queue_approval
 from lifepilot.config import settings
 from lifepilot.db import engine
@@ -29,14 +30,14 @@ try:
                     if resolve_bearer_token_use(token) != "mcp":
                         return None
                     user = resolve_bearer_user(token, db)
-                    return AccessToken(token=token, client_id=user.id, scopes=resolve_bearer_scopes(token), resource="http://localhost/mcp/")
+                    return AccessToken(token=token, client_id=user.id, scopes=[*resolve_bearer_scopes(token),TRANSPORT_SCOPE], resource="http://localhost/mcp/")
                 except HTTPException:
                     return None
-    mcp = FastMCP("LifePilot", token_verifier=LifePilotTokenVerifier(), auth=AuthSettings(issuer_url="http://localhost", resource_server_url="http://localhost/mcp/", required_scopes=["memory:read"], client_registration_options=ClientRegistrationOptions(enabled=False), revocation_options=RevocationOptions(enabled=False), validate_token_resource=False), stateless_http=True, json_response=True, streamable_http_path="/mcp")
+    mcp = FastMCP("LifePilot", token_verifier=LifePilotTokenVerifier(), auth=AuthSettings(issuer_url="http://localhost", resource_server_url="http://localhost/mcp/", required_scopes=[TRANSPORT_SCOPE], client_registration_options=ClientRegistrationOptions(enabled=False), revocation_options=RevocationOptions(enabled=False), validate_token_resource=False), stateless_http=True, json_response=True, streamable_http_path="/mcp")
     def mcp_user(required_scope: str = "memory:read"):
         token = get_access_token()
         if token is None: raise ValueError("Bearer token erforderlich")
-        if required_scope not in token.scopes: raise ValueError(f"MCP-Token benötigt den Bereich {required_scope}")
+        if not permits(token.scopes,required_scope): raise ValueError(f"MCP-Token benötigt den Bereich {required_scope}")
         # Recheck token and account on each tool invocation, not only at HTTP authentication.
         with Session(engine) as db:
             user = resolve_bearer_user(token.token, db)
@@ -53,14 +54,14 @@ try:
         return queue_approval(db,owner_id,operation,resource_id,resource_label,payload)
     @mcp.tool()
     def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] = "unknown", birthday_month: int | None = None, birthday_day: int | None = None, birthday_approximate_age: int | None = None, contact_interval_days: int | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str = "", tags: list[str] | None = None, is_favorite: bool = False, notes: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         data = PersonIn(first_name=first_name, last_name=last_name, nickname=nickname, birthday=birthday, birthday_precision=birthday_precision, birthday_month=birthday_month, birthday_day=birthday_day, birthday_approximate_age=birthday_approximate_age, contact_interval_days=contact_interval_days, gender=gender, email=email, phone=phone, address=address, website=website, job_title=job_title, organization=organization, how_met=how_met, tags=tags or [], is_favorite=is_favorite, notes=notes)
         with mcp_session(owner_id) as db:
             row = Person(owner_id=owner_id, **data.model_dump(exclude_none=True)); db.add(row); db.commit(); db.refresh(row)
             return PersonOut.model_validate(row).model_dump(mode="json")
     @mcp.tool()
     def person_search_tool(query: str) -> list[dict]:
-        owner_id = mcp_user(); term = f"%{query}%"
+        owner_id = mcp_user("people:read"); term = f"%{query}%"
         with mcp_session(owner_id) as db:
             contact_person_ids = select(PersonContactMethod.person_id).where(PersonContactMethod.owner_id == owner_id, or_(PersonContactMethod.value.ilike(term), PersonContactMethod.label.ilike(term)))
             rows = db.scalars(select(Person).where(Person.owner_id == owner_id, or_(Person.first_name.ilike(term), Person.last_name.ilike(term), Person.nickname.ilike(term), Person.email.ilike(term), Person.phone.ilike(term), Person.organization.ilike(term), Person.job_title.ilike(term), Person.how_met.ilike(term), Person.tags.cast(Text).ilike(term), Person.notes.ilike(term), Person.id.in_(contact_person_ids)))).all()
@@ -68,21 +69,21 @@ try:
 
     @mcp.tool(name="person_contact_methods")
     def person_contact_methods_tool(person_id: str) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("people:read")
         with mcp_session(owner_id) as db:
             rows = person_contact_methods(person_id, db, db.get(User, owner_id))
             return [ContactMethodOut.model_validate(row).model_dump(mode="json") for row in rows]
 
     @mcp.tool(name="person_contact_method_create")
     def person_contact_method_create_tool(person_id: str, method_type: Literal["email", "phone", "address", "website", "messaging", "social", "other"], value: str, label: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         with mcp_session(owner_id) as db:
             row = person_contact_method_create(person_id, ContactMethodIn(method_type=method_type, label=label, value=value), db, db.get(User, owner_id))
             return ContactMethodOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="person_contact_method_update")
     def person_contact_method_update_tool(method_id: str, method_type: Literal["email", "phone", "address", "website", "messaging", "social", "other"], value: str, label: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         with mcp_session(owner_id) as db:
             row = person_contact_method_update(method_id, ContactMethodIn(method_type=method_type, label=label, value=value), db, db.get(User, owner_id))
             return ContactMethodOut.model_validate(row).model_dump(mode="json")
@@ -97,7 +98,9 @@ try:
             return request_approval(db,owner_id,"person_contact_method_delete",row.id,f"{row.method_type}: {row.label} {row.value}")
     @mcp.tool()
     def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("notes:write")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             user = db.get(User, owner_id); owned_person(db, person_id, user)
             row = Memory(owner_id=owner_id, person_id=person_id, title=title, content=content); db.add(row); db.commit(); db.refresh(row)
@@ -112,13 +115,13 @@ try:
 
     @mcp.tool(name="person_get")
     def person_get_mcp(person_id: str) -> dict:
-        owner_id = mcp_user()
+        owner_id = mcp_user("people:read")
         with mcp_session(owner_id) as db:
             return PersonOut.model_validate(person_get(person_id, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="person_update")
     def person_update_mcp(person_id: str, first_name: str | None = None, last_name: str | None = None, nickname: str | None = None, birthday: str | None = None, birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] | None = None, birthday_month: int | None = None, birthday_day: int | None = None, birthday_approximate_age: int | None = None, contact_interval_days: int | None = None, clear_contact_interval: bool = False, gender: Literal["female", "male", "diverse", "unspecified"] | None = None, email: str | None = None, phone: str | None = None, address: str | None = None, website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str | None = None, tags: list[str] | None = None, is_favorite: bool | None = None, notes: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         changes = {key: value for key, value in locals().copy().items() if key in PersonIn.model_fields and value is not None}
         if clear_contact_interval:
             changes["contact_interval_days"] = None
@@ -135,20 +138,22 @@ try:
 
     @mcp.tool(name="person_call_search")
     def person_call_search_tool(person_id: str) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("people:read")
         with mcp_session(owner_id) as db:
             return [PersonCallOut.model_validate(row).model_dump(mode="json") for row in person_call_list(person_id, db, db.get(User, owner_id))]
 
     @mcp.tool(name="person_call_log")
     def person_call_log_tool(person_id: str, occurred_at: str, duration_minutes: int | None = None, notes: str = "") -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         with mcp_session(owner_id) as db:
             data = PersonCallIn(occurred_at=datetime.fromisoformat(occurred_at), duration_minutes=duration_minutes, notes=notes)
             return PersonCallOut.model_validate(person_call_create(person_id, data, db, db.get(User, owner_id))).model_dump(mode="json")
 
     @mcp.tool(name="relationship_create")
     def relationship_create_mcp(source_person_id: str, target_person_id: str, relationship_type: str, inverse_relationship_type: str | None = None, source_memory_id: str | None = None, confirmed: bool = True) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
+        if source_memory_id:
+            mcp_user("notes:read")
         with mcp_session(owner_id) as db:
             row = relationship_add(RelationshipIn(source_person_id=source_person_id, target_person_id=target_person_id, relationship_type=relationship_type, inverse_relationship_type=inverse_relationship_type, source_memory_id=source_memory_id, confirmed=confirmed), db, db.get(User, owner_id))
             names = relationship_list(db, db.get(User, owner_id), source_person_id)
@@ -157,13 +162,13 @@ try:
 
     @mcp.tool(name="relationship_search")
     def relationship_search_mcp(person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("people:read")
         with mcp_session(owner_id) as db:
             return [item.model_dump(mode="json") for item in relationship_list(db, db.get(User, owner_id), person_id)]
 
     @mcp.tool(name="memory_get")
     def memory_get_mcp(memory_id: str) -> dict:
-        owner_id = mcp_user()
+        owner_id = mcp_user("notes:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
             if row is None: raise ValueError("Erinnerung nicht gefunden")
@@ -171,7 +176,9 @@ try:
 
     @mcp.tool(name="memory_update")
     def memory_update_mcp(memory_id: str, title: str | None = None, content: str | None = None, person_id: str | None = None, occurred_at: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("notes:write")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.owner_id == owner_id))
             if row is None: raise ValueError("Erinnerung nicht gefunden")
@@ -207,7 +214,11 @@ try:
     @mcp.tool(name="task_create")
     def task_create_mcp(title: str, description: str = "", person_id: str | None = None, project_id: str | None = None, due_at: str | None = None, priority: int = 2, repeat_interval_days: int | None = None, repeat_until: str | None = None) -> dict:
         from lifepilot.planner import task_create as create_task
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("tasks:write")
+        if person_id:
+            mcp_user("people:read")
+        if project_id:
+            mcp_user("projects:read")
         with mcp_session(owner_id) as db:
             row = create_task(TaskIn(title=title, description=description, person_id=person_id, project_id=project_id, due_at=due_at, priority=priority, repeat_interval_days=repeat_interval_days, repeat_until=repeat_until), db, db.get(User, owner_id))
             return TaskOut.model_validate(row).model_dump(mode="json")
@@ -215,7 +226,9 @@ try:
     @mcp.tool(name="task_search")
     def task_search_mcp(status: str | None = None, person_id: str | None = None) -> list[dict]:
         from lifepilot.planner import task_list
-        owner_id = mcp_user()
+        owner_id = mcp_user("tasks:read")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             rows = task_list(db, db.get(User, owner_id), status)
             if person_id is not None: rows = [row for row in rows if row.person_id == person_id]
@@ -224,7 +237,7 @@ try:
     @mcp.tool(name="task_complete")
     def task_complete_mcp(task_id: str) -> dict:
         from lifepilot.planner import task_complete
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("tasks:write")
         with mcp_session(owner_id) as db:
             row = task_complete(task_id, db, db.get(User, owner_id))
             return TaskOut.model_validate(row).model_dump(mode="json")
@@ -232,7 +245,11 @@ try:
     @mcp.tool(name="event_create")
     def event_create_mcp(title: str, starts_at: str, description: str = "", location: str = "", location_address: str = "", record_type: str = "appointment", ends_at: str | None = None, participant_ids: list[str] | None = None, source_memory_id: str | None = None) -> dict:
         from lifepilot.planner import event_create
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("calendar:write")
+        if participant_ids:
+            mcp_user("people:read")
+        if source_memory_id:
+            mcp_user("notes:read")
         with mcp_session(owner_id) as db:
             row = event_create(EventIn(title=title, starts_at=starts_at, description=description, location=location, location_address=location_address, record_type=record_type, ends_at=ends_at, participant_ids=participant_ids or [], source_memory_id=source_memory_id), db, db.get(User, owner_id))
             return row.model_dump(mode="json")
@@ -240,7 +257,9 @@ try:
     @mcp.tool(name="upcoming_events")
     def upcoming_events_mcp(from_at: str | None = None, to_at: str | None = None, person_id: str | None = None) -> list[dict]:
         from lifepilot.planner import event_list
-        owner_id = mcp_user()
+        owner_id = mcp_user("calendar:read")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             start = datetime.fromisoformat(from_at.replace("Z", "+00:00")) if from_at else None
             end = datetime.fromisoformat(to_at.replace("Z", "+00:00")) if to_at else None

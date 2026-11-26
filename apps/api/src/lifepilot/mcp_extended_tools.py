@@ -168,9 +168,17 @@ def register_extended_tools(mcp: FastMCP) -> None:
             result = capture_create(CaptureIn(original_text=original_text), db, db.get(User, owner_id))
             return result.model_dump(mode="json")
 
+    @mcp.tool(name="capture_submit")
+    def capture_submit(original_text: str) -> dict:
+        """Submit unreviewed text. Returns only a receipt; cannot read existing captures."""
+        owner_id = mcp_user("capture:write")
+        with mcp_session(owner_id) as db:
+            result = capture_create(CaptureIn(original_text=original_text), db, db.get(User, owner_id))
+            return {"capture_id":result.id,"stored":True,"review_required":True}
+
     @mcp.tool(name="memory_capture_status")
     def memory_capture_status_mcp(capture_id: str) -> dict:
-        owner_id = mcp_user()
+        owner_id = mcp_user("capture:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == owner_id))
             if row is None:
@@ -181,7 +189,7 @@ def register_extended_tools(mcp: FastMCP) -> None:
     def memory_capture_list_mcp(limit: int = 20) -> list[dict]:
         if limit < 1 or limit > 100:
             raise ValueError("Die Anzahl muss zwischen 1 und 100 liegen")
-        owner_id = mcp_user()
+        owner_id = mcp_user("capture:read")
         with mcp_session(owner_id) as db:
             rows = db.scalars(select(Capture).where(Capture.owner_id == owner_id).order_by(Capture.created_at.desc()).limit(limit)).all()
             return [capture_output(row).model_dump(mode="json") for row in rows]
@@ -227,7 +235,9 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="note_create")
     def note_create_mcp(title: str, content: str, person_id: str | None = None, occurred_at: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("notes:write")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             owner = db.get(User, owner_id)
             owned_person(db, person_id, owner)
@@ -246,7 +256,9 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="note_search")
     def note_search_mcp(query: str = "", person_id: str | None = None) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("notes:read")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             statement = select(Memory).where(Memory.owner_id == owner_id)
             if query:
@@ -259,7 +271,7 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="note_get")
     def note_get_mcp(note_id: str) -> dict:
-        owner_id = mcp_user()
+        owner_id = mcp_user("notes:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Memory).where(Memory.id == note_id, Memory.owner_id == owner_id))
             if row is None:
@@ -268,7 +280,9 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="note_update")
     def note_update_mcp(note_id: str, title: str | None = None, content: str | None = None, person_id: str | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("notes:write")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Memory).where(Memory.id == note_id, Memory.owner_id == owner_id))
             if row is None:
@@ -314,7 +328,7 @@ def register_extended_tools(mcp: FastMCP) -> None:
         valid_until: str | None = None,
         confirmed: bool | None = None,
     ) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("people:write")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Relationship).where(Relationship.id == relationship_id, Relationship.owner_id == owner_id))
             if row is None:
@@ -344,7 +358,9 @@ def register_extended_tools(mcp: FastMCP) -> None:
     def event_search_mcp(from_at: str | None = None, to_at: str | None = None, person_id: str | None = None) -> list[dict]:
         from lifepilot.planner import event_list
 
-        owner_id = mcp_user()
+        owner_id = mcp_user("calendar:read")
+        if person_id:
+            mcp_user("people:read")
         with mcp_session(owner_id) as db:
             start = datetime.fromisoformat(from_at.replace("Z", "+00:00")) if from_at else None
             end = datetime.fromisoformat(to_at.replace("Z", "+00:00")) if to_at else None

@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.models import User
+from lifepilot.mcp_permissions import valid_scopes
 
 password_hash = PasswordHash.recommended()
 oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
-SCOPES = {"memory:read","memory:write","family:read"}
 PLACEHOLDERS = {"development-only-change-me","replace-with-a-long-random-secret","change-this-password","replace-with-a-long-random-password"}
 
 def validate_secret_key():
@@ -35,6 +35,8 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_token(user_id: str, scopes: list[str] | None = None, token_use: Literal["user", "mcp"] = "user", token_version: int = 0) -> str:
     granted_scopes = scopes if scopes is not None else (["memory:read"] if token_use=="mcp" else ["memory:read", "memory:write"])
+    if not valid_scopes(granted_scopes,token_use):
+        raise ValueError("Ungültige Token-Berechtigungen")
     claims = {"sub": user_id, "ver": token_version, "scope": " ".join(granted_scopes), "token_use":token_use, "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
     return jwt.encode(claims, settings.secret_key, algorithm="HS256")
 
@@ -53,8 +55,7 @@ def claims(token: str):
         or type(payload["exp"]) is not int
         or payload["token_use"] not in ("user","mcp")
         or not isinstance(payload["scope"],str)
-        or not set(payload["scope"].split()).issubset(SCOPES)
-        or "memory:read" not in payload["scope"].split()):
+        or not valid_scopes(payload["scope"].split(),payload["token_use"])):
         raise unauthorized()
     return payload
 

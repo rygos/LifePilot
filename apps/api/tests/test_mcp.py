@@ -473,6 +473,135 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not family_shares.isError
                         assert (await session.call_tool("family_items", {"space_id":"unavailable"})).isError
                         assert (await session.call_tool("task_create", {"title":"Nicht erlaubt"})).isError
+            # Exercise domain-only tokens through the actual Streamable HTTP transport.
+            async def scoped(scopes, checks):
+                response=client.post("/api/auth/mcp-token",json={"username":"testuser","password":"test-password","access":"scoped","scopes":scopes})
+                assert response.status_code==200,response.text
+                scoped_token=response.json()["access_token"]
+                assert resolve_bearer_scopes(scoped_token)==scopes
+                assert client.get("/api/profile",headers={"Authorization":"Bearer "+scoped_token}).status_code==403
+                async with AsyncClient(transport=ASGITransport(app=app),base_url="http://localhost:8002",headers={"Authorization":"Bearer "+scoped_token}) as http:
+                    async with streamable_http_client("http://localhost:8002/mcp",http_client=http) as (read,write,_):
+                        async with ClientSession(read,write) as session:
+                            await session.initialize()
+                            await checks(session)
+
+            async def capture_only(session):
+                submitted=await session.call_tool("capture_submit",{"original_text":"Reine Erfassung ohne Lesezugriff"})
+                assert not submitted.isError,str(submitted.content)
+                receipt=json.loads(submitted.content[0].text)
+                assert set(receipt)=={"capture_id","stored","review_required"}
+                assert receipt["stored"] and receipt["review_required"]
+                for name,args in (
+                    ("memory_capture_status",{"capture_id":receipt["capture_id"]}),
+                    ("memory_capture_list",{}),("memory_capture",{"original_text":"Nicht erlaubt"}),
+                    ("memory_search_tool",{"query":""}),("note_search",{}),("task_search",{}),
+                    ("task_create",{"title":"Nicht erlaubt"}),("person_search_tool",{"query":""}),
+                    ("daily_briefing",{}),("family_spaces",{}),("profile_get",{}),
+                    ("memory_review",{"capture_id":ready_capture_id,"accepted_indices":[0],"confirmations":[0]}),
+                ):
+                    denied=await session.call_tool(name,args)
+                    assert denied.isError,name
+
+            async def task_only(session):
+                created=await session.call_tool("task_create",{"title":"Granularer Aufgabenassistent"})
+                assert not created.isError,str(created.content)
+                tid=json.loads(created.content[0].text)["id"]
+                assert not (await session.call_tool("task_search",{})).isError
+                assert not (await session.call_tool("task_update",{"task_id":tid,"title":"Granular geändert"})).isError
+                assert not (await session.call_tool("task_complete",{"task_id":tid})).isError
+                for name,args in (
+                    ("task_delete",{"task_id":tid}),("task_create",{"title":"Fremder Bereich","person_id":person_id}),
+                    ("task_create",{"title":"Fremder Bereich","project_id":project_id}),
+                    ("task_search",{"person_id":person_id}),("note_search",{}),
+                    ("memory_get",{"memory_id":note_id}),("event_search",{}),
+                    ("memory_search_tool",{"query":"MCP"}),("daily_briefing",{}),
+                    ("approval_search",{}),("family_spaces",{}),("focus_active",{}),
+                ):
+                    denied=await session.call_tool(name,args)
+                    assert denied.isError,name
+
+            async def notes_only(session):
+                assert not (await session.call_tool("note_search",{"query":"MCP"})).isError
+                assert not (await session.call_tool("note_get",{"note_id":note_id})).isError
+                assert (await session.call_tool("note_update",{"note_id":note_id,"title":"Nicht erlaubt"})).isError
+                assert (await session.call_tool("memory_search_tool",{"query":"MCP"})).isError
+                assert (await session.call_tool("note_search",{"person_id":person_id})).isError
+                assert (await session.call_tool("person_context",{"person_id":person_id})).isError
+
+            async def family_only(session):
+                result=await session.call_tool("family_items",{"space_id":family_space_id})
+                assert not result.isError and family_item["id"] in str(result.content)
+                assert (await session.call_tool("task_search",{})).isError
+                assert (await session.call_tool("note_search",{})).isError
+
+            await scoped(["capture:write"],capture_only)
+            await scoped(["tasks:read","tasks:write"],task_only)
+            await scoped(["notes:read"],notes_only)
+            await scoped(["family:read"],family_only)
+
+            async def people_only(session):
+                created=await session.call_tool("person_create_tool",{"first_name":"Granular Kontakt"})
+                assert not created.isError
+                pid=json.loads(created.content[0].text)["id"]
+                assert not (await session.call_tool("person_get",{"person_id":pid})).isError
+                assert not (await session.call_tool("person_update",{"person_id":pid,"nickname":"Granular"})).isError
+                assert (await session.call_tool("person_get",{"person_id":foreign_person_id})).isError
+                assert (await session.call_tool("person_delete",{"person_id":pid})).isError
+                assert (await session.call_tool("person_merge",{"source_person_id":pid,"target_person_id":person_id,"confirm":True})).isError
+                assert (await session.call_tool("note_search",{})).isError
+
+            async def projects_only(session):
+                result=await session.call_tool("project_create",{"name":"Granulares Projekt"})
+                assert not result.isError
+                pid=json.loads(result.content[0].text)["id"]
+                assert not (await session.call_tool("project_get",{"project_id":pid})).isError
+                assert not (await session.call_tool("project_update",{"project_id":pid,"description":"Projekttext"})).isError
+                assert (await session.call_tool("project_delete",{"project_id":pid})).isError
+                assert (await session.call_tool("task_search",{})).isError
+
+            async def calendar_only(session):
+                created=await session.call_tool("event_create",{"title":"Granularer Termin","starts_at":"2027-01-01T12:00:00Z"})
+                assert not created.isError
+                eid=json.loads(created.content[0].text)["id"]
+                assert not (await session.call_tool("event_search",{})).isError
+                assert not (await session.call_tool("event_update",{"event_id":eid,"title":"Granularer Termin geändert"})).isError
+                assert (await session.call_tool("event_update",{"event_id":eid,"participant_ids":[]})).isError
+                assert (await session.call_tool("event_create",{"title":"Verknüpft","starts_at":"2027-01-01T12:00:00Z","source_memory_id":note_id})).isError
+                assert (await session.call_tool("event_delete",{"event_id":eid})).isError
+                assert (await session.call_tool("reminder_search",{})).isError
+
+            async def combined(session):
+                created=await session.call_tool("task_create",{"title":"Granulare verknüpfte Aufgabe","person_id":person_id,"project_id":project_id})
+                assert not created.isError
+                assert not (await session.call_tool("task_search",{"person_id":person_id})).isError
+                assert (await session.call_tool("memory_search_tool",{"query":""})).isError
+
+            async def notes_write(session):
+                created=await session.call_tool("note_create",{"title":"Granulare Notiz","content":"Eigener Text"})
+                assert not created.isError
+                nid=json.loads(created.content[0].text)["id"]
+                assert not (await session.call_tool("note_update",{"note_id":nid,"content":"Geändert"})).isError
+                assert (await session.call_tool("note_delete",{"note_id":nid})).isError
+                assert (await session.call_tool("journal_search",{})).isError
+
+            async def capture_read(session):
+                assert not (await session.call_tool("memory_capture_list",{"limit":1})).isError
+                assert (await session.call_tool("capture_submit",{"original_text":"Nicht erlaubt"})).isError
+                assert (await session.call_tool("note_search",{})).isError
+
+            async def documents_only(session):
+                assert not (await session.call_tool("document_list",{})).isError
+                assert (await session.call_tool("person_get",{"person_id":person_id})).isError
+                assert (await session.call_tool("memory_search_tool",{"query":""})).isError
+
+            await scoped(["people:read","people:write"],people_only)
+            await scoped(["projects:read","projects:write"],projects_only)
+            await scoped(["calendar:read","calendar:write"],calendar_only)
+            await scoped(["tasks:read","tasks:write","people:read","projects:read"],combined)
+            await scoped(["notes:read","notes:write"],notes_write)
+            await scoped(["capture:read"],capture_read)
+            await scoped(["documents:read"],documents_only)
         other_headers = {"Authorization": f"Bearer {create_token(other_user_id)}"}
         assert client.get("/api/audit", headers=other_headers).json() == []
 

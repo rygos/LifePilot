@@ -22,26 +22,26 @@ def _parse_datetime(value: str | None) -> datetime | None:
 def register_planning_tools(mcp: FastMCP) -> None:
     @mcp.tool(name="project_create")
     def project_create_mcp(name: str, description: str = "", status: Literal["active", "paused", "completed", "archived"] = "active") -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("projects:write")
         with mcp_session(owner_id) as db:
             row = project_create(db, db.get(User, owner_id), ProjectIn(name=name, description=description, status=status))
             return ProjectOut.model_validate(row).model_dump(mode="json")
 
     @mcp.tool(name="project_search")
     def project_search_mcp(query: str = "", status: Literal["active", "paused", "completed", "archived"] | None = None) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("projects:read")
         with mcp_session(owner_id) as db:
             return [ProjectOut.model_validate(row).model_dump(mode="json") for row in project_list(db, db.get(User, owner_id), query, status)]
 
     @mcp.tool(name="project_get")
     def project_get_mcp(project_id: str) -> dict:
-        owner_id = mcp_user()
+        owner_id = mcp_user("projects:read")
         with mcp_session(owner_id) as db:
             return ProjectOut.model_validate(project_get(db, db.get(User, owner_id), project_id)).model_dump(mode="json")
 
     @mcp.tool(name="project_update")
     def project_update_mcp(project_id: str, name: str | None = None, description: str | None = None, status: Literal["active", "paused", "completed", "archived"] | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("projects:write")
         with mcp_session(owner_id) as db:
             row = project_update(db, db.get(User, owner_id), project_id, ProjectPatch(name=name, description=description, status=status))
             return ProjectOut.model_validate(row).model_dump(mode="json")
@@ -62,7 +62,11 @@ def register_planning_tools(mcp: FastMCP) -> None:
             return [{"id": row.id, "operation": row.operation, "resource_id": row.resource_id, "resource_label": row.resource_label, "status": row.status, "created_at": row.created_at.isoformat()} for row in rows]
     @mcp.tool(name="task_update")
     def task_update_mcp(task_id: str, title: str | None = None, description: str | None = None, person_id: str | None = None, project_id: str | None = None, due_at: str | None = None, priority: int | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("tasks:write")
+        if person_id:
+            mcp_user("people:read")
+        if project_id:
+            mcp_user("projects:read")
         with mcp_session(owner_id) as db:
             row = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == owner_id))
             if row is None: raise ValueError("Aufgabe nicht gefunden")
@@ -78,7 +82,9 @@ def register_planning_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="event_update")
     def event_update_mcp(event_id: str, title: str | None = None, record_type: str | None = None, description: str | None = None, location: str | None = None, location_address: str | None = None, starts_at: str | None = None, ends_at: str | None = None, participant_ids: list[str] | None = None) -> dict:
-        owner_id = mcp_user("memory:write")
+        owner_id = mcp_user("calendar:write")
+        if participant_ids is not None:
+            mcp_user("people:read")
         changes = {key: value for key, value in (("title", title), ("record_type", record_type), ("description", description), ("location", location), ("location_address", location_address), ("starts_at", _parse_datetime(starts_at)), ("ends_at", _parse_datetime(ends_at)), ("participant_ids", participant_ids)) if value is not None}
         with mcp_session(owner_id) as db:
             return event_update(event_id, EventPatch.model_validate(changes), db, db.get(User, owner_id)).model_dump(mode="json")
@@ -95,7 +101,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="task_history")
     def task_history_mcp(task_id: str) -> list[dict]:
-        owner_id = mcp_user()
+        owner_id = mcp_user("tasks:read")
         with mcp_session(owner_id) as db:
             return history(db, owner_id, "task", task_id)
 

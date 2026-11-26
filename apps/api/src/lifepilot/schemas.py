@@ -3,6 +3,8 @@ from typing import Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from lifepilot.mcp_permissions import DomainScope, valid_scopes
+
 def as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -14,8 +16,24 @@ class Credentials(BaseModel):
     username: str = Field(min_length=1,max_length=120)
     password: str = Field(min_length=1,max_length=1024)
 class MCPTokenRequest(Credentials):
-    access: str = Field(default="read_only", pattern="^(read_only|read_write)$")
+    model_config = ConfigDict(extra="forbid")
+    access: Literal["read_only", "read_write", "scoped"] = "read_only"
     family_read: bool = False
+    scopes: list[DomainScope] = Field(default_factory=list, max_length=14)
+
+    @model_validator(mode="after")
+    def validate_access(self):
+        if self.access == "scoped":
+            if self.family_read or not valid_scopes(self.scopes,"mcp"):
+                raise ValueError("Explizite Bereiche erforderlich; Schreibrecht benötigt zugehöriges Leserecht (außer Erfassung). Familienzugriff über scopes angeben.")
+        elif self.scopes:
+            raise ValueError("scopes nur mit access=scoped zulässig")
+        return self
+
+    def granted_scopes(self):
+        if self.access=="scoped":
+            return self.scopes
+        return ["memory:read"] + (["memory:write"] if self.access=="read_write" else []) + (["family:read"] if self.family_read else [])
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

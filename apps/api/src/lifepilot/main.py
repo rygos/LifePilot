@@ -182,9 +182,7 @@ def mcp_token(data: MCPTokenRequest, request: Request, response: Response, db: S
     user = authenticate(db, request, data.username, data.password)
     response.headers["Cache-Control"] = "no-store"
     ensure_self_person(db, user); db.commit()
-    scopes = ["memory:read"]
-    if data.access == "read_write": scopes.append("memory:write")
-    if data.family_read: scopes.append("family:read")
+    scopes = data.granted_scopes()
     return {"access_token": create_token(user.id, scopes, token_use="mcp", token_version=user.token_version)}
 
 @app.get("/api/auth/me")
