@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from mcp.server.fastmcp import FastMCP
 
 from lifepilot.commitment_routes import (
@@ -6,7 +6,8 @@ from lifepilot.commitment_routes import (
     create_checkpoint, create_commitment, list_checkpoints, list_commitments, owned, set_commitment_status,
 )
 from lifepilot.mcp_tools import mcp_session, mcp_user
-from lifepilot.models import WorkCheckpoint
+from lifepilot.models import User, WorkCheckpoint
+from lifepilot.routine_routes import RoutineCreate, RoutineSchedule, RoutineStepIn, ArchiveIn, CompletionIn, list_routines, create_routine, update_routine, archive_routine, add_step, archive_step, set_completion, routine_history
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
 from lifepilot.schemas import TaskOut
 from lifepilot.task_steps import StepOut, StepBatch, StepState, list_steps, draft_steps, add_steps, set_step_state
@@ -140,3 +141,55 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user("memory:write")
         with mcp_session(owner) as db:
             return record_checkin(db, owner, session_id, data, "mcp").model_dump(mode="json")
+
+
+    @mcp.tool(name="routine_list")
+    def routine_list_mcp(today_only: bool = True, include_archived: bool = False) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [r.model_dump(mode="json") for r in list_routines(db, db.get(User, owner), today_only, include_archived)]
+
+    @mcp.tool(name="routine_create")
+    def routine_create_mcp(data: RoutineCreate) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return create_routine(db, db.get(User, owner), data, "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_update")
+    def routine_update_mcp(routine_id: str, data: RoutineSchedule) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return update_routine(db, db.get(User, owner), routine_id, data, "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_archive")
+    def routine_archive_mcp(routine_id: str, archived: bool) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return archive_routine(db, db.get(User, owner), routine_id, ArchiveIn(archived=archived), "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_step_add")
+    def routine_step_add_mcp(routine_id: str, title: str) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return add_step(db, db.get(User, owner), routine_id, RoutineStepIn(title=title), "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_step_archive")
+    def routine_step_archive_mcp(routine_id: str, step_id: str, archived: bool) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return archive_step(db, db.get(User, owner), routine_id, step_id, ArchiveIn(archived=archived), "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_step_complete")
+    def routine_step_complete_mcp(routine_id: str, step_id: str, local_date: date, completed: bool) -> dict:
+        """Record an explicitly reported completion for the current local day."""
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return set_completion(db, db.get(User, owner), routine_id, step_id, CompletionIn(completed=completed, local_date=local_date), "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="routine_history")
+    def routine_history_mcp(routine_id: str, days: int = 30) -> list[dict]:
+        if not 1 <= days <= 90:
+            raise ValueError("Verlauf muss zwischen 1 und 90 Tagen liegen")
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [r.model_dump(mode="json") for r in routine_history(db, db.get(User, owner), routine_id, days)]

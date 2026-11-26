@@ -110,6 +110,19 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not checkin.isError and "MCP nächster Schritt" in str(checkin.content)
                         ended_focus = await session.call_tool("focus_end", {"session_id": focus_id, "data": {"outcome": "finished"}})
                         assert not ended_focus.isError
+                        routine = await session.call_tool("routine_create", {"data": {"title": "MCP Morgenroutine", "weekdays": [0, 1, 2, 3, 4, 5, 6], "steps": [{"title": "Tagesplan ansehen"}]}})
+                        assert not routine.isError
+                        routine_row = json.loads(routine.content[0].text)
+                        routine_id = routine_row["id"]
+                        routine_step_id = routine_row["steps"][0]["id"]
+                        routines = await session.call_tool("routine_list", {})
+                        assert not routines.isError and routine_id in str(routines.content)
+                        marked = await session.call_tool("routine_step_complete", {"routine_id": routine_id, "step_id": routine_step_id, "local_date": routine_row["local_date"], "completed": True})
+                        assert not marked.isError
+                        routine_history = await session.call_tool("routine_history", {"routine_id": routine_id})
+                        assert not routine_history.isError and routine_step_id in str(routine_history.content)
+                        archived_routine = await session.call_tool("routine_archive", {"routine_id": routine_id, "archived": True})
+                        assert not archived_routine.isError
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

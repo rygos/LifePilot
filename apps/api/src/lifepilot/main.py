@@ -42,6 +42,7 @@ from lifepilot.models import Commitment
 from lifepilot.next_action import router as next_action_router
 from lifepilot.focus_routes import router as focus_router
 from lifepilot.task_steps import router as task_steps_router
+from lifepilot.routine_routes import router as routine_router, list_routines
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,6 +82,7 @@ app.include_router(commitment_router)
 app.include_router(next_action_router)
 app.include_router(focus_router)
 app.include_router(task_steps_router)
+app.include_router(routine_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -613,6 +615,7 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
     return {
         "date": local_now.date().isoformat(),
         "timezone": user.timezone_name,
+        "today_routines": [row.model_dump(mode="json") for row in list_routines(db, user, today_only=True)],
         "open_commitments": [CommitmentOut.model_validate(row).model_dump(mode="json") for row in list_commitments(db, user.id, limit=20)],
         "active_checkpoints": [CheckpointOut.model_validate(row).model_dump(mode="json") for row in list_checkpoints(db, user.id, limit=5)],
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],

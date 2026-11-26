@@ -560,3 +560,37 @@ class FocusCheckIn(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     next_step: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Routine(Base):
+    __tablename__ = "routines"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    weekdays: Mapped[list[int]] = mapped_column(JSON)
+    window_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    window_end: Mapped[time | None] = mapped_column(Time, nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RoutineStep(Base):
+    __tablename__ = "routine_steps"
+    __table_args__ = (UniqueConstraint("routine_id", "position", name="uq_routine_steps_position"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    routine_id: Mapped[str] = mapped_column(ForeignKey("routines.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    position: Mapped[int] = mapped_column(Integer)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class RoutineCompletion(Base):
+    __tablename__ = "routine_completions"
+    __table_args__ = (
+        UniqueConstraint("step_id", "local_date", name="uq_routine_completion_day"),
+        Index("ix_routine_completion_date", "local_date"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    step_id: Mapped[str] = mapped_column(ForeignKey("routine_steps.id", ondelete="CASCADE"), index=True)
+    local_date: Mapped[date] = mapped_column(Date)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

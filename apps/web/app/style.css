@@ -9,7 +9,7 @@
 .search-relationships{min-height:0;margin-bottom:16px}
 
 .shell[data-view] .content{min-width:0}
-.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.next-action-panel):not(.focus-panel):not(.briefing-panel):not(.capture):not(.dashboard-upcoming-panel):not(#dashboard-panels):not(footer){display:none}
+.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.next-action-panel):not(.focus-panel):not(.routines-panel):not(.briefing-panel):not(.capture):not(.dashboard-upcoming-panel):not(#dashboard-panels):not(footer){display:none}
 .shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
@@ -20,7 +20,7 @@
 .shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
 .shell[data-view="things"] #memory-domain>section:first-child{display:none}
 .shell[data-view="things"] #memory-domain{grid-template-columns:minmax(0,1fr)}
-.shell[data-view="planning"] .content>*:not(header):not(.notice):not(.next-action-panel):not(.focus-panel):not(.notification-panel):not(.grid:has(#tasks)):not(.events-panel){display:none}
+.shell[data-view="planning"] .content>*:not(header):not(.notice):not(.next-action-panel):not(.focus-panel):not(.routines-panel):not(.notification-panel):not(.grid:has(#tasks)):not(.events-panel){display:none}
 .shell[data-view="planning"] #people{display:none}
 .shell[data-view="planning"] .content>.grid:has(#tasks){grid-template-columns:minmax(0,1fr)}
 .shell[data-view="inbox"] .content>*:not(header):not(.notice):not(.inbox-panel):not(#dashboard-panels){display:none}
@@ -327,3 +327,5 @@
 .shell[data-view="commitments"] .content>*:not(header):not(.notice):not(.commitment-workspace):not(.capture-dialog):not(footer){display:none}
 
 .focus-clock{font-size:clamp(2rem,7vw,4rem);font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}.focus-panel progress{width:100%;accent-color:var(--green)}
+
+.routines-panel progress {width:100%;accent-color:var(--green)}
