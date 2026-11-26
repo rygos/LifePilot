@@ -643,3 +643,27 @@ class DavKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TemporalFact(Base):
+    __tablename__ = "temporal_facts"
+    __table_args__ = (
+        CheckConstraint("status IN ('proposed', 'confirmed', 'rejected')", name="ck_temporal_fact_status"),
+        CheckConstraint("confidence IN ('low', 'medium', 'high')", name="ck_temporal_fact_confidence"),
+        CheckConstraint("valid_from IS NULL OR valid_until IS NULL OR valid_from < valid_until", name="ck_temporal_fact_period"),
+        Index("ix_temporal_facts_subject", "owner_id", "person_id", "predicate"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    predicate: Mapped[str] = mapped_column(String(120))
+    value: Mapped[str] = mapped_column(Text)
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    confidence: Mapped[str] = mapped_column(String(10), default="medium")
+    status: Mapped[str] = mapped_column(String(12), default="proposed")
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    source_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

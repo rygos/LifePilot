@@ -14,6 +14,7 @@ import { ResourceAttachments } from "./attachments/resource-attachments";
 import { JournalPanel } from "./journal/journal-panel";
 import { PetsPanel } from "./pets/pets-panel";
 import { CommitmentsPanel } from "./commitments/commitments-panel";
+import { TemporalFactsPanel } from "./temporal-facts-panel";
 import { NextActionPanel } from "./planning/next-action-panel";
 import { FocusPanel } from "./planning/focus-panel";
 import { VoiceTextarea } from "./voice-textarea";
@@ -627,6 +628,8 @@ export default function Home() {
       {currentView === "admin" && currentUser?.role === "admin" && <AdminPanel request={request} currentUserId={currentUser.id} />}
       {currentView === "admin" && currentUser?.role !== "admin" && <section className="card panel"><h2>Kein Zugriff</h2><p>Für die Administration brauchst du ein Administratorkonto.</p></section>}
       {currentView === "journal" && <JournalPanel people={people} projects={projects} events={events} request={request} onMessage={setMessage} />}
+      {currentView === "memory" && <TemporalFactsPanel key="all-facts" request={request} people={people}/>}
+      {currentView === "person" && selectedPerson && personProfileTab === "history" && <TemporalFactsPanel key={selectedPerson.id} request={request} people={people} personId={selectedPerson.id}/>}
       {currentView === "commitments" && <CommitmentsPanel people={people} projects={projects} tasks={tasks} request={request} />}
       {currentView === "pets" && <PetsPanel people={people} events={events} request={request} onMessage={setMessage} />}
 

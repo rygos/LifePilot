@@ -7,6 +7,7 @@ from lifepilot.commitment_routes import (
 )
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
+from lifepilot.temporal_facts import FactIn, FactOut, Status, list_facts, create_fact, set_fact_status, end_fact
 from lifepilot.routine_routes import RoutineCreate, RoutineSchedule, RoutineStepIn, ArchiveIn, CompletionIn, list_routines, create_routine, update_routine, archive_routine, add_step, archive_step, set_completion, routine_history
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
 from lifepilot.schemas import TaskOut
@@ -193,3 +194,38 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return [r.model_dump(mode="json") for r in routine_history(db, db.get(User, owner), routine_id, days)]
+
+
+    @mcp.tool(name="temporal_fact_list")
+    def temporal_fact_list(person_id: str | None = None, predicate: str | None = None, status: Status | None = None, as_of: date | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
+        """List temporal facts. Unknown validity bounds are possible matches, not proof of validity."""
+        if not 1 <= limit <= 200 or offset < 0:
+            raise ValueError("Ungültige Seitengröße")
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [FactOut.model_validate(row).model_dump(mode="json") for row in list_facts(db, owner, person_id, predicate, status, as_of, limit, offset)]
+
+    @mcp.tool(name="temporal_fact_propose")
+    def temporal_fact_propose(data: FactIn) -> dict:
+        """Store an unconfirmed person fact; do not treat it as established knowledge."""
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return FactOut.model_validate(create_fact(db, owner, data, "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="temporal_fact_review")
+    def temporal_fact_review(fact_id: str, status: Status, confirm: bool = False) -> dict:
+        """Only after explicit user approval, change the review status."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return FactOut.model_validate(set_fact_status(db, owner, fact_id, status, "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="temporal_fact_end")
+    def temporal_fact_end(fact_id: str, valid_until: date, confirm: bool = False) -> dict:
+        """End a confirmed fact on an exclusive date after explicit user approval."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return FactOut.model_validate(end_fact(db, owner, fact_id, valid_until, "mcp")).model_dump(mode="json")

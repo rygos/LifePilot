@@ -123,6 +123,19 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not routine_history.isError and routine_step_id in str(routine_history.content)
                         archived_routine = await session.call_tool("routine_archive", {"routine_id": routine_id, "archived": True})
                         assert not archived_routine.isError
+                        fact_person = client.post("/api/people", headers=auth, json={"first_name":"MCP Faktenperson"}).json()["id"]
+                        proposed_fact = await session.call_tool("temporal_fact_propose", {"data":{"person_id":fact_person,"predicate":"Wohnort","value":"Köln","valid_from":"2020-01-01"}})
+                        assert not proposed_fact.isError
+                        fact = json.loads(proposed_fact.content[0].text)
+                        assert fact["status"] == "proposed"
+                        denied = await session.call_tool("temporal_fact_review", {"fact_id":fact["id"],"status":"confirmed"})
+                        assert denied.isError
+                        approved = await session.call_tool("temporal_fact_review", {"fact_id":fact["id"],"status":"confirmed","confirm":True})
+                        assert not approved.isError
+                        facts = await session.call_tool("temporal_fact_list", {"person_id":fact_person,"as_of":"2021-01-01","status":"confirmed"})
+                        assert not facts.isError and fact["id"] in str(facts.content)
+                        ended_fact = await session.call_tool("temporal_fact_end", {"fact_id":fact["id"],"valid_until":"2022-01-01","confirm":True})
+                        assert not ended_fact.isError
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

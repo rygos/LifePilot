@@ -13,8 +13,8 @@
 .shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
-.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events):not(.profile-dialog-backdrop){display:none}
-.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(#memory-domain){display:none}
+.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events):not(.temporal-facts-panel):not(.profile-dialog-backdrop){display:none}
+.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(#memory-domain){display:none}
 .shell[data-view="memory"] #memory-domain>section:nth-child(2){display:none}
 .shell[data-view="memory"] #memory-domain{grid-template-columns:minmax(0,1fr)}
 .shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
