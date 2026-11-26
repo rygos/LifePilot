@@ -9,6 +9,7 @@ from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import WorkCheckpoint
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
 from lifepilot.schemas import TaskOut
+from lifepilot.task_steps import StepOut, StepBatch, StepState, list_steps, draft_steps, add_steps, set_step_state
 from lifepilot.focus_routes import FocusStart, FocusEnd, FocusOut, start_focus, end_focus, active_focus, focus_history
 
 
@@ -96,3 +97,31 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return [FocusOut.model_validate(row).model_dump(mode="json") for row in focus_history(db, owner, task_id=task_id)]
+
+    @mcp.tool(name="task_steps_list")
+    def task_steps_list_mcp(task_id: str) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [StepOut.model_validate(row).model_dump(mode="json") for row in list_steps(db, owner, task_id)]
+
+    @mcp.tool(name="task_steps_draft")
+    def task_steps_draft_mcp(task_id: str) -> dict:
+        """Generate a preview only. Do not save suggestions until the user approves."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return draft_steps(db, owner, task_id).model_dump(mode="json")
+
+    @mcp.tool(name="task_steps_add")
+    def task_steps_add_mcp(task_id: str, data: StepBatch, confirm: bool = False) -> list[dict]:
+        """Save explicitly approved steps."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Bitte die Schritte zuerst durch den Nutzer bestätigen lassen")
+        with mcp_session(owner) as db:
+            return [StepOut.model_validate(row).model_dump(mode="json") for row in add_steps(db, owner, task_id, data, "mcp")]
+
+    @mcp.tool(name="task_step_set_state")
+    def task_step_set_state_mcp(task_id: str, step_id: str, completed: bool) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return StepOut.model_validate(set_step_state(db, owner, task_id, step_id, StepState(completed=completed), "mcp")).model_dump(mode="json")

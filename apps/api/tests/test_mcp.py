@@ -90,6 +90,15 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         planning_task = client.post("/api/tasks", headers=auth, json={"title": "MCP-Planungstest"}).json()["id"]
                         planned = await session.call_tool("task_planning_update", {"task_id": planning_task, "planning": {"estimated_minutes": 120, "mental_effort": "high", "work_context": "computer"}})
                         assert not planned.isError
+                        rejected_steps = await session.call_tool("task_steps_add", {"task_id": planning_task, "data": {"steps": [{"title": "MCP Schritt"}]}})
+                        assert rejected_steps.isError
+                        accepted_steps = await session.call_tool("task_steps_add", {"task_id": planning_task, "data": {"steps": [{"title": "MCP Schritt"}]}, "confirm": True})
+                        assert not accepted_steps.isError
+                        listed_steps = await session.call_tool("task_steps_list", {"task_id": planning_task})
+                        assert not listed_steps.isError and "MCP Schritt" in str(listed_steps.content)
+                        step_id = client.get(f"/api/tasks/{planning_task}/steps", headers=auth).json()[0]["id"]
+                        checked_step = await session.call_tool("task_step_set_state", {"task_id": planning_task, "step_id": step_id, "completed": True})
+                        assert not checked_step.isError
                         focus = await session.call_tool("focus_start", {"task_id": planning_task, "planned_minutes": 15})
                         assert not focus.isError
                         focus_id = json.loads(focus.content[0].text)["id"]

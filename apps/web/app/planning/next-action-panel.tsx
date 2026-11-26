@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { TaskStepsPanel } from "./task-steps-panel";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type Task = {id: string; title: string; estimated_minutes?: number | null; mental_effort?: string | null; start_friction?: string | null; work_context?: string | null; next_step?: string | null};
@@ -60,5 +61,6 @@ export function NextActionPanel({request, tasks, onSaved}: {request: Request; ta
       <label>Nächster konkreter Schritt<textarea name="next_step" maxLength={5000} defaultValue={task.next_step ?? ""}/></label>
       <button type="submit" disabled={busy}>Planung speichern</button><button type="button" className="quiet" onClick={() => setEditing("")}>Abbrechen</button>
     </form>}
+    {task && <TaskStepsPanel key={task.id} request={request} taskId={task.id} />}
   </section>;
 }

@@ -522,3 +522,20 @@ class FocusSession(Base):
     elapsed_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     checkpoint_id: Mapped[str | None] = mapped_column(ForeignKey("work_checkpoints.id", ondelete="SET NULL"), nullable=True)
+
+
+class TaskStep(Base):
+    __tablename__ = "task_steps"
+    __table_args__ = (
+        UniqueConstraint("task_id", "position", name="uq_task_steps_position"),
+        CheckConstraint("estimated_minutes IS NULL OR estimated_minutes BETWEEN 1 AND 180", name="ck_task_steps_minutes"),
+        Index("ix_task_steps_owner_task", "owner_id", "task_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    position: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(240))
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
