@@ -18,6 +18,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
     try:
         inspector = inspect(engine)
         assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins", "routines", "routine_steps", "routine_completions", "capture_keys", "push_subscriptions", "dav_keys"}.issubset(inspector.get_table_names())
+        assert "scope" in {column["name"] for column in inspector.get_columns("capture_keys")}
         assert "client_request_id" in {column["name"] for column in inspector.get_columns("captures")}
         assert {"companion_interval_minutes", "companion_goal"}.issubset({column["name"] for column in inspector.get_columns("focus_sessions")})
         assert {"source_capture_id", "source_quote"}.issubset({column["name"] for column in inspector.get_columns("commitments")})

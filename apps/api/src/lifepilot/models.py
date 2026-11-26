@@ -600,6 +600,7 @@ class RoutineCompletion(Base):
 
 class CaptureKey(Base):
     __tablename__ = "capture_keys"
+    scope: Mapped[str] = mapped_column(String(24), default="capture:write", server_default="capture:write")
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     label: Mapped[str] = mapped_column(String(120))

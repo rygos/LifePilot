@@ -240,3 +240,78 @@ Unter Einstellungen → E-Mail – IMAP-Import mit dem Postfach-Benutzernamen un
 Eine UIDVALIDITY-/UID-basierte Erfassungs-ID verhindert identische Mehrfachimporte pro LifePilot-Konto, solange der ursprüngliche Capture existiert. Der Inhalt wird vor dem Import erneut abgerufen und mit dem Vorschau-Hash verglichen. Der Originaltext enthält Absender, Empfänger, Betreff und das Nachrichtendatum (unverifizierte Headerangaben). Personen-/Projektzuordnung erfolgt bei der nachfolgenden Vorschlagsprüfung. Der ausgewählte Text kann an den konfigurierten KI-Anbieter gesendet werden. Keine automatische Postfachüberwachung, kein Massenimport, keine weiteren Ordner, keine HTML-only-Nachrichten, keine Anhänge oder externen Ressourcen. Maximal 256 KiB pro E-Mail und 16.000 Zeichen Nachrichtentext. Keine Datenbankmigration erforderlich.
 
 REST: GET /api/mail/status, POST /api/mail/messages, POST /api/mail/preview, POST /api/mail/import. Die Tests verwenden einen simulierten IMAP-Server; reale Mailserver-Kompatibilität und TLS-Verbindung müssen nach der Konfiguration geprüft werden.
+
+## Home Assistant (REST-Sensor und gezielte Erfassung)
+
+Unter Einstellungen → Kurzbefehle & Home Assistant einen eigenen Integrationsschlüssel mit der Berechtigung „Home Assistant – Status lesen“ erstellen. Für die Ereigniserfassung separat einen Schlüssel „Externe Erfassung“ anlegen. Beide Schlüssel werden nur einmal angezeigt und bleiben einzeln widerrufbar. Bestehende Kurzbefehle funktionieren nach der Migration 0044_integration_key_scope unverändert weiter; sie behalten den Scope capture:write. Der neue Scope ha:status ist ausschließlich für GET /api/home-assistant/status gültig. Maximal 20 aktive Integrationsschlüssel insgesamt, 120 Statusanfragen bzw. 60 Erfassungsanfragen pro Schlüssel und Stundenfenster. Beim Passwortwechsel werden alle Schlüssel ungültig. Ein Downgrade der Migration entfernt Statusschlüssel.
+
+Der Status enthält ausschließlich:
+- notification_pending: mindestens ein fälliger Hinweis außerhalb der Ruhezeit.
+- quiet_hours: persönliche Ruhezeit aktiv.
+- due_reminders, due_commitments, due_routines: Anzahl aktuell fälliger Erinnerungen, Verpflichtungen und zeitgebundener Routinen (auch während Ruhezeiten).
+- routine_steps_open: offene Schritte aller heute vorgesehenen Routinen.
+- focus_active: eine Fokussitzung läuft (auch nach Ablauf der geplanten Zeit bis zum manuellen Ende).
+
+Keine Namen, Titel, Texte, Orte, Ressourcen-IDs oder Kontaktdaten. Statuswerte können dennoch Rückschlüsse auf die persönliche Aktivität erlauben und sollten nicht an unbefugte Personen weitergegeben werden. Kein direkter Zugriff auf Home Assistant, keine Gerätebefehle, keine automatische Anwesenheitsüberwachung. LifePilot verwaltet den Status; Home Assistant fragt ihn ab. Die Integration funktioniert unabhängig von der VAPID-Konfiguration.
+
+Beispiel für Home Assistant: eigene API-Adresse und die beiden tatsächlichen Schlüssel lokal in secrets.yaml hinterlegen (Bearer-Präfix gehört zum Secret):
+
+```yaml
+lifepilot_status_url: "https://lifepilot.example.org/api/home-assistant/status"
+lifepilot_capture_url: "https://lifepilot.example.org/api/shortcuts/capture"
+lifepilot_status_authorization: "Bearer DEIN_STATUSSCHLUESSEL"
+lifepilot_capture_authorization: "Bearer DEIN_ERFASSUNGSSCHLUESSEL"
+```
+
+In configuration.yaml vorhandene rest: und rest_command: Abschnitte ergänzen, nicht doppelt definieren:
+
+```yaml
+rest:
+  - resource: !secret lifepilot_status_url
+    headers:
+      Authorization: !secret lifepilot_status_authorization
+    scan_interval: 60
+    timeout: 10
+    binary_sensor:
+      - name: LifePilot Erinnerung
+        unique_id: lifepilot_notification_pending
+        value_template: "{{ value_json.notification_pending }}"
+        json_attributes:
+          - quiet_hours
+          - due_reminders
+          - due_commitments
+          - due_routines
+          - routine_steps_open
+          - focus_active
+
+rest_command:
+  lifepilot_capture:
+    url: !secret lifepilot_capture_url
+    method: POST
+    headers:
+      Authorization: !secret lifepilot_capture_authorization
+    content_type: "application/json"
+    payload: "{{ {'original_text': message} | to_json }}"
+    timeout: 15
+```
+
+Beispiel für eine eigene Automation (in automations.yaml; Entitäts-ID und notify-Dienst an die eigene Installation anpassen):
+
+```yaml
+- alias: LifePilot Erinnerung anzeigen
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.lifepilot_erinnerung
+      from: "off"
+      to: "on"
+  actions:
+    - action: notify.mobile_app_mein_telefon
+      data:
+        title: LifePilot
+        message: Du hast offene Erinnerungen.
+  mode: single
+```
+
+Diese Automation meldet nur den Übergang von off zu on, nicht jeden weiteren Hinweis bei bereits aktivem Sensor. Ein bewusst ausgewähltes Ereignis kann über die Aktion rest_command.lifepilot_capture mit data.message als Text erfasst werden; die bestehende KI-Prüfung entscheidet erst nach Benutzerfreigabe über die Übernahme in das Gedächtnis. Optional kann ein eigener REST-Aufruf eine UUID als client_request_id für idempotente Wiederholungen übergeben. Keine automatische Weitergabe aller Sensorzustände. Verwende HTTPS und beschränke die Schlüssel auf vertrauenswürdige Installationen.
+
+Die REST-Schnittstelle ist implementiert und automatisiert getestet. Die YAML-Beispiele sind eine manuell zu konfigurierende Integration, keine native Home-Assistant-/HACS-Komponente; sie wurden noch nicht an einer laufenden Home-Assistant-Instanz validiert.

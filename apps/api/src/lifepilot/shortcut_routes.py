@@ -19,6 +19,8 @@ from lifepilot.security import current_user, verify_password
 router = APIRouter(prefix="/api/shortcuts", tags=["Kurzbefehle"])
 bearer = HTTPBearer(auto_error=False)
 PREFIX = "lp_capture_"
+STATUS_PREFIX = "lp_status_"
+STATUS_REQUESTS_PER_HOUR = 120
 MAX_ACTIVE_KEYS = 20
 REQUESTS_PER_HOUR = 60
 
@@ -45,7 +47,12 @@ class KeyCreate(BaseModel):
         return value.strip()
 
 
+class IntegrationKeyCreate(KeyCreate):
+    scope: Literal["capture:write", "ha:status"] = "capture:write"
+
+
 class KeyOut(BaseModel):
+    scope: str
     id: str
     label: str
     created_at: datetime
@@ -87,7 +94,7 @@ class ShortcutReceipt(BaseModel):
 
 def key_output(row: CaptureKey, user: User, now: datetime) -> KeyOut:
     return KeyOut(
-        id=row.id, label=row.label, created_at=utc(row.created_at), expires_at=utc(row.expires_at),
+        id=row.id, label=row.label, scope=row.scope, created_at=utc(row.created_at), expires_at=utc(row.expires_at),
         revoked_at=utc(row.revoked_at) if row.revoked_at else None,
         last_used_at=utc(row.last_used_at) if row.last_used_at else None,
         active=row.revoked_at is None and utc(row.expires_at) > now and row.token_version == user.token_version,
@@ -104,7 +111,7 @@ def list_keys(response: Response, db: Session = Depends(get_db), user: User = De
 
 
 @router.post("/keys", response_model=KeyCreated, status_code=201)
-def create_key(data: KeyCreate, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create_key(data: IntegrationKeyCreate, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user)):
     # Serialize key creation and use the current account password/version.
     owner = db.scalar(select(User).where(User.id == user.id, User.deleted_at.is_(None)).with_for_update().execution_options(populate_existing=True))
     if owner is None or not verify_password(data.current_password, owner.password_hash):
@@ -116,8 +123,8 @@ def create_key(data: KeyCreate, response: Response, db: Session = Depends(get_db
     ))
     if count >= MAX_ACTIVE_KEYS:
         raise HTTPException(409, "Maximal 20 aktive Erfassungsschlüssel pro Konto")
-    secret = PREFIX + token_urlsafe(32)
-    row = CaptureKey(owner_id=owner.id, label=data.label, secret_hash=digest(secret), token_version=owner.token_version, expires_at=now + timedelta(days=data.expires_in_days))
+    secret = (PREFIX if data.scope == "capture:write" else STATUS_PREFIX) + token_urlsafe(32)
+    row = CaptureKey(owner_id=owner.id, label=data.label, scope=data.scope, secret_hash=digest(secret), token_version=owner.token_version, expires_at=now + timedelta(days=data.expires_in_days))
     db.add(row)
     db.flush()
     db.add(AuditEvent(owner_id=owner.id, action="create", resource_type="capture_keys", resource_id=row.id, source="rest"))
@@ -142,15 +149,15 @@ def invalid_key():
     return HTTPException(401, "Ungültiger oder abgelaufener Erfassungsschlüssel", headers={"WWW-Authenticate": "Bearer"})
 
 
-@router.post("/capture", response_model=ShortcutReceipt, status_code=201)
-def shortcut_capture(data: ShortcutCaptureIn, response: Response, credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)):
+def integration_user(credentials: HTTPAuthorizationCredentials | None, db: Session, scope: str, limit: int) -> User:
+    prefix = PREFIX if scope == "capture:write" else STATUS_PREFIX
     # Opaque keys are deliberately not accepted by the JWT or MCP authentication.
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise invalid_key()
     secret = credentials.credentials
-    if not secret.startswith(PREFIX) or len(secret) != len(PREFIX) + 43:
+    if not secret.startswith(prefix) or len(secret) != len(prefix) + 43:
         raise invalid_key()
-    row = db.scalar(select(CaptureKey).where(CaptureKey.secret_hash == digest(secret)).with_for_update().execution_options(populate_existing=True))
+    row = db.scalar(select(CaptureKey).where(CaptureKey.secret_hash == digest(secret), CaptureKey.scope == scope).with_for_update().execution_options(populate_existing=True))
     now = datetime.now(timezone.utc)
     if row is None or row.revoked_at is not None or utc(row.expires_at) <= now:
         raise invalid_key()
@@ -160,13 +167,19 @@ def shortcut_capture(data: ShortcutCaptureIn, response: Response, credentials: H
     if row.window_started_at is None or utc(row.window_started_at) + timedelta(hours=1) <= now:
         row.window_started_at = now
         row.window_count = 0
-    if row.window_count >= REQUESTS_PER_HOUR:
+    if row.window_count >= limit:
         retry = max(1, int((utc(row.window_started_at) + timedelta(hours=1) - now).total_seconds()) + 1)
-        raise HTTPException(429, "Zu viele Erfassungen mit diesem Schlüssel", headers={"Retry-After": str(retry)})
+        raise HTTPException(429, "Zu viele Anfragen mit diesem Schlüssel", headers={"Retry-After": str(retry)})
     row.window_count += 1
     row.last_used_at = now
     # Persist the quota before the capture service, which manages its own commits.
     db.commit()
+    return owner
+
+
+@router.post("/capture", response_model=ShortcutReceipt, status_code=201)
+def shortcut_capture(data: ShortcutCaptureIn, response: Response, credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)):
+    owner = integration_user(credentials, db, "capture:write", REQUESTS_PER_HOUR)
     captured = capture_create(CaptureIn(original_text=data.original_text, client_request_id=data.client_request_id, captured_at=data.captured_at, source="capture"), db, owner)
     response.headers["Cache-Control"] = "no-store"
     return ShortcutReceipt(id=captured.id)
