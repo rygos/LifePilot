@@ -40,6 +40,7 @@ from lifepilot.update_state import complete_pending_update
 from lifepilot.commitment_routes import router as commitment_router, CommitmentOut, CheckpointOut, list_checkpoints, list_commitments
 from lifepilot.models import Commitment
 from lifepilot.next_action import router as next_action_router
+from lifepilot.focus_routes import router as focus_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,6 +78,7 @@ app.include_router(admin_router)
 app.include_router(family_tree_router)
 app.include_router(commitment_router)
 app.include_router(next_action_router)
+app.include_router(focus_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}

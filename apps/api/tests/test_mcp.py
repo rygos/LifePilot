@@ -90,6 +90,15 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         planning_task = client.post("/api/tasks", headers=auth, json={"title": "MCP-Planungstest"}).json()["id"]
                         planned = await session.call_tool("task_planning_update", {"task_id": planning_task, "planning": {"estimated_minutes": 120, "mental_effort": "high", "work_context": "computer"}})
                         assert not planned.isError
+                        focus = await session.call_tool("focus_start", {"task_id": planning_task, "planned_minutes": 15})
+                        assert not focus.isError
+                        focus_id = json.loads(focus.content[0].text)["id"]
+                        active_focus = await session.call_tool("focus_active", {})
+                        assert not active_focus.isError and focus_id in str(active_focus.content)
+                        ended_focus = await session.call_tool("focus_end", {"session_id": focus_id, "data": {"outcome": "finished"}})
+                        assert not ended_focus.isError
+                        focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
+                        assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})
                         assert not recommended.isError and planning_task in str(recommended.content)
                         assert client.patch(f"/api/tasks/{planning_task}/complete", headers=auth).status_code == 200

@@ -9,6 +9,7 @@ from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import WorkCheckpoint
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
 from lifepilot.schemas import TaskOut
+from lifepilot.focus_routes import FocusStart, FocusEnd, FocusOut, start_focus, end_focus, active_focus, focus_history
 
 
 def register_commitment_tools(mcp: FastMCP) -> None:
@@ -70,3 +71,28 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user("memory:write")
         with mcp_session(owner) as db:
             return TaskOut.model_validate(set_planning(db, owner, task_id, planning, "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="focus_start")
+    def focus_start_mcp(task_id: str, planned_minutes: int = 25) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return FocusOut.model_validate(start_focus(db, owner, FocusStart(task_id=task_id, planned_minutes=planned_minutes), "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="focus_active")
+    def focus_active_mcp() -> dict | None:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            row = active_focus(db, owner)
+            return FocusOut.model_validate(row).model_dump(mode="json") if row else None
+
+    @mcp.tool(name="focus_end")
+    def focus_end_mcp(session_id: str, data: FocusEnd) -> dict:
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return FocusOut.model_validate(end_focus(db, owner, session_id, data, "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="focus_history")
+    def focus_history_mcp(task_id: str | None = None) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [FocusOut.model_validate(row).model_dump(mode="json") for row in focus_history(db, owner, task_id=task_id)]

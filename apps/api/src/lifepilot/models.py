@@ -501,3 +501,24 @@ class WorkCheckpoint(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class FocusSession(Base):
+    __tablename__ = "focus_sessions"
+    __table_args__ = (
+        CheckConstraint("planned_minutes BETWEEN 1 AND 180", name="ck_focus_planned_minutes"),
+        CheckConstraint("outcome IS NULL OR outcome IN ('finished', 'interrupted')", name="ck_focus_outcome"),
+        CheckConstraint("elapsed_seconds IS NULL OR elapsed_seconds >= 0", name="ck_focus_elapsed"),
+        Index("uq_focus_active_owner", "owner_id", unique=True, postgresql_where=text("ended_at IS NULL"), sqlite_where=text("ended_at IS NULL")),
+        Index("ix_focus_owner_started", "owner_id", "started_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    task_title: Mapped[str] = mapped_column(String(240))
+    planned_minutes: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    elapsed_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    checkpoint_id: Mapped[str | None] = mapped_column(ForeignKey("work_checkpoints.id", ondelete="SET NULL"), nullable=True)
