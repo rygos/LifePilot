@@ -13,8 +13,8 @@
 .shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
-.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events):not(.temporal-facts-panel):not(.profile-dialog-backdrop){display:none}
-.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(#memory-domain){display:none}
+.shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(.profile-dialog-backdrop){display:none}
+.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(#memory-domain){display:none}
 .shell[data-view="memory"] #memory-domain>section:nth-child(2){display:none}
 .shell[data-view="memory"] #memory-domain{grid-template-columns:minmax(0,1fr)}
 .shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
@@ -332,3 +332,4 @@
 .voice-textarea,.voice-controls{display:grid;gap:.6rem;min-width:0}.voice-textarea textarea{width:100%;box-sizing:border-box}.voice-controls audio{max-width:100%;width:100%}.voice-controls{padding:.75rem;border:1px solid var(--line, currentColor);border-radius:.75rem}.voice-controls button{justify-self:start}
 .offline-queue{display:block;overflow-wrap:anywhere}.offline-queue details{margin:.5rem 0}.offline-queue a{display:inline-block;margin:.5rem 0}
 .fact-conflicts{display:grid;gap:.75rem;margin-block:1rem}.fact-conflict-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:.75rem}.fact-conflict-side{padding:.75rem;border:1px solid var(--line,currentColor);border-radius:.6rem;overflow-wrap:anywhere}
+.graph-scroll{overflow:auto;max-height:650px;border:1px solid var(--line,currentColor);border-radius:.6rem}.graph-scroll svg{display:block;height:auto}.graph-filters,.graph-legend{display:flex;flex-wrap:wrap;gap:.75rem;margin:.5rem 0}.graph-filters label,.graph-legend span{display:flex;align-items:center;gap:.35rem}.graph-legend i{display:inline-block;width:.8rem;height:.8rem;border-radius:50%}.knowledge-graph-panel{min-width:0}.knowledge-graph-panel .list-item button{overflow-wrap:anywhere}

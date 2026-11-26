@@ -7,6 +7,7 @@ from lifepilot.commitment_routes import (
 )
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
+from lifepilot.knowledge_graph import Kind, graph
 from lifepilot.fact_conflicts import ResolveIn, DecisionOut, list_conflicts, list_decisions, resolve_conflict
 from lifepilot.temporal_facts import FactIn, FactOut, Status, list_facts, create_fact, set_fact_status, end_fact
 from lifepilot.routine_routes import RoutineCreate, RoutineSchedule, RoutineStepIn, ArchiveIn, CompletionIn, list_routines, create_routine, update_routine, archive_routine, add_step, archive_step, set_completion, routine_history
@@ -257,3 +258,11 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return [DecisionOut.model_validate(row).model_dump(mode="json") for row in list_decisions(db, owner, person_id, limit, offset)]
+
+
+    @mcp.tool(name="knowledge_graph")
+    def knowledge_graph(root_kind: Kind, root_id: str, depth: int = 1, limit: int = 60, kinds: list[Kind] | None = None, include_unconfirmed: bool = False) -> dict:
+        """Read explicitly stored links around one entity. Bounded to two hops, with no inferred relationships."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return graph(db, owner, root_kind, root_id, depth, limit, kinds, include_unconfirmed).model_dump(mode="json")

@@ -150,6 +150,10 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not resolved.isError
                         decisions = await session.call_tool("temporal_fact_conflict_history", {"person_id":fact_person})
                         assert not decisions.isError and "both" in str(decisions.content)
+                        graph_result = await session.call_tool("knowledge_graph", {"root_kind":"person","root_id":fact_person,"kinds":["fact"]})
+                        assert not graph_result.isError
+                        graph_data = json.loads(graph_result.content[0].text)
+                        assert graph_data["root"] == "person:"+fact_person and len(graph_data["nodes"]) == 3
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})
