@@ -74,7 +74,12 @@ def test_attachment_upload_accepts_open_document_and_ooxml_container_signatures(
     for filename, required_member in (("sitzung.docx", "[Content_Types].xml"), ("protokoll.odt", "mimetype")):
         package = BytesIO()
         with ZipFile(package, "w", ZIP_DEFLATED) as archive:
-            archive.writestr(required_member, "application/test-document")
+            if filename.endswith(".docx"):
+                archive.writestr(required_member, "<Types/>")
+                archive.writestr("word/document.xml", "<document/>")
+            else:
+                archive.writestr(required_member, "application/vnd.oasis.opendocument.text")
+                archive.writestr("content.xml", "<document/>")
         response = client.post(
             "/api/attachments",
             headers=auth,

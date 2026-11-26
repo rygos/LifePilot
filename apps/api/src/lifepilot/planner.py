@@ -1,6 +1,5 @@
 from lifepilot.trash_routes import move_to_trash
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, or_, select
@@ -9,11 +8,11 @@ from sqlalchemy.orm import Session
 from lifepilot.db import get_db
 from lifepilot.attachment_routes import attachment_files_for_resource, remove_attachment_files
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
-from lifepilot.models import AuditEvent, Event, EventParticipant, EventPhoto, Memory, Person, Project, Reminder, Task, User
+from lifepilot.models import AuditEvent, Event, EventParticipant, Memory, Person, Project, Reminder, Task, User
 from lifepilot.recurrence import next_recurrence_at
 from lifepilot.revisions import history, record_task_revision
 from lifepilot.schemas import EventIn, EventOut, EventPatch, ReminderAction, ReminderIn, ReminderOut, TaskIn, TaskOut
-from lifepilot.config import settings
+from lifepilot.event_media import event_photo_files
 from lifepilot.security import current_user
 from lifepilot.services import is_quiet_hours, owned_person
 from lifepilot.scheduler import sync_contact_followup
@@ -225,14 +224,11 @@ def event_delete(event_id: str, db: Session = Depends(get_db), user: User = Depe
     if event is None:
         raise HTTPException(status_code=404, detail="Termin nicht gefunden")
     attachment_paths = attachment_files_for_resource(db, user.id, "event", event.id)
-    photo_rows = db.scalars(select(EventPhoto).where(EventPhoto.event_id == event.id, EventPhoto.owner_id == user.id)).all()
-    photo_directory = Path(settings.data_dir) / "event-photos"
-    for photo in photo_rows:
-        (photo_directory / photo.file_key).unlink(missing_ok=True)
+    photo_paths=event_photo_files(db,user.id,event.id)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="events", resource_id=event.id, source="web"))
     db.delete(event)
     db.commit()
-    remove_attachment_files(attachment_paths)
+    remove_attachment_files(attachment_paths+photo_paths)
 
 
 @router.post("/api/reminders", response_model=ReminderOut, status_code=201)

@@ -3,6 +3,8 @@ import hashlib
 import os
 import re
 import shutil
+import signal
+import time
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -15,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from lifepilot.attachment_routes import attachment_path, owned_attachment_resource, MAX_ATTACHMENT_BYTES
+from lifepilot.attachment_routes import attachment_path, owned_attachment_resource, MAX_ATTACHMENT_BYTES, validate_file
 from lifepilot.capture_routes import capture_create
 from lifepilot.capture_schemas import CaptureIn
 from lifepilot.db import get_db
@@ -80,17 +82,35 @@ def list_documents(db, owner, limit=50, offset=0):
 
 
 def run_local(args, directory, timeout=12):
-    # Linux process limits, no shell, no external network service.
-    if not shutil.which("prlimit") or not shutil.which(args[0]):
+    # Only approved installed tools; never pass the API/DB environment to parsers.
+    if args[0] not in {"pdfinfo","pdftotext","pdftoppm","tesseract"}:
+        raise ValueError("Unzulässiges Extraktionsprogramm")
+    limiter=shutil.which("prlimit")
+    executable=shutil.which(args[0])
+    if not limiter or not executable:
         raise HTTPException(503,"Lokale Textextraktionsprogramme fehlen")
-    output = Path(directory)/"output.txt"
+    output=Path(directory)/"output.txt"
     try:
         with output.open("wb") as stream:
-            subprocess.run(["prlimit","--as=1073741824","--fsize=16777216","--cpu=12","--",*args],
-                cwd=directory,stdout=stream,stderr=subprocess.DEVNULL,timeout=timeout,check=True,
-                env={**os.environ,"LC_ALL":"C","OMP_THREAD_LIMIT":"1"})
-        return output.read_bytes().decode("utf-8",errors="replace")
-    except (subprocess.SubprocessError,OSError):
+            with subprocess.Popen([limiter,"--as=1073741824","--fsize=16777216","--cpu=12","--nofile=64","--core=0","--",executable,*args[1:]],
+                cwd=directory,stdout=stream,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL,start_new_session=True,
+                env={"PATH":"/usr/bin:/bin","LC_ALL":"C","OMP_THREAD_LIMIT":"1","HOME":str(directory),"TMPDIR":str(directory)}) as proc:
+                try:
+                    if proc.wait(timeout=timeout)!=0:
+                        raise subprocess.SubprocessError()
+                except BaseException:
+                    try:
+                        os.killpg(proc.pid,signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait()
+                    raise
+        with output.open("rb") as stream:
+            raw=stream.read(16*1024*1024+1)
+        if len(raw)>16*1024*1024:
+            raise ValueError()
+        return raw.decode("utf-8",errors="replace")
+    except (subprocess.SubprocessError,OSError,ValueError):
         raise HTTPException(422,"Lokale Textextraktion fehlgeschlagen (Format, Sprache oder Ressourcenlimit)") from None
 
 
@@ -99,25 +119,31 @@ def clean(value):
 
 
 def extract_local(path, suffix, ocr, directory):
+    deadline=time.monotonic()+45
+    def run(args):
+        remaining=deadline-time.monotonic()
+        if remaining<=0:
+            raise HTTPException(422,"Zeitlimit der Textextraktion überschritten")
+        return run_local(args,directory,timeout=min(12,remaining))
     if suffix in TEXT:
         try:
             return 1, [(1, path.read_bytes().decode("utf-8-sig"), "text")]
         except UnicodeError:
             raise HTTPException(422,"Textdatei muss UTF-8-kodiert sein") from None
     def recognize(image):
-        return run_local(["tesseract",str(image),"stdout","-l","deu+eng"],directory)
+        return run(["tesseract",str(image),"stdout","-l","deu+eng"])
     if suffix in IMAGES:
         if not ocr:
             raise HTTPException(422,"Für Bilder bitte OCR ausdrücklich aktivieren")
         return 1, [(1, recognize(path), "ocr")]
-    info=run_local(["pdfinfo",str(path)],directory)
+    info=run(["pdfinfo",str(path)])
     match=re.search(r"^Pages:\s+(\d+)\s*$",info,re.M)
     if not match or int(match[1])<1:
         raise HTTPException(422,"PDF-Seitenzahl nicht ermittelbar")
     total=int(match[1])
     pages=[]
     # One bounded extraction for the native text layer.
-    raw=run_local(["pdftotext","-f","1","-l",str(min(total,MAX_PAGES)),"-enc","UTF-8",str(path),"-"],directory)
+    raw=run(["pdftotext","-f","1","-l",str(min(total,MAX_PAGES)),"-enc","UTF-8",str(path),"-"])
     chunks=raw.split("\f")
     used=0
     for page in range(1,min(total,MAX_PAGES)+1):
@@ -125,7 +151,7 @@ def extract_local(path, suffix, ocr, directory):
         method="pdf"
         if not clean(value) and ocr and used<MAX_OCR_PAGES:
             prefix=Path(directory)/"render"
-            run_local(["pdftoppm","-f",str(page),"-l",str(page),"-scale-to","1800","-singlefile","-png",str(path),str(prefix)],directory)
+            run(["pdftoppm","-f",str(page),"-l",str(page),"-scale-to","1800","-singlefile","-png",str(path),str(prefix)])
             value=recognize(prefix.with_suffix(".png"))
             method="ocr"
             used+=1
@@ -187,6 +213,7 @@ def extract(aid:str,data:ExtractIn,db:Session=Depends(get_db),user:User=Depends(
             contents=stream.read(MAX_ATTACHMENT_BYTES+1)
         if len(contents)>MAX_ATTACHMENT_BYTES:
             raise HTTPException(413,"Datei zu groß")
+        validate_file(contents,a.file_name)
         digest=hashlib.sha256(contents).hexdigest()
         with tempfile.TemporaryDirectory(prefix="lifepilot-doc-") as directory:
             path=Path(directory)/("source"+suffix)

@@ -5,15 +5,15 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile,
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.responses import Response, FileResponse
-from pathlib import Path
 from uuid import uuid4
-from PIL import Image, ImageOps, UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool
+from lifepilot.file_security import UploadBodyLimit, MAX_PHOTO_BYTES, inspect_image, storage_path, store_new
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import Text, delete, select, or_, text
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
@@ -100,6 +100,7 @@ async def integrity_error(request: Request, exc: IntegrityError):
     return JSONResponse(status_code=409, content={"detail":"Datenbankkonflikt: Verknüpfung fehlt, ist unzulässig oder bereits vorhanden."}, headers={"Cache-Control":"no-store"})
 
 app.add_middleware(LoginBodyLimit)
+app.add_middleware(UploadBodyLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.web_origin.split(",") if origin.strip()],
@@ -215,31 +216,28 @@ def people_list(db: Session = Depends(get_db), user: User = Depends(current_user
 @app.post("/api/people/{person_id}/photo", response_model=PersonOut)
 async def person_photo_upload(person_id: str, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
-    contents = await file.read(8 * 1024 * 1024 + 1)
-    if len(contents) > 8 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Das Bild darf höchstens 8 MB groß sein")
+    contents = await file.read(MAX_PHOTO_BYTES+1)
+    if len(contents)>MAX_PHOTO_BYTES:
+        raise HTTPException(413,"Das Bild darf höchstens 8 MiB groß sein")
+    normalized=await run_in_threadpool(inspect_image,contents,normalize=True)
+    person=db.scalar(select(Person).where(Person.id==person_id,Person.owner_id==user.id).with_for_update().execution_options(populate_existing=True))
+    if person is None:
+        raise HTTPException(404,"Person nicht gefunden")
+    previous=storage_path("people",person.photo_key) if person.photo_key else None
+    photo_key=f"{uuid4().hex}.jpg"
+    path=storage_path("people",photo_key)
+    store_new(path,normalized)
+    person.photo_key=photo_key
     try:
-        import io
-        with Image.open(io.BytesIO(contents)) as image:
-            if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 40_000_000:
-                raise HTTPException(status_code=415, detail="Bitte ein JPEG-, PNG- oder WebP-Bild unter 40 Megapixeln wählen")
-            image = ImageOps.exif_transpose(image)
-            image.thumbnail((2048, 2048))
-            normalized = image.convert("RGB")
-            output = io.BytesIO()
-            normalized.save(output, format="JPEG", quality=88, optimize=True)
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-        raise HTTPException(status_code=415, detail="Die Datei ist kein gültiges Bild") from None
-    photo_key = f"{uuid4().hex}.jpg"
-    photo_dir = Path(settings.data_dir) / "people"
-    photo_dir.mkdir(parents=True, exist_ok=True)
-    (photo_dir / photo_key).write_bytes(output.getvalue())
-    previous_key = person.photo_key
-    person.photo_key = photo_key
-    db.add(AuditEvent(owner_id=user.id, action="update", resource_type="people_photo", resource_id=person.id, source="web"))
-    db.commit(); db.refresh(person)
-    if previous_key:
-        (photo_dir / previous_key).unlink(missing_ok=True)
+        db.add(AuditEvent(owner_id=user.id,action="update",resource_type="people_photo",resource_id=person.id,source="web"))
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        path.unlink(missing_ok=True)
+        raise
+    if previous:
+        previous.unlink(missing_ok=True)
+    db.refresh(person)
     return person
 
 @app.get("/api/people/{person_id}/photo")
@@ -247,20 +245,23 @@ def person_photo_get(person_id: str, db: Session = Depends(get_db), user: User =
     person = owned_person(db, person_id, user)
     if not person.photo_key:
         raise HTTPException(status_code=404, detail="Für diese Person ist kein Profilbild gespeichert")
-    photo_path = Path(settings.data_dir) / "people" / person.photo_key
+    photo_path = storage_path("people",person.photo_key)
     if not photo_path.is_file():
         raise HTTPException(status_code=404, detail="Das Profilbild wurde nicht gefunden")
-    return FileResponse(photo_path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+    return FileResponse(photo_path, media_type="image/jpeg", headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 @app.delete("/api/people/{person_id}/photo", response_model=PersonOut)
 def person_photo_delete(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     person = owned_person(db, person_id, user)
-    old_key = person.photo_key
+    person=db.scalar(select(Person).where(Person.id==person_id,Person.owner_id==user.id).with_for_update().execution_options(populate_existing=True))
+    if person is None:
+        raise HTTPException(404,"Person nicht gefunden")
+    old_path=storage_path("people",person.photo_key) if person.photo_key else None
     person.photo_key = None
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people_photo", resource_id=person.id, source="web"))
     db.commit(); db.refresh(person)
-    if old_key:
-        (Path(settings.data_dir) / "people" / old_key).unlink(missing_ok=True)
+    if old_path:
+        old_path.unlink(missing_ok=True)
     return person
 
 def organization_membership_out(db: Session, row: PersonOrganization, organization: Organization, person: Person) -> dict:
@@ -445,6 +446,8 @@ def person_delete(person_id: str, db: Session = Depends(get_db), user: User = De
     if person.is_self:
         raise HTTPException(status_code=409, detail="Das eigene Personenprofil kann nicht gelöscht werden")
     attachment_paths = attachment_files_for_resource(db, user.id, "person", person.id)
+    if person.photo_key:
+        attachment_paths.append(storage_path("people",person.photo_key))
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="people", resource_id=person.id, source="web"))
     db.delete(person); db.commit()
     remove_attachment_files(attachment_paths)

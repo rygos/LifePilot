@@ -1,9 +1,8 @@
 """Voluntary photo flashcards; no face analysis or automated identification."""
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-from pathlib import Path
 from fastapi.responses import FileResponse
-from lifepilot.config import settings
+from lifepilot.file_security import storage_path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -158,9 +157,8 @@ def get_photo(card_id: str, revision: int=Query(ge=0), db: Session=Depends(get_d
     card,person=pair
     if card.revision!=revision or not card.active or not person.photo_key or card.photo_key!=person.photo_key:
         raise HTTPException(409,"Lernkarte wurde geändert")
-    directory=Path(settings.data_dir)/"people"
-    path=directory/card.photo_key
-    if path.parent!=directory or not path.is_file():
+    path=storage_path("people",card.photo_key)
+    if not path.is_file():
         raise HTTPException(404,"Kontaktfoto nicht verfügbar")
     return FileResponse(path,media_type="image/jpeg",headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
 

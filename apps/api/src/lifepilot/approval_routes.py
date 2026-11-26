@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from lifepilot.db import get_db
+from lifepilot.event_media import event_photo_files
+from lifepilot.file_security import storage_path
 from lifepilot.approval_policy import active_filters, resource as approval_resource, row_version, now, utc, TTL
 from lifepilot.person_merge import plan_merge, apply_merge
 from lifepilot.entity_embedding_jobs import enqueue_person_context_embeddings
@@ -76,6 +78,10 @@ def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User
         delete_entity_embedding(db, "task", request.resource_id, user.id)
     attachment_resource = _ATTACHMENT_RESOURCES.get(model.__tablename__)
     attachment_paths = attachment_files_for_resource(db, user.id, attachment_resource, resource.id) if attachment_resource is not None else []
+    if isinstance(resource,Person) and resource.photo_key:
+        attachment_paths.append(storage_path("people",resource.photo_key))
+    if isinstance(resource,Event):
+        attachment_paths.extend(event_photo_files(db,user.id,resource.id))
     db.delete(resource)
     request.status = "executed"
     request.decided_at = datetime.now(timezone.utc)

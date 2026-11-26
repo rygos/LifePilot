@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import get_db
 from lifepilot.attachment_routes import attachment_files_for_owner, remove_attachment_files
+from lifepilot.event_media import owner_photo_files
 from lifepilot.models import AuditEvent, User
 from lifepilot.security import current_user
 from lifepilot.update_state import COMMIT_PATTERN, clear_pending_update, current_commit_sha, read_update_state
@@ -237,7 +238,7 @@ def permanently_delete_user(user_id: str, db: Session = Depends(get_db), actor: 
         if active_admins <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mindestens ein aktiver Administrator muss bestehen bleiben")
     target_id = target.id
-    attachment_paths = attachment_files_for_owner(db, target_id)
+    attachment_paths = attachment_files_for_owner(db, target_id)+owner_photo_files(db,target_id)
     audit = AuditEvent(owner_id=actor.id, action="permanent_delete", resource_type="user", resource_id=target_id, source="admin")
     db.add(audit)
     db.flush()
