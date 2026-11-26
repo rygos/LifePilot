@@ -4,13 +4,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from lifepilot.commitment_routes import owned, persist
 from lifepilot.db import get_db
 from lifepilot.models import AuditEvent, Conversation, Event, Memory, Person, Place, PlaceEntry, User
 from lifepilot.security import current_user
+from lifepilot.trash_routes import move_to_trash
 
 router = APIRouter(prefix="/api/places", tags=["Ortsgedächtnis"])
 EntryKind = Literal["visit", "meeting", "recommendation", "memory", "reference"]
@@ -135,17 +136,13 @@ def remove_entry(db,owner,place_id,entry_id,source="web"):
     row=db.scalar(select(PlaceEntry).where(PlaceEntry.owner_id==owner,PlaceEntry.place_id==place_id,PlaceEntry.id==entry_id).with_for_update())
     if row is None:
         raise HTTPException(404,"Ortseintrag nicht gefunden")
-    db.delete(row)
-    db.add(AuditEvent(owner_id=owner,action="delete",resource_type="place_entries",resource_id=entry_id,source=source))
+    move_to_trash(db,owner,PlaceEntry,entry_id,source)
     db.commit()
 
 
 def remove_place(db,owner,place_id,source="web"):
     row=lock_place(db,owner,place_id)
-    # Explicit deletion also works in SQLite without enforced foreign keys.
-    db.execute(delete(PlaceEntry).where(PlaceEntry.owner_id==owner,PlaceEntry.place_id==place_id))
-    db.delete(row)
-    db.add(AuditEvent(owner_id=owner,action="delete",resource_type="places",resource_id=place_id,source=source))
+    move_to_trash(db,owner,Place,place_id,source)
     db.commit()
 
 

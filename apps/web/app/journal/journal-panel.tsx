@@ -104,11 +104,11 @@ export function JournalPanel({ people, projects, events, request, onMessage }: {
   }
 
   async function remove(entry: JournalEntry) {
-    if (!window.confirm("Diesen Tagebucheintrag dauerhaft löschen?")) return;
+    if (!window.confirm("Diesen Tagebucheintrag in den Papierkorb verschieben?")) return;
     try {
       await request(`/api/journal/${entry.id}`, { method: "DELETE" });
       setEntries(current => current.filter(item => item.id !== entry.id));
-      onMessage("Tagebucheintrag gelöscht");
+      onMessage("Tagebucheintrag im Papierkorb");
     } catch (error) {
       onMessage(String(error));
     }

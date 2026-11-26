@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useLifePilotSession } from "./use-life-pilot-session";
 import { AccountSettingsPanel, type Profile } from "./settings/account-settings-panel";
+import { TrashPanel } from "./settings/trash-panel";
 import { CaptureChatReview } from "./chat/capture-chat-review";
 import { EventArchive } from "./events/event-archive";
 import { PersonPicker } from "./people/person-picker";
@@ -416,6 +417,8 @@ export default function Home() {
     catch (error) { setMessage(String(error)); }
   }
   async function decideApproval(id: string, decision: "approve" | "reject") {
+    const operation=approvals.find(a=>a.id===id)?.operation;
+    if(decision==="approve" && !window.confirm(["task_delete","loan_delete","gift_delete","journal_delete"].includes(operation??"")?"Eintrag in den Papierkorb verschieben?":"Löschung endgültig freigeben? Dieser Typ ist noch nicht im Papierkorb wiederherstellbar."))return;
     try { await request("/api/approvals/" + id + "/" + decision, { method: "POST" }); setMessage(decision === "approve" ? "Freigabe ausgeführt" : "Freigabe abgelehnt"); await refresh(); }
     catch (error) { setMessage(String(error)); }
   }
@@ -490,7 +493,8 @@ export default function Home() {
     catch (error) { setMessage(String(error)); }
   }
   async function deleteRecord(path: string, label: string) {
-    if (!window.confirm(`${label} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+    const recoverable = /^\/api\/(tasks|loans|gifts)\/[^/]+$/.test(path);
+    if (!window.confirm(recoverable ? `${label} in den Papierkorb verschieben?` : `${label} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
     try { await request(path, { method: "DELETE" }); if (selectedPerson && path === `/api/people/${selectedPerson.id}`) { setSelectedPerson(null); window.location.assign("/people"); } await refresh(); setMessage(`${label} gelöscht`); }
     catch (error) { setMessage(String(error)); }
   }
@@ -585,6 +589,7 @@ export default function Home() {
       {currentView === "people" && <FaceTrainingPanel request={request} people={people} api={api} token={token}/>}
       {currentView === "people" && <div className="people-toolbar"><label>Personen suchen<input type="search" value={personFilter} onChange={event => setPersonFilter(event.target.value)} placeholder="Name, Spitzname, Verein oder Kontakt …" /></label><label>Filtern<select value={personKindFilter} onChange={event => setPersonKindFilter(event.target.value)}><option value="all">Alle Personen</option><option value="favorite">Favoriten</option><option value="birthday">Mit Geburtstag</option><option value="photo">Mit Profilbild</option><option value="organization">Mit Verein/Organisation</option></select></label><label>Sortieren<select value={personSort} onChange={event => setPersonSort(event.target.value)}><option value="name">Name</option><option value="age">Alter</option><option value="birthday">Nächster Geburtstag</option><option value="recent">Zuletzt hinzugefügt</option></select></label></div>}
       {captureOpen && currentUser && <dialog open className="capture-dialog"><div className="panel-head"><h2>Schnellerfassung</h2><button type="button" className="quiet" onClick={() => setCaptureOpen(false)}>Schließen</button></div><OfflineCaptureForm key={currentUser.id+"-dialog"} api={api} owner={currentUser.id} request={request} id="quick-capture-text" autoFocus onQueued={()=>setCaptureOpen(false)}/></dialog>}
+      {currentView === "settings" && <TrashPanel request={request} onChange={refresh}/>}
       {showProfile && profile && <AccountSettingsPanel profile={profile} request={request} onClose={() => setShowProfile(false)} onMessage={setMessage} onProfileSaved={saved => { setProfile(saved); void refresh(); }} />}
       {currentUser && <OfflineCaptureQueue key={currentUser.id} api={api} owner={currentUser.id} request={request} onSynced={refresh}/>}
       {message && <p className="notice" role="status">{message}<button className="quiet" onClick={() => setMessage("")}>×</button></p>}

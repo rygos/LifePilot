@@ -26,7 +26,7 @@
 .shell[data-view="inbox"] .content>*:not(header):not(.notice):not(.inbox-panel):not(#dashboard-panels){display:none}
 .shell[data-view="inbox"] #dashboard-panels>section:first-child{display:none}
 .shell[data-view="inbox"] #dashboard-panels{grid-template-columns:minmax(0,1fr)}
-.shell[data-view="settings"] .content>*:not(header):not(.notice):not(.profile-panel){display:none}
+.shell[data-view="settings"] .content>*:not(header):not(.notice):not(.profile-panel):not(.trash-panel){display:none}
 .shell[data-view="chat"] .content>*:not(header):not(.notice):not(.chat-panel):not(footer){display:none}
 .capture-dialog{position:fixed;inset:12vh 16px auto;z-index:5;width:min(680px,calc(100% - 32px));margin:auto;padding:22px;border:1px solid var(--line);border-radius:13px;background:var(--paper);color:var(--ink)}
 .capture-dialog form,.capture-dialog label{display:grid;gap:10px}

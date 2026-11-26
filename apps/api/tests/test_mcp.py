@@ -225,6 +225,16 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not inventory_rows.isError and item["id"] in str(inventory_rows.content)
                         inventory_history = await session.call_tool("inventory_history", {"item_id":item["id"]})
                         assert not inventory_history.isError and "Regal" in str(inventory_history.content)
+                        temp_task = client.post("/api/tasks",headers=auth,json={"title":"Papierkorb MCP Test"}).json()["id"]
+                        assert client.delete("/api/tasks/"+temp_task,headers=auth).status_code==204
+                        trash_result = await session.call_tool("trash_list", {})
+                        assert not trash_result.isError
+                        trash_entry = next(row for row in client.get("/api/trash",headers=auth).json()["items"] if row["resource_id"]==temp_task)
+                        assert trash_entry["id"] in str(trash_result.content)
+                        denied_restore = await session.call_tool("trash_restore", {"entry_id":trash_entry["id"]})
+                        assert denied_restore.isError
+                        restored_task = await session.call_tool("trash_restore", {"entry_id":trash_entry["id"],"confirm":True})
+                        assert not restored_task.isError and temp_task in str(restored_task.content)
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

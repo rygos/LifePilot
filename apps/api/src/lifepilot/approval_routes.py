@@ -10,6 +10,7 @@ from lifepilot.entity_embedding_jobs import delete_entity_embedding
 from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, Event, Gift, JournalEntry, Loan, Memory, Person, Pet, Project, Relationship, Reminder, Task, User
 from lifepilot.schemas import ApprovalOut, AttachmentResourceType
 from lifepilot.security import current_user
+from lifepilot.trash_routes import POLICIES, move_to_trash
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
 _RESOURCES = {
@@ -52,6 +53,17 @@ def approval_approve(approval_id: str, db: Session = Depends(get_db), user: User
     resource = db.scalar(select(model).where(model.id == request.resource_id, model.owner_id == user.id))
     if resource is None:
         raise HTTPException(status_code=404, detail="Zugehöriger Eintrag wurde nicht gefunden")
+    if model in POLICIES:
+        db.execute(select(model.id).where(model.id == request.resource_id, model.owner_id == user.id).with_for_update()).first()
+        db.refresh(request, with_for_update=True)
+        if request.status != "pending":
+            raise HTTPException(409, "Freigabe wurde bereits entschieden")
+        move_to_trash(db,user.id,model,request.resource_id,approval_id=request.id)
+        request.status = "executed"
+        request.decided_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(request)
+        return request
     if request.operation == "relationship_delete":
         delete_entity_embedding(db, "relationship", request.resource_id, user.id)
     if request.operation == "project_delete":

@@ -1,3 +1,4 @@
+from lifepilot.trash_routes import move_to_trash
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -106,8 +107,7 @@ def journal_delete(db: Session, owner: User, entry_id: str, source: str = "web")
     row = db.scalar(select(JournalEntry).where(JournalEntry.id == entry_id, JournalEntry.owner_id == owner.id))
     if row is None:
         raise HTTPException(status_code=404, detail="Tagebucheintrag nicht gefunden")
-    db.add(AuditEvent(owner_id=owner.id, action="delete", resource_type="journal_entries", resource_id=row.id, source=source))
-    db.delete(row)
+    move_to_trash(db, owner.id, JournalEntry, row.id, source)
     db.commit()
 
 

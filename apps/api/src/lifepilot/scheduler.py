@@ -119,6 +119,8 @@ def schedule_due_items(db: Session) -> int:
     contacts = db.execute(select(Person, User).join(User, User.id == Person.owner_id).where(Person.contact_interval_days.is_not(None))).all()
     for person, owner in contacts:
         sync_contact_followup(db, person, owner)
+    from lifepilot.trash_routes import cleanup_expired
+    cleanup_expired(db)
     db.commit()
     return created
 

@@ -60,6 +60,7 @@ from lifepilot.document_routes import router as document_router
 from lifepilot.decision_journal import router as decision_router, list_entries as list_decisions_due
 from lifepilot.place_routes import router as place_router
 from lifepilot.inventory_routes import router as inventory_router, due_summary as inventory_due_summary
+from lifepilot.trash_routes import router as trash_router, move_to_trash
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -117,6 +118,7 @@ app.include_router(document_router)
 app.include_router(decision_router)
 app.include_router(place_router)
 app.include_router(inventory_router)
+app.include_router(trash_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -613,8 +615,8 @@ def loan_return(loan_id: str, db: Session = Depends(get_db), user: User = Depend
 def loan_delete(loan_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     row = db.scalar(select(Loan).where(Loan.id == loan_id, Loan.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Leihgabe nicht gefunden")
-    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="loans", resource_id=row.id, source="web"))
-    db.delete(row); db.commit()
+    move_to_trash(db, user.id, Loan, row.id)
+    db.commit()
 
 @app.post("/api/gifts", response_model=GiftOut, status_code=201)
 def gift_create(data: GiftIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -632,8 +634,8 @@ def gift_list(db: Session = Depends(get_db), user: User = Depends(current_user),
 def gift_delete(gift_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     row = db.scalar(select(Gift).where(Gift.id == gift_id, Gift.owner_id == user.id))
     if row is None: raise HTTPException(status_code=404, detail="Geschenkidee nicht gefunden")
-    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="gifts", resource_id=row.id, source="web"))
-    db.delete(row); db.commit()
+    move_to_trash(db, user.id, Gift, row.id)
+    db.commit()
 
 @app.get("/api/briefing/daily")
 def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):

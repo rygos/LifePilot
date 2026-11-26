@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     push_vapid_subject: str = ""
     imap_host: str = ""
     imap_port: int = Field(default=993, ge=1, le=65535)
+    trash_retention_days: int = Field(default=30, ge=1, le=365)
     data_dir: str = "/app/data"
 
 settings = Settings()

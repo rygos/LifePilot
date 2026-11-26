@@ -1,3 +1,4 @@
+from lifepilot.trash_routes import move_to_trash
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,8 +102,7 @@ def task_delete(task_id: str, db: Session = Depends(get_db), user: User = Depend
     task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
     if task is None:
         raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-    db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="tasks", resource_id=task.id, source="web"))
-    db.delete(task)
+    move_to_trash(db, user.id, Task, task.id)
     db.commit()
 
 

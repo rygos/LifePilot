@@ -9,6 +9,7 @@ from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
 from lifepilot import inventory_routes as inventory
+from lifepilot import trash_routes as trash
 from lifepilot.place_routes import PlaceIn, EntryIn, EntryKind, list_places, get_place, create_place, update_place, archive_place, list_entries as list_place_entries, create_entry as create_place_entry
 from lifepilot.decision_journal import DecisionIn, ReviewIn, Status as DecisionStatus, list_entries as list_journal_entries, create_entry as create_decision_entry, get_entry as get_decision_entry, history as decision_history, add_review as add_decision_review
 from lifepilot.document_routes import list_documents, search_documents, read_document
@@ -506,3 +507,20 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return inventory.loan_history(db, db.get(User, owner), item_id, limit, offset)
+
+
+    @mcp.tool(name="trash_list")
+    def trash_list(limit: int = 50, offset: int = 0) -> list[dict]:
+        """List recoverable deleted records; no full private snapshots or expired entries."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return trash.list_trash(db, owner, limit, offset)
+
+    @mcp.tool(name="trash_restore")
+    def trash_restore(entry_id: str, confirm: bool = False) -> dict:
+        """Restore a selected entry only after explicit user approval. Fails atomically if references conflict."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return trash.restore(db, owner, entry_id, "mcp")

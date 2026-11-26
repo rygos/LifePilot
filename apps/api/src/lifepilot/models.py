@@ -862,3 +862,20 @@ class InventoryLoan(Base):
     loan_id: Mapped[str] = mapped_column(ForeignKey("loans.id", ondelete="CASCADE"), primary_key=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     item_id: Mapped[str] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), index=True)
+
+
+class TrashEntry(Base):
+    __tablename__ = "trash_entries"
+    __table_args__ = (
+        Index("ix_trash_owner_expiry", "owner_id", "expires_at"),
+        Index("ix_trash_expiry", "expires_at"),
+        UniqueConstraint("owner_id", "resource_type", "resource_id", name="uq_trash_resource"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    resource_type: Mapped[str] = mapped_column(String(40))
+    resource_id: Mapped[str] = mapped_column(String(36))
+    label: Mapped[str] = mapped_column(String(240))
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
