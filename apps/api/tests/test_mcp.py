@@ -154,6 +154,10 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not graph_result.isError
                         graph_data = json.loads(graph_result.content[0].text)
                         assert graph_data["root"] == "person:"+fact_person and len(graph_data["nodes"]) == 3
+                        timeline_result = await session.call_tool("life_timeline", {"person_id":fact_person,"kinds":["fact"]})
+                        assert not timeline_result.isError
+                        timeline_data = json.loads(timeline_result.content[0].text)
+                        assert len(timeline_data["items"]) == 3 and timeline_data["items"][0]["occurrence"] == "end"
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

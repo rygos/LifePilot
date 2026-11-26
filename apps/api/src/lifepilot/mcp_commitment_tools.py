@@ -8,6 +8,7 @@ from lifepilot.commitment_routes import (
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
+from lifepilot.life_timeline import Kind as TimelineKind, Mode as TimelineMode, timeline
 from lifepilot.fact_conflicts import ResolveIn, DecisionOut, list_conflicts, list_decisions, resolve_conflict
 from lifepilot.temporal_facts import FactIn, FactOut, Status, list_facts, create_fact, set_fact_status, end_fact
 from lifepilot.routine_routes import RoutineCreate, RoutineSchedule, RoutineStepIn, ArchiveIn, CompletionIn, list_routines, create_routine, update_routine, archive_routine, add_step, archive_step, set_completion, routine_history
@@ -266,3 +267,11 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return graph(db, owner, root_kind, root_id, depth, limit, kinds, include_unconfirmed).model_dump(mode="json")
+
+
+    @mcp.tool(name="life_timeline")
+    def life_timeline(person_id: str | None = None, kinds: list[TimelineKind] | None = None, start: date | None = None, end: date | None = None, mode: TimelineMode = "dated", include_unconfirmed: bool = False, limit: int = 50, offset: int = 0) -> dict:
+        """Read a chronological view of explicitly dated records. Dates use the account timezone; undated records are separate. Calendar events may be planned, not experienced."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return timeline(db, owner, person_id, kinds, start, end, mode, include_unconfirmed, limit, offset).model_dump(mode="json")

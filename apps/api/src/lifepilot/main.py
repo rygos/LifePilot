@@ -54,6 +54,7 @@ from lifepilot.home_assistant_routes import router as home_assistant_router
 from lifepilot.temporal_facts import router as facts_router, person_current_facts
 from lifepilot.fact_conflicts import router as conflicts_router, list_conflicts
 from lifepilot.knowledge_graph import router as graph_router
+from lifepilot.life_timeline import router as timeline_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -105,6 +106,7 @@ app.include_router(home_assistant_router)
 app.include_router(facts_router)
 app.include_router(conflicts_router)
 app.include_router(graph_router)
+app.include_router(timeline_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
