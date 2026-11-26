@@ -61,7 +61,7 @@ class Person(Base):
     photo_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_self: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    contact_methods: Mapped[list["PersonContactMethod"]] = relationship(back_populates="person", cascade="all, delete-orphan", lazy="selectin")
+    contact_methods: Mapped[list["PersonContactMethod"]] = relationship(back_populates="person", cascade="all, delete-orphan", lazy="selectin", primaryjoin="and_(Person.id == PersonContactMethod.person_id, Person.owner_id == PersonContactMethod.owner_id)")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 

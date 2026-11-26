@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import Text, delete, select, or_, text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
 from lifepilot.audit import AuditEventView
@@ -70,6 +71,11 @@ from lifepilot.family_routes import router as family_router
 async def lifespan(app: FastAPI):
     validate_secret_key()
     Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        from lifepilot.tenant_integrity_v1 import install, preflight
+        with engine.begin() as connection:
+            preflight(connection)
+            install(connection)
     with Session(engine) as db:
         if db.scalar(select(User).where(User.username == settings.life_pilot_bootstrap_username)) is None:
             validate_bootstrap_password()
@@ -88,6 +94,10 @@ app = FastAPI(title="LifePilot", description="Dein persönliches digitales Gedä
 async def safe_validation_error(request: Request, exc: RequestValidationError):
     # Never echo passwords, tokens, private document text or custom exception context.
     return JSONResponse(status_code=422, content={"detail": [{"loc": list(e["loc"]), "msg": str(e["msg"]), "type": e["type"]} for e in exc.errors()]}, headers={"Cache-Control":"no-store"})
+
+@app.exception_handler(IntegrityError)
+async def integrity_error(request: Request, exc: IntegrityError):
+    return JSONResponse(status_code=409, content={"detail":"Datenbankkonflikt: Verknüpfung fehlt, ist unzulässig oder bereits vorhanden."}, headers={"Cache-Control":"no-store"})
 
 app.add_middleware(LoginBodyLimit)
 app.add_middleware(
@@ -263,7 +273,7 @@ def organization_list(db: Session = Depends(get_db), user: User = Depends(curren
     organizations = db.scalars(select(Organization).where(Organization.owner_id == user.id).order_by(Organization.name)).all()
     result = []
     for organization in organizations:
-        memberships = db.execute(select(PersonOrganization, Person).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.organization_id == organization.id).order_by(Person.first_name, Person.last_name)).all()
+        memberships = db.execute(select(PersonOrganization, Person).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.organization_id == organization.id, Person.owner_id == user.id).order_by(Person.first_name, Person.last_name)).all()
         result.append(OrganizationOut.model_validate(organization).model_copy(update={"members": [organization_membership_out(db, row, organization, person) for row, person in memberships]}))
     return result
 
@@ -307,7 +317,7 @@ def organization_membership_add(person_id: str, data: MembershipIn, db: Session 
 @app.get("/api/people/{person_id}/organizations")
 def person_organizations(person_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owned_person(db, person_id, user)
-    rows = db.execute(select(PersonOrganization, Organization, Person).join(Organization, Organization.id == PersonOrganization.organization_id).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.person_id == person_id).order_by(Organization.name)).all()
+    rows = db.execute(select(PersonOrganization, Organization, Person).join(Organization, Organization.id == PersonOrganization.organization_id).join(Person, Person.id == PersonOrganization.person_id).where(PersonOrganization.owner_id == user.id, PersonOrganization.person_id == person_id, Organization.owner_id == user.id, Person.owner_id == user.id).order_by(Organization.name)).all()
     return [organization_membership_out(db, membership, organization, person) for membership, organization, person in rows]
 
 @app.delete("/api/organizations/{organization_id}/members/{person_id}", status_code=204)
@@ -477,7 +487,7 @@ def relationship_list(db: Session = Depends(get_db), user: User = Depends(curren
     rows = db.scalars(stmt.order_by(Relationship.created_at.desc())).all()
     ids = {r.source_person_id for r in rows} | {r.target_person_id for r in rows}
     people_by_id = {p.id: p for p in db.scalars(select(Person).where(Person.owner_id == user.id, Person.id.in_(ids))).all()} if ids else {}
-    return [RelationshipOut(id=r.id, source_person_id=r.source_person_id, source_person_name=f"{people_by_id[r.source_person_id].first_name} {people_by_id[r.source_person_id].last_name}".strip(), target_person_id=r.target_person_id, target_person_name=f"{people_by_id[r.target_person_id].first_name} {people_by_id[r.target_person_id].last_name}".strip(), relationship_type=r.relationship_type, inverse_relationship_type=r.inverse_relationship_type, confirmed=r.confirmed, source_memory_id=r.source_memory_id) for r in rows]
+    return [RelationshipOut(id=r.id, source_person_id=r.source_person_id, source_person_name=f"{people_by_id[r.source_person_id].first_name} {people_by_id[r.source_person_id].last_name}".strip(), target_person_id=r.target_person_id, target_person_name=f"{people_by_id[r.target_person_id].first_name} {people_by_id[r.target_person_id].last_name}".strip(), relationship_type=r.relationship_type, inverse_relationship_type=r.inverse_relationship_type, confirmed=r.confirmed, source_memory_id=r.source_memory_id) for r in rows if r.source_person_id in people_by_id and r.target_person_id in people_by_id]
 
 @app.post("/api/relationships", status_code=201)
 def relationship_add(data: RelationshipIn, db: Session = Depends(get_db), user: User = Depends(current_user)):

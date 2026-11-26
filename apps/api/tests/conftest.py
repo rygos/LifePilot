@@ -36,3 +36,8 @@ def auth(client: TestClient) -> dict[str, str]:
     response = client.post("/api/auth/login", json={"username": "testuser", "password": "test-password"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def pytest_addoption(parser):
+    parser.addoption("--postgres-integration", action="store_true", default=False,
+                     help="Run disposable local PostgreSQL integration tests using the installed pgvector image")

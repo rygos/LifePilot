@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
+import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from lifepilot.db import engine
 from lifepilot.models import (User, Person, Conversation, ConversationParticipant, Event, EventParticipant,
@@ -39,10 +41,13 @@ def test_timeline_order_timezone_filters_and_pagination(client):
                     Memory(owner_id=foreign,person_id=outsider.id,title="Foreign memory",content="secret",occurred_at=morning)])
         db.flush()
         db.add_all([ConversationParticipant(owner_id=owner,conversation_id=conversation.id,person_id=person.id),
-                    ConversationParticipant(owner_id=owner,conversation_id=conversation.id,person_id=outsider.id),
                     EventParticipant(owner_id=owner,event_id=event.id,person_id=person.id),
                     JournalEntryPerson(owner_id=owner,entry_id=journal.id,person_id=person.id)])
         db.commit()
+        with pytest.raises(IntegrityError,match="tenant_integrity"):
+            with db.begin_nested():
+                db.add(ConversationParticipant(owner_id=owner,conversation_id=conversation.id,person_id=outsider.id))
+                db.flush()
         pid,foreign_pid=person.id,outsider.id
     def read(**params):
         result=client.get("/api/timeline",headers=auth,params=params)

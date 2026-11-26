@@ -80,6 +80,14 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                 async with streamable_http_client("http://localhost:8002/mcp", http_client=http) as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
+                        for tool, args in (
+                            ("person_get", {"person_id":foreign_person_id}),
+                            ("task_create", {"title":"Kontofremde Aufgabe","person_id":foreign_person_id}),
+                            ("conversation_create", {"title":"Kontofremdes Gespräch","original_note":"Test","participant_ids":[foreign_person_id]}),
+                            ("loan_create", {"item_name":"Kontofremde Leihgabe","borrower_person_id":foreign_person_id}),
+                        ):
+                            denied_foreign=await session.call_tool(tool,args)
+                            assert denied_foreign.isError,tool
                         listed = await session.list_tools()
                         assert "relationship_create" in {tool.name for tool in listed.tools}
                         assert {"next_best_action", "task_planning_update", "commitment_create", "work_checkpoint_save"}.issubset({tool.name for tool in listed.tools})

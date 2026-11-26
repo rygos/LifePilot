@@ -37,7 +37,8 @@ def test_person_favorites_labels_and_how_we_met_are_persisted_and_searchable(cli
     assert client.patch(f"/api/contact-methods/{other_contact.json()['id']}", headers=auth, json={"method_type": "email", "label": "Arbeit", "value": "mara@example.org"}).status_code == 409
     assert client.get("/api/people?q=mara@example.org", headers=auth).json()[0]["id"] == person["id"]
     assert client.patch(f"/api/contact-methods/{contact_id}", headers=auth, json={"method_type": "messaging", "label": "Signal", "value": "mara-signal"}).json()["value"] == "mara-signal"
-    assert client.get(f"/api/people/{person['id']}", headers=auth).json()["contact_methods"][0]["value"] == "mara-signal"
+    methods = client.get(f"/api/people/{person['id']}", headers=auth).json()["contact_methods"]
+    assert next(m for m in methods if m["id"] == contact_id)["value"] == "mara-signal"
 
     added = client.patch(f"/api/people/{person['id']}/favorite", headers=auth)
     assert added.status_code == 200

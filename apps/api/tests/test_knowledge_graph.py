@@ -1,6 +1,8 @@
 from uuid import uuid4
 from datetime import datetime, timezone, date
 
+import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from lifepilot.db import engine
 from lifepilot.models import (User, Person, Relationship, Organization, PersonOrganization, Conversation,
@@ -42,7 +44,6 @@ def test_graph_explicit_links_and_depth(client):
         rejected=TemporalFact(owner_id=owner,person_id=a.id,predicate="wohnort",value="Falsch",value_key=fact_value_key("Falsch"),status="rejected")
         db.add_all([task,commitment,fact,proposed,rejected,
             Relationship(owner_id=owner,source_person_id=b.id,target_person_id=a.id,relationship_type="Kollege",confirmed=True),
-            Relationship(owner_id=owner,source_person_id=a.id,target_person_id=outsider.id,relationship_type="Foreign leak",confirmed=True),
             PersonOrganization(owner_id=owner,person_id=a.id,organization_id=org.id,role="Mitglied"),
             ConversationParticipant(owner_id=owner,person_id=a.id,conversation_id=conversation.id),
             ConversationProject(owner_id=owner,conversation_id=conversation.id,project_id=project.id),
@@ -50,6 +51,10 @@ def test_graph_explicit_links_and_depth(client):
             MemoryProject(owner_id=owner,memory_id=memory.id,project_id=project.id),
         ])
         db.commit()
+        with pytest.raises(IntegrityError,match="tenant_integrity"):
+            with db.begin_nested():
+                db.add(Relationship(owner_id=owner,source_person_id=a.id,target_person_id=outsider.id,relationship_type="Foreign leak",confirmed=True))
+                db.flush()
         ids={k:v.id for k,v in locals().copy().items() if isinstance(v,(Person,Organization,Project,Conversation,Event,Memory,Task,Commitment,TemporalFact))}
     def read(**extra):
         response=client.get("/api/graph",headers=auth,params={"root_kind":"person","root_id":ids["a"],**extra})

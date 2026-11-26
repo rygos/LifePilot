@@ -36,6 +36,11 @@ try:
         token = get_access_token()
         if token is None: raise ValueError("Bearer token erforderlich")
         if required_scope not in token.scopes: raise ValueError(f"MCP-Token benötigt den Bereich {required_scope}")
+        # Recheck token and account on each tool invocation, not only at HTTP authentication.
+        with Session(engine) as db:
+            user = resolve_bearer_user(token.token, db)
+            if user.id != token.client_id or resolve_bearer_token_use(token.token) != "mcp":
+                raise ValueError("Ungültige MCP-Anmeldung")
         return token.client_id
 
     def mcp_session(owner_id: str) -> Session:
