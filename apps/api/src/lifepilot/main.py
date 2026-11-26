@@ -43,6 +43,7 @@ from lifepilot.next_action import router as next_action_router
 from lifepilot.focus_routes import router as focus_router
 from lifepilot.task_steps import router as task_steps_router
 from lifepilot.routine_routes import router as routine_router, list_routines
+from lifepilot.voice_routes import router as voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,6 +84,7 @@ app.include_router(next_action_router)
 app.include_router(focus_router)
 app.include_router(task_steps_router)
 app.include_router(routine_router)
+app.include_router(voice_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}

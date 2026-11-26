@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = ""
     embedding_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    transcription_base_url: str = ""
+    transcription_api_key: str = ""
+    transcription_model: str = "whisper-1"
+    transcription_timeout_seconds: int = Field(default=90, ge=1, le=180)
     data_dir: str = "/app/data"
 
 settings = Settings()
