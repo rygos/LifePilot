@@ -49,6 +49,7 @@ from lifepilot.push_routes import router as push_router
 from lifepilot.dav_auth import router as dav_auth_router
 from lifepilot.caldav_routes import router as caldav_router
 from lifepilot.carddav_routes import router as carddav_router
+from lifepilot.mail_routes import router as mail_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -95,6 +96,7 @@ app.include_router(push_router)
 app.include_router(dav_auth_router)
 app.include_router(caldav_router)
 app.include_router(carddav_router)
+app.include_router(mail_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}

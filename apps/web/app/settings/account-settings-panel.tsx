@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { ShortcutSettingsPanel } from "./shortcut-settings-panel";
 import { PushSettingsPanel } from "./push-settings-panel";
 import { CaldavSettingsPanel } from "./caldav-settings-panel";
+import { MailSettingsPanel } from "./mail-settings-panel";
 
 export type Profile = {
   readonly username: string;
@@ -77,5 +78,6 @@ export function AccountSettingsPanel({ profile, request, onClose, onMessage, onP
     <ShortcutSettingsPanel request={request}/>
     <PushSettingsPanel request={request}/>
     <CaldavSettingsPanel request={request}/>
+    <MailSettingsPanel request={request}/>
   </>;
 }

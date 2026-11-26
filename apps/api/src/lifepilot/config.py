@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     transcription_timeout_seconds: int = Field(default=90, ge=1, le=180)
     push_vapid_private_key: str = ""
     push_vapid_subject: str = ""
+    imap_host: str = ""
+    imap_port: int = Field(default=993, ge=1, le=65535)
     data_dir: str = "/app/data"
 
 settings = Settings()
