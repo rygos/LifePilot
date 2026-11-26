@@ -611,3 +611,21 @@ class CaptureKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     window_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     window_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    endpoint: Mapped[str] = mapped_column(Text)
+    p256dh: Mapped[str] = mapped_column(String(120))
+    auth: Mapped[str] = mapped_column(String(40))
+    label: Mapped[str] = mapped_column(String(120))
+    token_version: Mapped[int] = mapped_column(Integer)
+    vapid_public_key: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sent_keys: Mapped[list[str]] = mapped_column(JSON, default=list)

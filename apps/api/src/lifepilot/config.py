@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     transcription_api_key: str = ""
     transcription_model: str = "whisper-1"
     transcription_timeout_seconds: int = Field(default=90, ge=1, le=180)
+    push_vapid_private_key: str = ""
+    push_vapid_subject: str = ""
     data_dir: str = "/app/data"
 
 settings = Settings()

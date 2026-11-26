@@ -58,6 +58,8 @@ services:
       TRANSCRIPTION_API_KEY: ${TRANSCRIPTION_API_KEY:-}
       TRANSCRIPTION_MODEL: ${TRANSCRIPTION_MODEL:-whisper-1}
       TRANSCRIPTION_TIMEOUT_SECONDS: ${TRANSCRIPTION_TIMEOUT_SECONDS:-90}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
@@ -138,6 +140,26 @@ services:
       api:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    volumes:
+      - /home/docker/rygos/lifepilot/data:/app/data
+    networks: [internal]
+
+  push-worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      args:
+        LIFE_PILOT_COMMIT_SHA: ${LIFE_PILOT_COMMIT_SHA:-}
+    restart: unless-stopped
+    command: ["python", "-m", "lifepilot.push_worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://lifepilot:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}@db:5432/lifepilot
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Portainer}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+    depends_on:
+      api:
         condition: service_healthy
     volumes:
       - /home/docker/rygos/lifepilot/data:/app/data

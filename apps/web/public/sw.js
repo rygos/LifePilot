@@ -1,4 +1,4 @@
-const CACHE_NAME = "lifepilot-shell-v4";
+const CACHE_NAME = "lifepilot-shell-v5";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/offline.html", "/offline.css", "/offline-capture.mjs", "/offline-store.mjs"];
 
 self.addEventListener("install", event => {
@@ -26,4 +26,25 @@ self.addEventListener("fetch", event => {
     }
     return response;
   })));
+});
+
+
+self.addEventListener("push", event => {
+  // No private user data or provider-supplied destination is rendered.
+  event.waitUntil(self.registration.showNotification("LifePilot", {
+    body: "Du hast offene Erinnerungen. Öffne LifePilot für Details.",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: "lifepilot-reminders"
+  }));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type: "window", includeUncontrolled: true});
+    const client = windows.find(item => new URL(item.url).origin === self.location.origin);
+    if (client) return client.focus();
+    return self.clients.openWindow("/");
+  })());
 });
