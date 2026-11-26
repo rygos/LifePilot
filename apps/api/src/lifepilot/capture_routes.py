@@ -16,6 +16,7 @@ from lifepilot.embedding_jobs import enqueue_memory_embedding
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.models import Capture, Conversation, ConversationParticipant, ConversationProject, Event, EventParticipant, Gift, Loan, Memory, MemoryProject, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Reminder, Task, User
 from lifepilot.security import current_user
+from lifepilot.models import Commitment, AuditEvent
 from lifepilot.revisions import record_conversation_revision, record_task_revision
 from lifepilot.services import ensure_self_person, owner_relationship_types, relationship_create
 
@@ -115,7 +116,7 @@ def capture_list(db: Session = Depends(get_db), user: User = Depends(current_use
 
 @router.post("/{capture_id}/review", response_model=list[AcceptedMemory], status_code=201)
 def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> list[AcceptedMemory]:
-    row = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == user.id))
+    row = db.scalar(select(Capture).where(Capture.id == capture_id, Capture.owner_id == user.id).with_for_update().execution_options(populate_existing=True))
     if row is None:
         raise HTTPException(status_code=404, detail="Eingabe nicht gefunden")
     if row.status != "ready":
@@ -159,6 +160,22 @@ def capture_review(capture_id: str, data: CaptureReviewIn, db: Session = Depends
             if suggestion.kind in {"former_name", "life_event"} and index not in data.confirmations:
                 raise HTTPException(status_code=422, detail="Biografische Angaben müssen ausdrücklich bestätigt werden")
             match suggestion.kind:
+                case "commitment":
+                    if index not in data.confirmations:
+                        raise HTTPException(422, "Verpflichtungen müssen ausdrücklich bestätigt werden")
+                    evidence = (suggestion.commitment_evidence or "").strip()
+                    if not evidence or evidence not in row.original_text or not suggestion.commitment_direction or person is None:
+                        raise HTTPException(422, "Verpflichtung benötigt eine belegte Zusage, Richtung und Person")
+                    if suggestion.project_name and project is None:
+                        raise HTTPException(422, "Projekt muss zuerst eindeutig zugeordnet werden")
+                    if suggestion.due_at and suggestion.due_at.tzinfo is None:
+                        raise HTTPException(422, "Fälligkeit benötigt eine Zeitzone")
+                    due_at = suggestion.due_at.astimezone(timezone.utc) if suggestion.due_at else None
+                    commitment = Commitment(owner_id=user.id, title=suggestion.title, notes=suggestion.content, direction=suggestion.commitment_direction, person_id=person.id, project_id=project.id if project else None, due_at=due_at, source_capture_id=row.id, source_quote=evidence)
+                    db.add(commitment)
+                    db.flush()
+                    db.add(AuditEvent(owner_id=user.id, action="create", resource_type="commitments", resource_id=commitment.id, source="capture"))
+                    accepted.append(AcceptedMemory(id=commitment.id, title=commitment.title, kind="commitment", resource_id=commitment.id, resource_type="commitment"))
                 case "conversation":
                     conversation = Conversation(owner_id=user.id, title=suggestion.title, original_note=row.original_text, summary=suggestion.content, location=suggestion.location or "", occurred_at=suggestion.occurred_at)
                     db.add(conversation)

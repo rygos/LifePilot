@@ -83,7 +83,7 @@ def apply_family_meeting_and_loan_rules(
             case "owner_relationship":
                 if not (explicit_owner_edges and _mentions_family(item, family_first_names)):
                     kept.append(item)
-            case "former_name" | "life_event" | "task" | "project_link":
+            case "former_name" | "life_event" | "task" | "project_link" | "commitment":
                 kept.append(item)
     if meeting is not None:
         kept.insert(0, meeting)

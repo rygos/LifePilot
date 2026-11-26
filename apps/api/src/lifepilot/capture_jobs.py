@@ -14,6 +14,7 @@ from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.models import Capture, Conversation, ConversationParticipant, Event, Loan, Memory, Person, PersonLifeEvent, PersonNameHistory, Project, Relationship, Task, User, UserPersonRelationship
 from lifepilot.services import owner_relationship_types
+from lifepilot.models import Commitment
 
 CAPTURE_QUEUE_NAME = "lifepilot"
 
@@ -166,6 +167,8 @@ def _save_suggestions(
 
 
 def _suggestion_key(suggestion: CaptureSuggestion) -> tuple[str, str, str, str]:
+    if suggestion.kind == "commitment":
+        return (suggestion.kind, (suggestion.person_id or suggestion.person_name or "").casefold(), suggestion.commitment_direction or "", json.dumps([suggestion.title.casefold().strip(), suggestion.due_at.isoformat() if suggestion.due_at else None, suggestion.project_id or suggestion.project_name, suggestion.commitment_evidence]))
     person = (suggestion.person_id or suggestion.person_name or "").strip().casefold()
     related = (suggestion.related_person_id or suggestion.related_person_name or "").strip().casefold()
     match suggestion.kind:
@@ -192,6 +195,10 @@ def _suggestion_key(suggestion: CaptureSuggestion) -> tuple[str, str, str, str]:
 
 
 def _already_saved(suggestion: CaptureSuggestion, db: Session, owner_id: str) -> bool:
+    if suggestion.kind == "commitment":
+        if not suggestion.person_id or not suggestion.commitment_direction or not suggestion.commitment_evidence:
+            return False
+        return bool(db.scalar(select(Commitment.id).where(Commitment.owner_id == owner_id, Commitment.person_id == suggestion.person_id, Commitment.direction == suggestion.commitment_direction, Commitment.status == "open", Commitment.source_quote == suggestion.commitment_evidence, Commitment.title == suggestion.title, Commitment.project_id == suggestion.project_id, Commitment.due_at == (suggestion.due_at.astimezone(timezone.utc) if suggestion.due_at and suggestion.due_at.tzinfo else suggestion.due_at)).limit(1)))
     person_id = suggestion.person_id
     related_id = suggestion.related_person_id
     normalized_title = " ".join(suggestion.title.casefold().split())

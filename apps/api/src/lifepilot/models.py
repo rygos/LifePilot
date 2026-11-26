@@ -467,6 +467,8 @@ class ApprovalRequest(Base):
 
 class Commitment(Base):
     __tablename__ = "commitments"
+    source_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
     __table_args__ = (
         CheckConstraint("direction IN ('outgoing', 'incoming')", name="ck_commitments_direction"),
         CheckConstraint("status IN ('open', 'done', 'cancelled')", name="ck_commitments_status"),

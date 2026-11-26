@@ -45,6 +45,8 @@ class CommitmentOut(CommitmentIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     status: CommitmentStatus
+    source_capture_id: str | None = None
+    source_quote: str | None = None
     created_at: datetime
     updated_at: datetime
 

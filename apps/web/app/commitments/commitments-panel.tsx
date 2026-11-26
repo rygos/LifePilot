@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Person, Project } from "../page";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
-type Commitment = { id: string; title: string; notes: string; direction: "outgoing" | "incoming"; status: "open" | "done" | "cancelled"; due_at: string | null; person_id: string | null; project_id: string | null; conversation_id: string | null };
+type Commitment = { id: string; title: string; notes: string; direction: "outgoing" | "incoming"; status: "open" | "done" | "cancelled"; due_at: string | null; person_id: string | null; project_id: string | null; conversation_id: string | null; source_capture_id?: string | null; source_quote?: string | null };
 type Checkpoint = { id: string; title: string; progress: string; blocker: string; next_step: string; resources: string; task_id: string | null; project_id: string | null; archived: boolean; updated_at: string };
 type Props = { request: Request; people: Person[]; projects: Project[]; tasks: {id: string; title: string}[] };
 const PAGE_SIZE = 100;
@@ -66,7 +66,7 @@ export function CommitmentsPanel({ request, people, projects, tasks }: Props) {
     {error && <p className="error" role="alert">{error}</p>}
     {loading && <p className="muted" role="status">Einträge werden geladen …</p>}
     <section className="card panel">
-      <div className="panel-head"><div><span className="eyebrow">VERSPECHEN & RÜCKMELDUNGEN</span><h2>Verpflichtungen</h2></div><button type="button" className="quiet" onClick={() => {setHistory(v => !v); setCommitmentOffset(0);}}>{history ? "Nur offene" : "Verlauf anzeigen"}</button></div>
+      <div className="panel-head"><div><span className="eyebrow">VERSPRECHEN & RÜCKMELDUNGEN</span><h2>Verpflichtungen</h2></div><button type="button" className="quiet" onClick={() => {setHistory(v => !v); setCommitmentOffset(0);}}>{history ? "Nur offene" : "Verlauf anzeigen"}</button></div>
       <form className="person-form" key={editCommitment?.id ?? "new"} onSubmit={saveCommitment}>
         <label>Was wurde vereinbart?<input name="title" required maxLength={240} defaultValue={editCommitment?.title}/></label>
         <label>Richtung<select name="direction" defaultValue={editCommitment?.direction ?? "outgoing"}><option value="outgoing">Ich habe etwas versprochen</option><option value="incoming">Ich warte auf jemanden</option></select></label>
@@ -79,7 +79,7 @@ export function CommitmentsPanel({ request, people, projects, tasks }: Props) {
       </form>
       {(["outgoing", "incoming"] as const).map(direction => <div key={direction} className="commitment-group"><h3>{direction === "outgoing" ? "Meine Versprechen" : "Ich warte auf"}</h3>
         {!commitments.some(c => c.direction === direction) && <p className="empty">Keine Einträge.</p>}
-        {commitments.filter(c => c.direction === direction).map(c => <article className="inbox-item" key={c.id}><strong>{c.title}</strong><p className="muted">{[name(c.person_id), projectName(c.project_id), c.due_at ? new Date(c.due_at).toLocaleString("de-DE") : "Ohne Frist", c.status === "done" ? "Erledigt" : c.status === "cancelled" ? "Abgebrochen" : c.due_at && new Date(c.due_at).getTime() < Date.now() ? "Überfällig" : "Offen"].filter(Boolean).join(" · ")}</p><p style={{whiteSpace:"pre-wrap"}}>{c.notes}</p>
+        {commitments.filter(c => c.direction === direction).map(c => <article className="inbox-item" key={c.id}><strong>{c.title}</strong><p className="muted">{[name(c.person_id), projectName(c.project_id), c.due_at ? new Date(c.due_at).toLocaleString("de-DE") : "Ohne Frist", c.status === "done" ? "Erledigt" : c.status === "cancelled" ? "Abgebrochen" : c.due_at && new Date(c.due_at).getTime() < Date.now() ? "Überfällig" : "Offen"].filter(Boolean).join(" · ")}</p><p style={{whiteSpace:"pre-wrap"}}>{c.notes}</p>{c.source_quote && <p className="muted">Originalzitat: „{c.source_quote}“{c.source_capture_id && <> · <a href={`/inbox#capture-${c.source_capture_id}`}>Erfassung</a></>}</p>}
           <div className="commitment-actions"><button type="button" className="quiet" disabled={busy} onClick={() => setEditCommitment(c)}>Bearbeiten</button>{c.status === "open" ? <><button type="button" disabled={busy} onClick={() => void mutate(() => request(`/api/commitments/${c.id}/status`, {method:"PATCH",body:JSON.stringify({status:"done"})}))}>Erledigt</button><button type="button" className="quiet" disabled={busy} onClick={() => void mutate(() => request(`/api/commitments/${c.id}/status`, {method:"PATCH",body:JSON.stringify({status:"cancelled"})}))}>Abbrechen</button></> : <button type="button" disabled={busy} onClick={() => void mutate(() => request(`/api/commitments/${c.id}/status`, {method:"PATCH",body:JSON.stringify({status:"open"})}))}>Wieder öffnen</button>}</div>
         </article>)}
       </div>)}

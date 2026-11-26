@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 
-CaptureKind = Literal["fact", "conversation", "relationship", "owner_relationship", "former_name", "life_event", "task", "event", "project_link", "loan"]
+CaptureKind = Literal["fact", "conversation", "relationship", "owner_relationship", "former_name", "life_event", "task", "event", "project_link", "loan", "commitment"]
 LoanDirection = Literal["borrowed", "lent"]
 DatePrecision = Literal["exact", "day", "month", "year", "approximate", "unknown"]
 Gender = Literal["female", "male", "diverse"]
@@ -44,6 +44,8 @@ class CaptureSuggestion(BaseModel):
     location_address: str | None = Field(default=None, max_length=500)
     due_at: datetime | None = None
     loan_direction: LoanDirection | None = None
+    commitment_direction: Literal["outgoing", "incoming"] | None = None
+    commitment_evidence: str | None = Field(default=None, max_length=4000)
     occurred_at: datetime | None = None
     date_precision: DatePrecision = "unknown"
     confirmation_required: bool = False
