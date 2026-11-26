@@ -6,7 +6,8 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:offline": "node --test offline-store.test.mjs"
   },
   "dependencies": {
     "next": "^15.1.0",

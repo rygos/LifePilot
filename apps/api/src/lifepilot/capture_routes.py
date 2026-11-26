@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from redis.exceptions import RedisError
 
@@ -82,14 +83,34 @@ def _create_person_from_explicit_name(db: Session, owner: User, name: str, creat
 
 @router.post("", response_model=CaptureOut, status_code=201)
 def capture_create(data: CaptureIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> CaptureOut:
+    if data.expected_owner_id is not None and str(data.expected_owner_id) != user.id:
+        raise HTTPException(409, "Erfassung gehört zu einem anderen Konto")
+    client_id = str(data.client_request_id) if data.client_request_id else None
+    def existing_capture():
+        if client_id is None:
+            return None
+        existing = db.scalar(select(Capture).where(Capture.owner_id == user.id, Capture.client_request_id == client_id))
+        if existing and (existing.original_text != data.original_text.strip() or existing.source != data.source or existing.parent_capture_id != data.parent_capture_id):
+            raise HTTPException(409, "Erfassungs-ID wurde bereits für einen anderen Inhalt verwendet")
+        return existing
+    existing = existing_capture()
+    if existing is not None:
+        return capture_output(existing)
     parent = db.scalar(select(Capture).where(Capture.id == data.parent_capture_id, Capture.owner_id == user.id)) if data.parent_capture_id else None
     if data.parent_capture_id and parent is None:
         raise HTTPException(status_code=404, detail="Die zugehörige Erfassung wurde nicht gefunden")
-    row = Capture(owner_id=user.id, parent_capture_id=parent.id if parent else None, original_text=data.original_text.strip(), source=data.source)
+    row = Capture(owner_id=user.id, parent_capture_id=parent.id if parent else None, original_text=data.original_text.strip(), source=data.source, client_request_id=client_id, created_at=data.captured_at or datetime.now(timezone.utc))
     if not row.original_text:
         raise HTTPException(status_code=422, detail="Die Eingabe darf nicht leer sein")
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = existing_capture()
+        if existing is not None:
+            return capture_output(existing)
+        raise
     db.refresh(row)
     if settings.llm_base_url and settings.llm_model and settings.redis_url:
         try:

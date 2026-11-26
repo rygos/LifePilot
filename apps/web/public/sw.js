@@ -1,5 +1,5 @@
-const CACHE_NAME = "lifepilot-shell-v3";
-const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE_NAME = "lifepilot-shell-v4";
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/offline.html", "/offline.css", "/offline-capture.mjs", "/offline-store.mjs"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)));
@@ -13,8 +13,9 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin || request.headers.has("Authorization")) return;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/mcp")) return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(async () => (await caches.match("/")) || Response.error()));
+    event.respondWith(fetch(request).then(async response => response.status >= 500 ? (await caches.match("/offline.html")) || response : response).catch(async () => (await caches.match("/offline.html")) || Response.error()));
     return;
   }
   if (!SHELL.includes(url.pathname) && !url.pathname.startsWith("/_next/static/")) return;

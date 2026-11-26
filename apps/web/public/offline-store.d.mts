@@ -1,0 +1,11 @@
+export type LocalCapture = {id:string;text:string;captured_at:string};
+export type CapturePayload = {original_text:string;source:"capture";client_request_id:string;captured_at:string;expected_owner_id:string};
+export function rememberIdentity(api:string,owner:string,token:string):Promise<void>;
+export function forgetIdentity():void;
+export function offlineIdentity():Promise<{api:string;owner:string;token:string}|null>;
+export function readDraft(api:string,owner:string):string;
+export function writeDraft(api:string,owner:string,text:string):void;
+export function pendingCaptures(api:string,owner:string):LocalCapture[];
+export function enqueueCapture(api:string,owner:string,text:string):LocalCapture;
+export function removeCapture(api:string,owner:string,id:string):void;
+export function syncCaptures(api:string,owner:string,send:(data:CapturePayload,signal?:AbortSignal)=>Promise<{id:string;original_text:string}>,signal?:AbortSignal):Promise<number>;

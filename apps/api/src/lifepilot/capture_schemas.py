@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from uuid import UUID
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
@@ -15,6 +16,18 @@ class CaptureIn(BaseModel):
     original_text: str = Field(min_length=1, max_length=20000)
     parent_capture_id: str | None = Field(default=None, max_length=36)
     source: Literal["capture", "chat"] = "capture"
+    client_request_id: UUID | None = None
+    captured_at: datetime | None = None
+    expected_owner_id: UUID | None = None
+
+    @field_validator("captured_at")
+    @classmethod
+    def valid_capture_time(cls, value):
+        if value is None:
+            return None
+        if value.tzinfo is None or value > datetime.now(timezone.utc) + timedelta(minutes=10):
+            raise ValueError("Erfassungszeit benötigt eine Zeitzone und darf nicht in der Zukunft liegen")
+        return value.astimezone(timezone.utc)
 
 
 class CaptureSuggestion(BaseModel):

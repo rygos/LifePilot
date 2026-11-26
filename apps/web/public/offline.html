@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>LifePilot – Offline</title><link rel="stylesheet" href="/offline.css"><script type="module" src="/offline-capture.mjs"></script></head><body><main>
+<h1>LifePilot · Offline-Schnellerfassung</h1>
+<p>Gedanken festhalten, auch wenn der Server nicht erreichbar ist.</p>
+<p id="status" role="status">Lokales Konto wird geprüft …</p>
+<section id="workspace" hidden><p>Entwurf und Warteschlange liegen unverschlüsselt in diesem Browser. Verwende diese Funktion nur auf einem vertrauenswürdigen Gerät.</p>
+<form id="capture"><label for="thought">Was möchtest du festhalten?</label><textarea id="thought" required maxlength="20000" rows="8"></textarea><button id="save">Lokal speichern</button></form>
+<h2>Ausstehende Erfassungen</h2><div id="pending"></div><button type="button" id="sync">Jetzt synchronisieren</button></section>
+<p><a href="/">Zurück zur Anwendung / anmelden</a></p>
+<noscript>JavaScript ist für die lokale Erfassung erforderlich.</noscript>
+</main></body></html>

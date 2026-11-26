@@ -420,6 +420,8 @@ class ResourceRevision(Base):
 
 class Capture(Base):
     __tablename__ = "captures"
+    __table_args__ = (UniqueConstraint("owner_id", "client_request_id", name="uq_capture_client_request"),)
+    client_request_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     parent_capture_id: Mapped[str | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"), nullable=True, index=True)

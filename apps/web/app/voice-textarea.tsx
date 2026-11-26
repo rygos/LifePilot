@@ -8,7 +8,7 @@ const MAX_RECORDING_SECONDS = 300;
 const TYPES = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"];
 const FILE_TYPES: Record<string,string> = {webm:"audio/webm",ogg:"audio/ogg",oga:"audio/ogg",m4a:"audio/mp4",mp4:"audio/mp4",mp3:"audio/mpeg",wav:"audio/wav",flac:"audio/flac"};
 
-export function VoiceTextarea({request, ...props}: TextareaHTMLAttributes<HTMLTextAreaElement> & {request: Request}) {
+export function VoiceTextarea({request, onVoiceAppend, ...props}: TextareaHTMLAttributes<HTMLTextAreaElement> & {request: Request; onVoiceAppend?: (text:string)=>void}) {
   const target = useRef<HTMLTextAreaElement>(null);
   const [open,setOpen] = useState(false);
   const [status,setStatus] = useState<VoiceStatus|null>(null);
@@ -102,7 +102,7 @@ export function VoiceTextarea({request, ...props}: TextareaHTMLAttributes<HTMLTe
     const addition=preview.trim();if(!addition)return;
     const value=field.value.trimEnd()+(field.value.trimEnd()?"\n":"")+addition;
     if(props.maxLength!==undefined&&value.length>props.maxLength){setError("Der Text ist für dieses Eingabefeld zu lang. Bitte kürze die Transkription oder nutze die Schnellerfassung.");return;}
-    field.value=value;setPreview("");setAudio(null);setError("");setOpen(false);field.focus();
+    if(onVoiceAppend)onVoiceAppend(value);else field.value=value;setPreview("");setAudio(null);setError("");setOpen(false);field.focus();
   }
   return <div className="voice-textarea">
     <textarea {...props} ref={target}/>
