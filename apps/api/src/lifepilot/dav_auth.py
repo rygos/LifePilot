@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from secrets import token_urlsafe
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -20,6 +21,10 @@ PREFIX = "lp_dav_"
 SCOPE = "calendar:read"
 
 
+class DavKeyCreate(KeyCreate):
+    scope: Literal["calendar:read", "contacts:read"] = SCOPE
+
+
 class DavKeyOut(BaseModel):
     id: str
     label: str
@@ -33,7 +38,8 @@ class DavKeyOut(BaseModel):
 class DavKeyCreated(DavKeyOut):
     username: str
     password: str
-    calendar_path: str
+    calendar_path: str | None = None
+    addressbook_path: str | None = None
 
 
 def output(row, user, now):
@@ -52,7 +58,7 @@ def list_keys(response: Response, db: Session = Depends(get_db), user: User = De
 
 
 @router.post("/keys", response_model=DavKeyCreated, status_code=201)
-def create_key(data: KeyCreate, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def create_key(data: DavKeyCreate, response: Response, db: Session = Depends(get_db), user: User = Depends(current_user)):
     owner = db.scalar(select(User).where(User.id == user.id, User.deleted_at.is_(None)).with_for_update().execution_options(populate_existing=True))
     if owner is None or not verify_password(data.current_password, owner.password_hash):
         raise HTTPException(403, "Das aktuelle Passwort ist falsch")
@@ -61,13 +67,13 @@ def create_key(data: KeyCreate, response: Response, db: Session = Depends(get_db
     if count >= 20:
         raise HTTPException(409, "Maximal 20 aktive DAV-Zugänge")
     secret = PREFIX + token_urlsafe(32)
-    row = DavKey(owner_id=owner.id, label=data.label, scope=SCOPE, secret_hash=sha256(secret.encode()).hexdigest(), token_version=owner.token_version, expires_at=now + timedelta(days=data.expires_in_days))
+    row = DavKey(owner_id=owner.id, label=data.label, scope=data.scope, secret_hash=sha256(secret.encode()).hexdigest(), token_version=owner.token_version, expires_at=now + timedelta(days=data.expires_in_days))
     db.add(row)
     db.flush()
     db.add(AuditEvent(owner_id=owner.id, action="create", resource_type="dav_keys", resource_id=row.id, source="rest"))
     db.commit()
     response.headers["Cache-Control"] = "no-store"
-    return DavKeyCreated(**output(row, owner, now).model_dump(), username=owner.id, password=secret, calendar_path=f"/dav/calendars/{owner.id}/lifepilot/")
+    return DavKeyCreated(**output(row, owner, now).model_dump(), username=owner.id, password=secret, calendar_path=f"/dav/calendars/{owner.id}/lifepilot/" if row.scope == SCOPE else None, addressbook_path=f"/carddav/addressbooks/{owner.id}/lifepilot/" if row.scope == "contacts:read" else None)
 
 
 @router.delete("/keys/{key_id}", status_code=204)
@@ -83,16 +89,24 @@ def revoke_key(key_id: UUID, db: Session = Depends(get_db), user: User = Depends
 
 
 def unauthorized():
-    return HTTPException(401, "Ungültiger Kalenderzugang", headers={"WWW-Authenticate": 'Basic realm="LifePilot DAV"', "Cache-Control": "no-store"})
+    return HTTPException(401, "Ungültiger DAV-Zugang", headers={"WWW-Authenticate": 'Basic realm="LifePilot DAV"', "Cache-Control": "no-store"})
 
 
-def dav_user(credentials: HTTPBasicCredentials | None = Depends(basic), db: Session = Depends(get_db)) -> User:
+def authenticate_dav(credentials: HTTPBasicCredentials | None, db: Session, scope: str) -> User:
     if credentials is None or not credentials.password.startswith(PREFIX) or len(credentials.password) != len(PREFIX) + 43:
         raise unauthorized()
-    row = db.scalar(select(DavKey).where(DavKey.secret_hash == sha256(credentials.password.encode()).hexdigest(), DavKey.owner_id == credentials.username, DavKey.scope == SCOPE))
+    row = db.scalar(select(DavKey).where(DavKey.secret_hash == sha256(credentials.password.encode()).hexdigest(), DavKey.owner_id == credentials.username, DavKey.scope == scope))
     if row is None or row.revoked_at is not None or utc(row.expires_at) <= datetime.now(timezone.utc):
         raise unauthorized()
     owner = db.scalar(select(User).where(User.id == row.owner_id, User.deleted_at.is_(None)))
     if owner is None or owner.token_version != row.token_version:
         raise unauthorized()
     return owner
+
+
+def dav_user(credentials: HTTPBasicCredentials | None = Depends(basic), db: Session = Depends(get_db)) -> User:
+    return authenticate_dav(credentials, db, SCOPE)
+
+
+def carddav_user(credentials: HTTPBasicCredentials | None = Depends(basic), db: Session = Depends(get_db)) -> User:
+    return authenticate_dav(credentials, db, "contacts:read")

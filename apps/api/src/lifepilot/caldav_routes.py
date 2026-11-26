@@ -191,12 +191,12 @@ def append_bounded(root, response):
     root.append(response)
 
 
-def xml_response(root):
+def xml_response(root, headers=DAV_HEADERS):
     root.attrib.pop("_size", None)
     data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     if len(data) > MAX_RESPONSE_BYTES:
         raise HTTPException(507, "Kalenderantwort zu groß")
-    return Response(data, status_code=207, media_type="application/xml", headers=DAV_HEADERS)
+    return Response(data, status_code=207, media_type="application/xml", headers=headers)
 
 
 async def read_xml(request, required=False):
