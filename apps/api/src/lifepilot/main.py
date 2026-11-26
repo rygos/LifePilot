@@ -59,6 +59,7 @@ from lifepilot.face_training import router as face_training_router
 from lifepilot.document_routes import router as document_router
 from lifepilot.decision_journal import router as decision_router, list_entries as list_decisions_due
 from lifepilot.place_routes import router as place_router
+from lifepilot.inventory_routes import router as inventory_router, due_summary as inventory_due_summary
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -115,6 +116,7 @@ app.include_router(face_training_router)
 app.include_router(document_router)
 app.include_router(decision_router)
 app.include_router(place_router)
+app.include_router(inventory_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -648,6 +650,7 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
         "date": local_now.date().isoformat(),
         "timezone": user.timezone_name,
         "today_routines": [row.model_dump(mode="json") for row in list_routines(db, user, today_only=True)],
+        "due_inventory": inventory_due_summary(db, user),
         "due_decisions": [{"id": row["id"], "title": row["title"], "review_on": row["review_on"]} for row in list_decisions_due(db, user, due_only=True, limit=20)],
         "open_commitments": [CommitmentOut.model_validate(row).model_dump(mode="json") for row in list_commitments(db, user.id, limit=20)],
         "active_checkpoints": [CheckpointOut.model_validate(row).model_dump(mode="json") for row in list_checkpoints(db, user.id, limit=5)],

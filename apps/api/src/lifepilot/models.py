@@ -812,3 +812,53 @@ class PlaceEntry(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    __table_args__ = (
+        CheckConstraint("ownership IN ('own', 'other', 'unknown')", name="ck_inventory_ownership"),
+        CheckConstraint("maintenance_interval_days IS NULL OR maintenance_interval_days BETWEEN 1 AND 3650", name="ck_inventory_interval"),
+        Index("ix_inventory_due", "owner_id", "archived", "next_maintenance_on"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(240))
+    category: Mapped[str] = mapped_column(String(120), default="")
+    serial_number: Mapped[str] = mapped_column(String(240), default="")
+    ownership: Mapped[str] = mapped_column(String(12), default="unknown")
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"), nullable=True)
+    place_id: Mapped[str | None] = mapped_column(ForeignKey("places.id", ondelete="SET NULL"), nullable=True)
+    location_detail: Mapped[str] = mapped_column(String(500), default="")
+    purchase_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    warranty_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    receipt_attachment_id: Mapped[str | None] = mapped_column(ForeignKey("attachments.id", ondelete="SET NULL"), nullable=True)
+    maintenance_interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_maintenance_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class InventoryHistory(Base):
+    __tablename__ = "inventory_history"
+    __table_args__ = (
+        CheckConstraint("kind IN ('location', 'maintenance', 'loan_link')", name="ck_inventory_history_kind"),
+        Index("ix_inventory_history_item", "owner_id", "item_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20))
+    occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    details: Mapped[dict] = mapped_column(JSON)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class InventoryLoan(Base):
+    __tablename__ = "inventory_loans"
+    loan_id: Mapped[str] = mapped_column(ForeignKey("loans.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), index=True)

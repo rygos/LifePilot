@@ -214,6 +214,17 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not places_result.isError and place["id"] in str(places_result.content)
                         place_graph = await session.call_tool("knowledge_graph", {"root_kind":"place","root_id":place["id"],"depth":2})
                         assert not place_graph.isError and fact_person in str(place_graph.content)
+                        denied_inventory = await session.call_tool("inventory_create", {"data":{"name":"MCP Inventar"}})
+                        assert denied_inventory.isError
+                        inventory_result = await session.call_tool("inventory_create", {"data":{"name":"MCP Inventar","ownership":"own","maintenance_interval_days":30},"confirm":True})
+                        assert not inventory_result.isError
+                        item = json.loads(inventory_result.content[0].text)
+                        moved_item = await session.call_tool("inventory_move", {"item_id":item["id"],"data":{"revision":item["revision"],"place_id":place["id"],"location_detail":"Regal"},"confirm":True})
+                        assert not moved_item.isError
+                        inventory_rows = await session.call_tool("inventory_list", {"place_id":place["id"]})
+                        assert not inventory_rows.isError and item["id"] in str(inventory_rows.content)
+                        inventory_history = await session.call_tool("inventory_history", {"item_id":item["id"]})
+                        assert not inventory_history.isError and "Regal" in str(inventory_history.content)
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

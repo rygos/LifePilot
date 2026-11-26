@@ -17,7 +17,7 @@
 .shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(.life-timeline-panel):not(.document-memory-panel):not(.decision-journal-panel):not(.place-memory-panel):not(#memory-domain){display:none}
 .shell[data-view="memory"] #memory-domain>section:nth-child(2){display:none}
 .shell[data-view="memory"] #memory-domain{grid-template-columns:minmax(0,1fr)}
-.shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
+.shell[data-view="things"] .content>*:not(header):not(.notice):not(.inventory-panel):not(#memory-domain){display:none}
 .shell[data-view="things"] #memory-domain>section:first-child{display:none}
 .shell[data-view="things"] #memory-domain{grid-template-columns:minmax(0,1fr)}
 .shell[data-view="planning"] .content>*:not(header):not(.notice):not(.next-action-panel):not(.focus-panel):not(.routines-panel):not(.notification-panel):not(.grid:has(#tasks)):not(.events-panel){display:none}
@@ -338,3 +338,4 @@
 .document-excerpt{white-space:pre-wrap;overflow-wrap:anywhere;max-height:25rem;overflow:auto;padding:.75rem;border:1px solid var(--line,currentColor);border-radius:.5rem}.document-memory-panel{min-width:0}
 .decision-journal-panel{min-width:0}.decision-detail p{white-space:pre-wrap;overflow-wrap:anywhere}.decision-journal-panel fieldset{min-width:0;display:grid;gap:.5rem;border:1px solid var(--line,currentColor);border-radius:.5rem;padding:.75rem}
 .place-memory-panel{min-width:0}.place-detail p{white-space:pre-wrap;overflow-wrap:anywhere}
+.inventory-panel{min-width:0}.inventory-detail p{white-space:pre-wrap;overflow-wrap:anywhere}

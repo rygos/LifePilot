@@ -8,6 +8,7 @@ from lifepilot.commitment_routes import (
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
+from lifepilot import inventory_routes as inventory
 from lifepilot.place_routes import PlaceIn, EntryIn, EntryKind, list_places, get_place, create_place, update_place, archive_place, list_entries as list_place_entries, create_entry as create_place_entry
 from lifepilot.decision_journal import DecisionIn, ReviewIn, Status as DecisionStatus, list_entries as list_journal_entries, create_entry as create_decision_entry, get_entry as get_decision_entry, history as decision_history, add_review as add_decision_review
 from lifepilot.document_routes import list_documents, search_documents, read_document
@@ -426,3 +427,82 @@ def register_commitment_tools(mcp: FastMCP) -> None:
             raise ValueError("Explizite Freigabe erforderlich")
         with mcp_session(owner) as db:
             return create_place_entry(db, owner, place_id, data, "mcp")
+
+
+    @mcp.tool(name="inventory_list")
+    def inventory_list(query: str | None = None, archived: bool = False, place_id: str | None = None, due_only: bool = False, limit: int = 50, offset: int = 0) -> list[dict]:
+        """Find inventory and last recorded storage location, or upcoming warranty deadlines and overdue maintenance. An open loan is not proof of current physical custody."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return inventory.list_items(db, db.get(User, owner), query, archived, place_id, due_only, limit, offset)
+
+    @mcp.tool(name="inventory_read")
+    def inventory_read(item_id: str) -> dict:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return inventory.get_item(db, db.get(User, owner), item_id)
+
+    @mcp.tool(name="inventory_create")
+    def inventory_create(data: inventory.ItemIn, confirm: bool = False) -> dict:
+        """Record a specific object using user-provided details."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.create_item(db, db.get(User, owner), data, "mcp")
+
+    @mcp.tool(name="inventory_update")
+    def inventory_update(item_id: str, data: inventory.UpdateIn, confirm: bool = False) -> dict:
+        """Replace metadata using the current revision. Read existing fields first."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.update_item(db, db.get(User, owner), item_id, data, "mcp")
+
+    @mcp.tool(name="inventory_move")
+    def inventory_move(item_id: str, data: inventory.MoveIn, confirm: bool = False) -> dict:
+        """Record a user-confirmed last known storage location or explicitly clear it; do not infer current location."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.move_item(db, db.get(User, owner), item_id, data, "mcp")
+
+    @mcp.tool(name="inventory_maintenance")
+    def inventory_maintenance(item_id: str, data: inventory.ServiceIn, confirm: bool = False) -> dict:
+        """Record actual completed maintenance and calculate the next due date."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.service_item(db, db.get(User, owner), item_id, data, "mcp")
+
+    @mcp.tool(name="inventory_archive")
+    def inventory_archive(item_id: str, data: inventory.ArchiveIn, confirm: bool = False) -> dict:
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.archive_item(db, db.get(User, owner), item_id, data, "mcp")
+
+    @mcp.tool(name="inventory_link_loan")
+    def inventory_link_loan(item_id: str, data: inventory.LinkIn, confirm: bool = False) -> dict:
+        """Explicitly associate an existing loan with one inventory item."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return inventory.link_loan(db, db.get(User, owner), item_id, data, "mcp")
+
+    @mcp.tool(name="inventory_history")
+    def inventory_history(item_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return inventory.history(db, db.get(User, owner), item_id, limit, offset)
+
+    @mcp.tool(name="inventory_loan_history")
+    def inventory_loan_history(item_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return inventory.loan_history(db, db.get(User, owner), item_id, limit, offset)
