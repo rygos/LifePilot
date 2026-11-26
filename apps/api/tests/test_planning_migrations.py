@@ -17,7 +17,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
     engine = create_engine(database_url)
     try:
         inspector = inspect(engine)
-        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins", "routines", "routine_steps", "routine_completions", "capture_keys", "push_subscriptions"}.issubset(inspector.get_table_names())
+        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins", "routines", "routine_steps", "routine_completions", "capture_keys", "push_subscriptions", "dav_keys"}.issubset(inspector.get_table_names())
         assert "client_request_id" in {column["name"] for column in inspector.get_columns("captures")}
         assert {"companion_interval_minutes", "companion_goal"}.issubset({column["name"] for column in inspector.get_columns("focus_sessions")})
         assert {"source_capture_id", "source_quote"}.issubset({column["name"] for column in inspector.get_columns("commitments")})
@@ -26,6 +26,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
         )
         command.downgrade(config, "0032_token_version")
         inspector = inspect(engine)
+        assert "dav_keys" not in inspector.get_table_names()
         assert "push_subscriptions" not in inspector.get_table_names()
         assert "capture_keys" not in inspector.get_table_names()
         assert "client_request_id" not in {column["name"] for column in inspector.get_columns("captures")}

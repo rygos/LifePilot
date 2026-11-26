@@ -80,7 +80,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: proxy
-      traefik.http.routers.lifepilot-api.rule: Host(`pim.rygos.de`) && PathPrefix(`/api`)
+      traefik.http.routers.lifepilot-api.rule: Host(`pim.rygos.de`) && (PathPrefix(`/api`) || PathPrefix(`/dav/`) || Path(`/dav`) || Path(`/.well-known/caldav`))
       traefik.http.routers.lifepilot-api.entrypoints: websecure
       traefik.http.routers.lifepilot-api.priority: "100"
       traefik.http.routers.lifepilot-api.tls: "true"

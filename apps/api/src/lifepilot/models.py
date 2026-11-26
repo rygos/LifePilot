@@ -629,3 +629,16 @@ class PushSubscription(Base):
     next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     sent_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class DavKey(Base):
+    __tablename__ = "dav_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(24), default="calendar:read")
+    label: Mapped[str] = mapped_column(String(120))
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

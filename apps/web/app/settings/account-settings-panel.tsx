@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { ShortcutSettingsPanel } from "./shortcut-settings-panel";
 import { PushSettingsPanel } from "./push-settings-panel";
+import { CaldavSettingsPanel } from "./caldav-settings-panel";
 
 export type Profile = {
   readonly username: string;
@@ -75,5 +76,6 @@ export function AccountSettingsPanel({ profile, request, onClose, onMessage, onP
     <section className="card panel profile-panel"><div className="panel-head"><div><span className="eyebrow">KONTO</span><h2>Passwort ändern</h2></div></div><form className="person-form" onSubmit={changePassword}><label>Aktuelles Passwort<input name="current_password" type="password" autoComplete="current-password" required /></label><label>Neues Passwort<input name="new_password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required /></label><label>Neues Passwort wiederholen<input name="confirm_password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required /></label><p className="form-hint">Das neue Passwort muss mindestens 12 Zeichen lang sein.</p>{passwordError && <p className="error" role="alert">{passwordError}</p>}<button type="submit">Passwort speichern</button></form></section>
     <ShortcutSettingsPanel request={request}/>
     <PushSettingsPanel request={request}/>
+    <CaldavSettingsPanel request={request}/>
   </>;
 }
