@@ -115,7 +115,7 @@ def sync_account_from_self_person(person: Person, owner: User) -> None:
     owner.phone = person.phone
     owner.address = person.address
 
-def search(db: Session, owner: User, query: str) -> SearchResults:
+def search(db: Session, owner: User, query: str, *, semantic: bool = True) -> SearchResults:
     term = f"%{query.strip()}%"
     alias_person_ids = select(PersonNameHistory.person_id).where(PersonNameHistory.owner_id == owner.id, PersonNameHistory.confirmed.is_(True), PersonNameHistory.name.ilike(term))
     owner_relation_ids = select(UserPersonRelationship.person_id).where(UserPersonRelationship.owner_id == owner.id, UserPersonRelationship.confirmed.is_(True), UserPersonRelationship.relationship_type.ilike(term))
@@ -128,7 +128,7 @@ def search(db: Session, owner: User, query: str) -> SearchResults:
     semantic_ids: list[str] = []
     entity_matches: EntityMatches = {"conversation": [], "task": [], "relationship": [], "project": []}
     semantic_available = False
-    if embedding_provider_configured() and query.strip():
+    if semantic and embedding_provider_configured() and query.strip():
         try:
             query_vector = embed_text(query.strip())
             semantic_ids = _semantic_memory_ids(db, owner.id, query_vector)

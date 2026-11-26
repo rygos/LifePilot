@@ -9,7 +9,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.types import ASGIApp, Receive, Scope, Send
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import Text, delete, select, or_
+from sqlalchemy import Text, delete, select, or_, text
 from sqlalchemy.orm import Session
 from lifepilot.config import settings
 from lifepilot.db import Base, engine, get_db
@@ -37,6 +37,9 @@ from lifepilot.admin_routes import router as admin_router
 from lifepilot.family_tree_routes import router as family_tree_router
 from lifepilot.revisions import history, record_conversation_revision
 from lifepilot.update_state import complete_pending_update
+from lifepilot.commitment_routes import router as commitment_router, CommitmentOut, CheckpointOut, list_checkpoints, list_commitments
+from lifepilot.models import Commitment
+from lifepilot.next_action import router as next_action_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,23 +75,41 @@ app.include_router(pet_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(family_tree_router)
+app.include_router(commitment_router)
+app.include_router(next_action_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
+
+@app.get("/ready")
+def readiness():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(status_code=503, detail="Datenbank nicht erreichbar") from None
+    if settings.redis_url:
+        from redis import Redis
+        try:
+            with Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2) as redis:
+                redis.ping()
+        except Exception:
+            raise HTTPException(status_code=503, detail="Redis nicht erreichbar") from None
+    return {"status": "ready"}
 
 @app.post("/api/auth/token", response_model=Token)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == form.username, User.deleted_at.is_(None)))
     if user is None or not verify_password(form.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     ensure_self_person(db, user); db.commit()
-    return {"access_token": create_token(user.id)}
+    return {"access_token": create_token(user.id, token_version=user.token_version)}
 
 @app.post("/api/auth/login", response_model=Token)
 def login_json(data: Credentials, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == data.username, User.deleted_at.is_(None)))
     if user is None or not verify_password(data.password, user.password_hash): raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
     ensure_self_person(db, user); db.commit()
-    return {"access_token": create_token(user.id)}
+    return {"access_token": create_token(user.id, token_version=user.token_version)}
 
 @app.post("/api/auth/mcp-token", response_model=Token)
 def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
@@ -97,7 +118,7 @@ def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
     ensure_self_person(db, user); db.commit()
     scopes = ["memory:read"]
     if data.access == "read_write": scopes.append("memory:write")
-    return {"access_token": create_token(user.id, scopes, token_use="mcp")}
+    return {"access_token": create_token(user.id, scopes, token_use="mcp", token_version=user.token_version)}
 
 @app.get("/api/auth/me")
 def me(user: User = Depends(current_user)): return {"id": user.id, "username": user.username, "role": user.role}
@@ -588,6 +609,8 @@ def daily_briefing(db: Session = Depends(get_db), user: User = Depends(current_u
     return {
         "date": local_now.date().isoformat(),
         "timezone": user.timezone_name,
+        "open_commitments": [CommitmentOut.model_validate(row).model_dump(mode="json") for row in list_commitments(db, user.id, limit=20)],
+        "active_checkpoints": [CheckpointOut.model_validate(row).model_dump(mode="json") for row in list_checkpoints(db, user.id, limit=5)],
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
         "today_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in events],
         "upcoming_reminders": [{"id": reminder.id, "title": reminder.title, "due_at": reminder.due_at, "state": reminder.state, "source_type": "task" if reminder.task_id else "event" if reminder.event_id else "contact" if reminder.contact_person_id else "reminder", "source_id": reminder.task_id or reminder.event_id or reminder.contact_person_id or reminder.id} for reminder in reminders],
@@ -613,16 +636,17 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     upcoming_events = db.scalars(select(Event).join(EventParticipant, EventParticipant.event_id == Event.id).where(Event.owner_id == user.id, EventParticipant.owner_id == user.id, EventParticipant.person_id == person_id, Event.starts_at >= now).order_by(Event.starts_at).limit(10)).all()
     return {
         "person": PersonOut.model_validate(person).model_dump(mode="json"),
+        "open_commitments": [CommitmentOut.model_validate(row).model_dump(mode="json") for row in db.scalars(select(Commitment).where(Commitment.owner_id == user.id, Commitment.person_id == person_id, Commitment.status == "open").order_by(Commitment.due_at.is_(None), Commitment.due_at, Commitment.id).limit(20))],
         "owner_relationships": [{"id": row.id, "relationship_type": row.relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "source_capture_id": row.source_capture_id, "confirmed": row.confirmed} for row in owner_relationships],
         "former_names": [{"id": row.id, "name": row.name, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in db.scalars(select(PersonNameHistory).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.person_id == person_id, PersonNameHistory.confirmed.is_(True)).order_by(PersonNameHistory.valid_until.desc().nullslast())).all()],
         "life_events": [{"id": row.id, "title": row.title, "details": row.details, "occurred_at": row.occurred_at, "date_precision": row.date_precision, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in life_events],
         "memories": [MemoryOut.model_validate(memory).model_dump(mode="json") for memory in memories],
-        "conversations": [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=[person_id], project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all())).model_dump(mode="json") for row in conversations],
+        "conversations": [ConversationOut(id=row.id, title=row.title, original_note=row.original_note, summary=row.summary, location=row.location, occurred_at=row.occurred_at, created_at=row.created_at, participant_ids=list(db.scalars(select(ConversationParticipant.person_id).where(ConversationParticipant.conversation_id == row.id, ConversationParticipant.owner_id == user.id)).all()), project_ids=list(db.scalars(select(ConversationProject.project_id).where(ConversationProject.conversation_id == row.id, ConversationProject.owner_id == user.id)).all())).model_dump(mode="json") for row in conversations],
         "open_tasks": [TaskOut.model_validate(task).model_dump(mode="json") for task in tasks],
         "relationships": [{"id": row.id, "source_person_id": row.source_person_id, "target_person_id": row.target_person_id, "relationship_type": row.relationship_type, "inverse_relationship_type": row.inverse_relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_memory_id": row.source_memory_id} for row in links],
         "open_loans": [LoanOut.model_validate(loan).model_dump(mode="json") for loan in loans],
         "gift_ideas": [GiftOut.model_validate(gift).model_dump(mode="json") for gift in gifts],
-        "participated_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in participated_events],
+        "participated_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=list(db.scalars(select(EventParticipant.person_id).where(EventParticipant.event_id == event.id, EventParticipant.owner_id == user.id)).all())).model_dump(mode="json") for event in participated_events],
         "upcoming_events": [EventOut(id=event.id, record_type=event.record_type, title=event.title, description=event.description, location=event.location, location_address=event.location_address, starts_at=event.starts_at, ends_at=event.ends_at, source_memory_id=event.source_memory_id, participant_ids=[person_id]).model_dump(mode="json") for event in upcoming_events],
     }
 

@@ -74,6 +74,25 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         await session.initialize()
                         listed = await session.list_tools()
                         assert "relationship_create" in {tool.name for tool in listed.tools}
+                        assert {"next_best_action", "task_planning_update", "commitment_create", "work_checkpoint_save"}.issubset({tool.name for tool in listed.tools})
+                        promise = await session.call_tool("commitment_create", {"title": "MCP-Rückmeldung", "direction": "incoming"})
+                        assert not promise.isError
+                        promise_id = json.loads(promise.content[0].text)["id"]
+                        waiting = await session.call_tool("waiting_for_list", {})
+                        assert not waiting.isError and promise_id in str(waiting.content)
+                        finished = await session.call_tool("commitment_set_status", {"commitment_id": promise_id, "status": "done"})
+                        assert not finished.isError
+                        checkpoint = await session.call_tool("work_checkpoint_save", {"title": "MCP-Arbeitsstand", "next_step": "Test ausführen"})
+                        assert not checkpoint.isError
+                        checkpoint_id = json.loads(checkpoint.content[0].text)["id"]
+                        resumed = await session.call_tool("work_checkpoint_resume", {"checkpoint_id": checkpoint_id})
+                        assert not resumed.isError and "Test ausführen" in str(resumed.content)
+                        planning_task = client.post("/api/tasks", headers=auth, json={"title": "MCP-Planungstest"}).json()["id"]
+                        planned = await session.call_tool("task_planning_update", {"task_id": planning_task, "planning": {"estimated_minutes": 120, "mental_effort": "high", "work_context": "computer"}})
+                        assert not planned.isError
+                        recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})
+                        assert not recommended.isError and planning_task in str(recommended.content)
+                        assert client.patch(f"/api/tasks/{planning_task}/complete", headers=auth).status_code == 200
                         created = await session.call_tool("person_create_tool", {"first_name": "MCP", "last_name": "Client", "how_met": "MCP-Club", "tags": ["MCP", "Kontakt"], "is_favorite": True})
                         assert not created.isError
                         created_person = json.loads(created.content[0].text)

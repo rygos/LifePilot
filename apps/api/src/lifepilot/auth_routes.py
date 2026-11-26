@@ -39,5 +39,6 @@ def change_password(
     if not verify_password(data.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Das aktuelle Passwort ist falsch")
     user.password_hash = hash_password(data.new_password)
+    user.token_version += 1
     db.commit()
     return PasswordChangeResponse(status="password_changed")

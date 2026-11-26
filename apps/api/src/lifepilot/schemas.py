@@ -407,6 +407,11 @@ class TaskIn(BaseModel):
                 raise ValueError("Das Wiederholungsende muss nach dem ersten Fälligkeitsdatum liegen")
         return self
 class TaskOut(TaskIn):
+    estimated_minutes: int | None = None
+    mental_effort: str | None = None
+    start_friction: str | None = None
+    work_context: str | None = None
+    next_step: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: str
     status: str

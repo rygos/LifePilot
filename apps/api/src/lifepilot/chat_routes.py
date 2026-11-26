@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from lifepilot.config import settings
 from lifepilot.db import get_db
-from lifepilot.models import Event, EventParticipant, Person, User
+from lifepilot.models import Event, EventParticipant, JournalEntry, Pet, Person, User
 from lifepilot.security import current_user
 from lifepilot.services import search
 
@@ -59,9 +59,10 @@ class CompletionResponse(BaseModel):
 def _sources_for_question(db: Session, user: User, question: str) -> list[ChatSource]:
     candidates = [question]
     terms = {term for term in re.findall(r"[\wÄÖÜäöüß'-]+", question) if len(term) >= 3 and term.casefold() not in IGNORED_QUESTION_TERMS}
-    candidates.extend(sorted(terms, key=len, reverse=True))
-    for candidate in candidates[:5]:
-        results = search(db, user, candidate)
+    candidates.extend(sorted(terms, key=lambda term: (-len(term), term)))
+    ranked: dict[str, tuple[ChatSource, float]] = {}
+    for index, candidate in enumerate(candidates[:5]):
+        results = search(db, user, candidate, semantic=index == 0)
         sources: list[ChatSource] = []
         term = f"%{candidate}%"
         event_rows = db.scalars(select(Event).where(Event.owner_id == user.id, or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term)))).all()
@@ -78,7 +79,8 @@ def _sources_for_question(db: Session, user: User, question: str) -> list[ChatSo
         for task in results["tasks"]:
             sources.append(ChatSource(id=task.id, kind="task", title=task.title, excerpt=task.description[:700], href="/planning"))
         for loan in results["loans"]:
-            sources.append(ChatSource(id=loan.id, kind="loan", title=loan.item_name, excerpt=f"Status: {loan.status}; Rückgabefrist: {loan.due_at or 'keine festgelegt'}", href="/things"))
+            status = "Zurückgegeben" if loan.returned_at is not None else "Rückgabe offen"
+            sources.append(ChatSource(id=loan.id, kind="loan", title=loan.item_name, excerpt=f"Status: {status}; Rückgabefrist: {loan.due_at or 'keine festgelegt'}", href="/things"))
         for gift in results["gifts"]:
             sources.append(ChatSource(id=gift.id, kind="gift", title=gift.title, excerpt=gift.note[:700], href="/things"))
         for project in results["projects"]:
@@ -86,10 +88,17 @@ def _sources_for_question(db: Session, user: User, question: str) -> list[ChatSo
         for event in results["life_events"]:
             sources.append(ChatSource(id=event.id, kind="life_event", title=event.title, excerpt=event.details[:700], href="/memory"))
         for relationship in results["relationships"]:
-            sources.append(ChatSource(id=relationship.id, kind="relationship", title=f"{relationship.source_person_name} · {relationship.relationship_type} · {relationship.target_person_name}", excerpt="Bestätigte Beziehung im Gedächtnis", href="/people"))
-        if sources:
-            return list({source.id: source for source in sources}.values())[:MAX_CONTEXT_SOURCES]
-    return []
+            sources.append(ChatSource(id=relationship.id, kind="relationship", title=f"{relationship.source_person_name} · {relationship.relationship_type} · {relationship.target_person_name}", excerpt="Bestätigte Beziehung im Gedächtnis" if relationship.confirmed else "Unbestätigte Beziehung im Gedächtnis", href="/people"))
+        for journal in db.scalars(select(JournalEntry).where(JournalEntry.owner_id == user.id, or_(JournalEntry.title.ilike(term), JournalEntry.content.ilike(term))).order_by(JournalEntry.entry_date.desc()).limit(20)):
+            sources.append(ChatSource(id=journal.id, kind="journal", title=journal.title or "Tagebuch", excerpt=f"{journal.entry_date}: {journal.content[:700]}", href="/journal"))
+        for pet in db.scalars(select(Pet).where(Pet.owner_id == user.id, or_(Pet.name.ilike(term), Pet.species.ilike(term), Pet.breed.ilike(term), Pet.notes.ilike(term))).limit(20)):
+            sources.append(ChatSource(id=pet.id, kind="pet", title=pet.name, excerpt=" · ".join([pet.species, pet.breed, pet.notes[:700]]), href="/pets"))
+        for source in {source.id: source for source in sources}.values():
+            previous = ranked.get(source.id)
+            lexical = candidate.casefold() in (source.title + " " + source.excerpt).casefold()
+            score = (2.0 if index == 0 else 1.0) + (1.0 if lexical else 0.0)
+            ranked[source.id] = (source, score + (previous[1] if previous else 0.0))
+    return [source for source, _ in sorted(ranked.values(), key=lambda item: (-item[1], item[0].id))[:MAX_CONTEXT_SOURCES]]
 
 
 def _model_answer(question: str, sources: list[ChatSource]) -> str | None:
@@ -125,5 +134,10 @@ def ask_question(data: ChatQuestion, db: Session = Depends(get_db), user: User =
     if not sources:
         return ChatAnswer(answer="Dazu finde ich in deinen gespeicherten Daten keine passende Information.", sources=[], model_available=False)
     model_answer = _model_answer(question, sources)
-    answer = model_answer or "Ich habe passende gespeicherte Informationen gefunden. Das Sprachmodell ist gerade nicht erreichbar; die Treffer stehen unten mit ihren Quellen."
+    if model_answer:
+        valid_ids = {source.id for source in sources}
+        cited_ids = set(re.findall(r"\[([0-9a-fA-F-]{36})\]", model_answer))
+        if not cited_ids or not cited_ids.issubset(valid_ids):
+            model_answer = None
+    answer = model_answer or "Ich habe passende gespeicherte Informationen gefunden. Eine Antwort mit überprüfbaren Quellen konnte nicht erzeugt werden; die Treffer stehen unten mit ihren Quellen."
     return ChatAnswer(answer=answer, sources=sources, model_available=model_answer is not None)

@@ -62,19 +62,34 @@ def task_list(db: Session = Depends(get_db), user: User = Depends(current_user),
 
 @router.patch("/api/tasks/{task_id}", response_model=TaskOut)
 def task_update(task_id: str, data: TaskIn, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
-    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    return update_task(db, user, task_id, data, source="rest")
+
+
+def update_task(db: Session, user: User, task_id: str, data: TaskIn, source: str = "rest") -> Task:
+    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id).with_for_update())
     if task is None:
         raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     owned_person(db, data.person_id, user)
     if data.project_id and db.scalar(select(Project.id).where(Project.id == data.project_id, Project.owner_id == user.id)) is None:
         raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
+    previous_due_at = utc_datetime(task.due_at) if task.due_at is not None else None
     for field, value in data.model_dump().items():
         setattr(task, field, value)
-    record_task_revision(db, task, "updated", "rest")
-    reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id, Reminder.state == "scheduled"))
-    if reminder is not None and task.due_at is not None:
-        reminder.title = task.title
-        reminder.due_at = task.due_at
+    record_task_revision(db, task, "updated", source)
+    reminder = db.scalar(select(Reminder).where(Reminder.task_id == task.id, Reminder.owner_id == user.id))
+    current_due_at = utc_datetime(task.due_at) if task.due_at is not None else None
+    if reminder is not None:
+        if current_due_at is None:
+            db.delete(reminder)
+        else:
+            reminder.title = task.title
+            if previous_due_at != current_due_at:
+                reminder.due_at = current_due_at
+                reminder.snoozed_until = None
+                if task.status == "open" and reminder.state != "muted":
+                    reminder.state = "scheduled"
+    elif current_due_at is not None and task.status == "open":
+        db.add(Reminder(owner_id=user.id, title=task.title, due_at=current_due_at, task_id=task.id))
     db.commit()
     db.refresh(task)
     enqueue_entity_embedding("task", task.id, user.id)
@@ -93,7 +108,7 @@ def task_delete(task_id: str, db: Session = Depends(get_db), user: User = Depend
 
 @router.patch("/api/tasks/{task_id}/complete", response_model=TaskOut)
 def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)) -> Task:
-    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id))
+    task = db.scalar(select(Task).where(Task.id == task_id, Task.owner_id == user.id).with_for_update())
     if task is None:
         raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     if task.status == "done":
@@ -107,9 +122,10 @@ def task_complete(task_id: str, db: Session = Depends(get_db), user: User = Depe
     if task.repeat_interval_days is not None and task.due_at is not None:
         next_due_at = next_recurrence_at(task.due_at, task.repeat_interval_days, task.repeat_until)
         if next_due_at is not None:
-            next_task = Task(owner_id=task.owner_id, person_id=task.person_id, title=task.title, description=task.description, due_at=next_due_at, repeat_interval_days=task.repeat_interval_days, repeat_until=task.repeat_until, priority=task.priority)
+            next_task = Task(owner_id=task.owner_id, person_id=task.person_id, project_id=task.project_id, title=task.title, description=task.description, due_at=next_due_at, repeat_interval_days=task.repeat_interval_days, repeat_until=task.repeat_until, priority=task.priority, estimated_minutes=task.estimated_minutes, mental_effort=task.mental_effort, start_friction=task.start_friction, work_context=task.work_context, next_step=task.next_step)
             db.add(next_task)
             db.flush()
+            record_task_revision(db, next_task, "created", "recurrence")
             db.add(Reminder(owner_id=task.owner_id, title=task.title, due_at=next_due_at, task_id=next_task.id))
     db.commit()
     db.refresh(task)

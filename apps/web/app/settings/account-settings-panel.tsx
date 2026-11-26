@@ -54,7 +54,8 @@ export function AccountSettingsPanel({ profile, request, onClose, onMessage, onP
     try {
       await request("/api/auth/password", { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) });
       formElement.reset();
-      onMessage("Dein Passwort wurde geändert.");
+      localStorage.removeItem("lifepilot-token");
+      window.location.reload();
     } catch (error) {
       setPasswordError(error instanceof Error ? error.message : String(error));
     }

@@ -112,3 +112,13 @@ Unter `/pets` speicherst du Tiere unabhängig von Personenprofilen mit Name, Tie
 ## Administration
 
 Administratorrollen und App-Updates über Portainer sind in [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md) beschrieben.
+
+## Verpflichtungen und Arbeitsstände
+
+Unter `/commitments` werden eigene Versprechen und ausstehende Rückmeldungen getrennt angezeigt. Optional sind Person, Projekt, Gesprächsquelle und Fälligkeit verknüpfbar; abgeschlossene oder abgebrochene Einträge können erneut geöffnet werden. Arbeitsstände speichern Fortschritt, Blockade, nächsten Schritt, Ressourcen sowie optionale Aufgaben- und Projektzuordnung. Sie lassen sich archivieren und wiederherstellen.
+
+REST: `GET/POST /api/commitments`, `PUT /api/commitments/{id}`, `PATCH /api/commitments/{id}/status`, `GET/POST /api/checkpoints`, `GET/PUT /api/checkpoints/{id}`, `PATCH /api/checkpoints/{id}/archive`. Listen unterstützen limit und offset. Fälligkeiten benötigen eine Zeitzone. MCP: commitment_create, commitment_list, commitment_set_status, waiting_for_list, work_checkpoint_save, work_checkpoint_list, work_checkpoint_resume. Schreibzugriffe erfordern memory:write. Die neue Migration 0033_commitments_checkpoints muss vor dem produktiven Start angewendet werden. Automatische Erkennung aus Capture, Push-Erinnerungen und Briefing-Integration sind noch nicht Bestandteil dieses Moduls.
+
+## Intelligente Aufgabenplanung
+
+Auf Übersicht und Planung können bestehende Aufgaben mit geschätzter Dauer, mentalem Aufwand, Einstiegshürde, Kontext und nächstem Schritt ergänzt werden. Die regelbasierte Empfehlung filtert offene Aufgaben nach verfügbarer Zeit, Energie und Kontext und sortiert passende Einträge nach Dringlichkeit und Einstiegshürde. Aufgaben ohne ausreichende Angaben werden separat ausgewiesen. REST: PATCH /api/tasks/{id}/planning und GET /api/planning/next-actions (minutes, energy, context). MCP: task_planning_update und next_best_action. Migration 0034_task_planning erweitert die Aufgaben um fünf optionale Felder. Wiederkehrende Aufgaben übernehmen die Planung bei der nächsten Wiederholung. Tagesbriefing und Personenbriefing enthalten offene Verpflichtungen; das Tagesbriefing zeigt zusätzlich aktive Arbeitsstände. Automatische Extraktion von Verpflichtungen aus Capture ist noch nicht enthalten.

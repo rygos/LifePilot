@@ -311,3 +311,5 @@ if "mcp" in globals():
     from lifepilot.mcp_extended_tools import register_extended_tools
     register_planning_tools(mcp)
     register_extended_tools(mcp)
+    from lifepilot.mcp_commitment_tools import register_commitment_tools
+    register_commitment_tools(mcp)

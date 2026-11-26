@@ -15,9 +15,9 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 def hash_password(password: str) -> str: return password_hash.hash(password)
 def verify_password(password: str, hashed: str) -> bool: return password_hash.verify(password, hashed)
-def create_token(user_id: str, scopes: list[str] | None = None, token_use: Literal["user", "mcp"] = "user") -> str:
+def create_token(user_id: str, scopes: list[str] | None = None, token_use: Literal["user", "mcp"] = "user", token_version: int = 0) -> str:
     granted_scopes = scopes if scopes is not None else ["memory:read", "memory:write"]
-    claims = {"sub": user_id, "scope": " ".join(granted_scopes), "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
+    claims = {"sub": user_id, "ver": token_version, "scope": " ".join(granted_scopes), "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
     if token_use == "mcp":
         claims["token_use"] = "mcp"
     return jwt.encode(claims, settings.secret_key, algorithm="HS256")
@@ -37,7 +37,7 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
         user = db.scalar(select(User).where(User.id == payload.get("sub"), User.deleted_at.is_(None)))
     except (jwt.InvalidTokenError, TypeError):
         user = None
-    if user is None: raise HTTPException(status_code=401, detail="Ungültige Anmeldung", headers={"WWW-Authenticate": "Bearer"})
+    if user is None or payload.get("ver", 0) != user.token_version: raise HTTPException(status_code=401, detail="Ungültige Anmeldung", headers={"WWW-Authenticate": "Bearer"})
     if token_use == "mcp": raise HTTPException(status_code=403, detail="MCP-Token kann keine Benutzeraktion bestätigen")
     return user
 
@@ -47,5 +47,5 @@ def resolve_bearer_user(token: str, db: Session) -> User:
         user = db.scalar(select(User).where(User.id == payload.get("sub"), User.deleted_at.is_(None)))
     except (jwt.InvalidTokenError, TypeError):
         user = None
-    if user is None: raise HTTPException(status_code=401, detail="Ungültige Anmeldung")
+    if user is None or payload.get("ver", 0) != user.token_version: raise HTTPException(status_code=401, detail="Ungültige Anmeldung")
     return user

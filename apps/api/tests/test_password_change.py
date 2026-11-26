@@ -39,9 +39,11 @@ def test_password_change_requires_current_password_and_replaces_credentials(clie
     changed = client.post("/api/auth/password", headers=headers, json=payload)
     assert changed.status_code == 200
     assert changed.json() == {"status": "password_changed"}
-    assert client.get("/api/profile", headers=headers).status_code == 200
+    assert client.get("/api/profile", headers=headers).status_code == 401
     assert client.post("/api/auth/login", json={"username": username, "password": initial_password}).status_code == 401
-    assert client.post("/api/auth/login", json={"username": username, "password": updated_password}).status_code == 200
+    new_login = client.post("/api/auth/login", json={"username": username, "password": updated_password})
+    assert new_login.status_code == 200
+    headers = {"Authorization": f"Bearer {new_login.json()['access_token']}"}
     assert client.post(
         "/api/auth/password",
         headers=headers,

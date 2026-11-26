@@ -9,7 +9,7 @@
 .search-relationships{min-height:0;margin-bottom:16px}
 
 .shell[data-view] .content{min-width:0}
-.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.briefing-panel):not(.capture):not(.dashboard-upcoming-panel):not(#dashboard-panels):not(footer){display:none}
+.shell[data-view="dashboard"] .content>*:not(header):not(.notice):not(.notification-panel):not(.next-action-panel):not(.briefing-panel):not(.capture):not(.dashboard-upcoming-panel):not(#dashboard-panels):not(footer){display:none}
 .shell[data-view="people"] .content>*:not(header):not(.notice):not(.person-filter):not(.people-toolbar):not(.profile-panel):not(.grid:has(#people)):not(.person-profile):not(.person-briefing){display:none}
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
@@ -20,7 +20,7 @@
 .shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
 .shell[data-view="things"] #memory-domain>section:first-child{display:none}
 .shell[data-view="things"] #memory-domain{grid-template-columns:minmax(0,1fr)}
-.shell[data-view="planning"] .content>*:not(header):not(.notice):not(.notification-panel):not(.grid:has(#tasks)):not(.events-panel){display:none}
+.shell[data-view="planning"] .content>*:not(header):not(.notice):not(.next-action-panel):not(.notification-panel):not(.grid:has(#tasks)):not(.events-panel){display:none}
 .shell[data-view="planning"] #people{display:none}
 .shell[data-view="planning"] .content>.grid:has(#tasks){grid-template-columns:minmax(0,1fr)}
 .shell[data-view="inbox"] .content>*:not(header):not(.notice):not(.inbox-panel):not(#dashboard-panels){display:none}
@@ -319,3 +319,9 @@
 .family-tree-node-name{max-width:100%;font-weight:650;overflow-wrap:anywhere}
 .family-tree-node-meta{color:var(--muted);font-size:11px}
 @media(max-width:850px){.family-tree-dialog{width:calc(100vw - 20px);max-height:94vh;padding:16px}.family-tree-dialog h2{font-size:20px}.family-tree-scroll{max-height:calc(94vh - 205px)}.family-tree-legend{gap:9px}.family-tree-open{white-space:normal}}
+
+.commitment-workspace { display: grid; gap: 1rem; min-width: 0; }
+.commitment-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.commitment-group { margin-top: 1.25rem; }
+
+.shell[data-view="commitments"] .content>*:not(header):not(.notice):not(.commitment-workspace):not(.capture-dialog):not(footer){display:none}

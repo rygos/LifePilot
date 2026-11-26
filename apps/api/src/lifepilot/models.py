@@ -15,6 +15,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     username: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", server_default="user", nullable=False)
     full_name: Mapped[str] = mapped_column(String(240), default="")
     nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -246,6 +247,11 @@ class EntityEmbedding(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mental_effort: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    start_friction: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    work_context: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    next_step: Mapped[str | None] = mapped_column(Text, nullable=True)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -457,3 +463,41 @@ class ApprovalRequest(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Commitment(Base):
+    __tablename__ = "commitments"
+    __table_args__ = (
+        CheckConstraint("direction IN ('outgoing', 'incoming')", name="ck_commitments_direction"),
+        CheckConstraint("status IN ('open', 'done', 'cancelled')", name="ck_commitments_status"),
+        Index("ix_commitments_owner_status", "owner_id", "status"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(240))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    direction: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class WorkCheckpoint(Base):
+    __tablename__ = "work_checkpoints"
+    __table_args__ = (Index("ix_work_checkpoints_owner_archived", "owner_id", "archived"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(240))
+    progress: Mapped[str] = mapped_column(Text, default="")
+    blocker: Mapped[str] = mapped_column(Text, default="")
+    next_step: Mapped[str] = mapped_column(Text)
+    resources: Mapped[str] = mapped_column(Text, default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
