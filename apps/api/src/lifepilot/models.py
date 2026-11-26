@@ -596,3 +596,18 @@ class RoutineCompletion(Base):
     step_id: Mapped[str] = mapped_column(ForeignKey("routine_steps.id", ondelete="CASCADE"), index=True)
     local_date: Mapped[date] = mapped_column(Date)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CaptureKey(Base):
+    __tablename__ = "capture_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    window_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    window_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

@@ -168,3 +168,29 @@ Dashboard und Schnellerfassungsdialog speichern Textentwürfe automatisch lokal 
 Der Service Worker speichert eine eigenständige Offline-Seite (/offline.html) und deren statische Ressourcen. Nach einer vorherigen erfolgreichen Online-Anmeldung und Installation des Service Workers kann diese Seite auch bei fehlender Verbindung geöffnet werden. Es werden keine persönlichen Serverdaten im Service-Worker-Cache gespeichert. Die Offline-Seite erlaubt nur lokale Texterfassung und Synchronisierung mit einem erneut serverseitig bestätigten Konto. Ein abgelaufenes Token erfordert erneute Anmeldung; lokale Eingaben bleiben im jeweiligen Kontospeicher erhalten. Bei Abmeldung wird die lokale Identitätsmarkierung entfernt, die noch nicht übertragenen Texte bleiben für eine spätere Anmeldung desselben Kontos erhalten.
 
 Wichtig: Entwürfe und wartende Erfassungen liegen unverschlüsselt im Browserspeicher (localStorage). Keine Verwendung auf gemeinsam genutzten oder ungeschützten Geräten; das Löschen von Websitedaten oder private Browserfenster können lokale Eingaben verlieren. Die Synchronisierung erfolgt bei geöffneter Anwendung bzw. Offline-Seite, nicht bei geschlossenem Browser. Chat-Fragen, Sprache-Transkription und weitere Module benötigen weiterhin eine Serververbindung. Der Erfassungsentwurf wird zwischen Tabs desselben Kontos geteilt; parallele Bearbeitung desselben Entwurfs kann die letzte Änderung überschreiben. Test der lokalen Speicherlogik: npm run test:offline im Web-Verzeichnis.
+
+## iOS-Kurzbefehle, Siri und externe Texterfassung
+
+Unter Einstellungen → iOS-Kurzbefehle & externe Erfassung lässt sich nach Eingabe des aktuellen Kontopassworts ein eigener Erfassungsschlüssel erstellen. Er wird nur bei der Erstellung angezeigt, ist einzeln widerrufbar, läuft nach 1–365 Tagen ab (Standard 90 Tage) und wird serverseitig ausschließlich als SHA-256-Hash eines zufälligen 256-Bit-Geheimnisses gespeichert. Ein Passwortwechsel macht ältere Schlüssel ungültig. Pro Konto sind höchstens 20 aktive Schlüssel möglich; pro Schlüssel sind 60 Erfassungsanfragen je Stundenfenster zulässig (auch Wiederholungen zählen).
+
+Kurzbefehl manuell in der Apple-App „Kurzbefehle“ einrichten:
+
+1. Neuen Kurzbefehl „LifePilot festhalten“ anlegen.
+2. Texteingabe oder Diktat als Eingabe verwenden. Für das Teilen-Menü die Anzeige im Teilen-Menü aktivieren und den empfangenen Text nutzen.
+3. Aktion zum Abrufen von URL-Inhalten mit der eigenen LifePilot-API-Adresse und Pfad /api/shortcuts/capture hinzufügen.
+4. Methode POST, Header Authorization: Bearer DEIN_ERFASSUNGSSCHLÜSSEL, Request-Body JSON mit Feld original_text (Eingabe/Diktat). Für wiederholbare Übertragungen optional client_request_id (UUID) und captured_at (ISO-8601-Zeitstempel mit Zeitzone) senden. Bei Wiederholung dieselbe UUID verwenden.
+5. Nur bei erfolgreicher Antwort den Text als gespeichert betrachten. Den Kurzbefehl per Namen über Siri ausführen.
+
+Beispiel (Platzhalter ersetzen, Geheimnis nicht in die Shell-History schreiben):
+
+```http
+POST /api/shortcuts/capture
+Authorization: Bearer DEIN_ERFASSUNGSSCHLÜSSEL
+Content-Type: application/json
+
+{"original_text":"Ich habe versprochen, die Unterlagen zu senden."}
+```
+
+Die Antwort enthält ausschließlich id und status "saved". Der Originaltext landet in der bestehenden Schnellerfassung und KI-Prüfung, auch bei nicht verfügbarer KI. Der Schlüssel hat keine Lese-, Änderungs-, Lösch-, Verwaltungs- oder MCP-Berechtigungen. Er gehört nicht in URLs, öffentliche Kurzbefehle, Git oder Logs. Verwende eine HTTPS-Verbindung. Die Integration setzt eine erreichbare LifePilot-API voraus; eine native Offline-Warteschlange in der Kurzbefehle-App und ein importierbarer Apple-Kurzbefehl sind nicht Bestandteil dieser Implementierung. Eine bereits autorisierte, laufende Anfrage kann trotz unmittelbar folgendem Widerruf noch abgeschlossen werden.
+
+REST: GET/POST /api/shortcuts/keys (normale Benutzersitzung), DELETE /api/shortcuts/keys/{id}, POST /api/shortcuts/capture (nur Erfassungsschlüssel). Migration 0041_capture_keys.
