@@ -8,6 +8,7 @@ from lifepilot.commitment_routes import (
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
+from lifepilot.face_training import Enrollment, Review, list_cards, enroll, review_card
 from lifepilot.life_timeline import Kind as TimelineKind, Mode as TimelineMode, timeline
 from lifepilot.fact_conflicts import ResolveIn, DecisionOut, list_conflicts, list_decisions, resolve_conflict
 from lifepilot.temporal_facts import FactIn, FactOut, Status, list_facts, create_fact, set_fact_status, end_fact
@@ -275,3 +276,29 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user()
         with mcp_session(owner) as db:
             return timeline(db, owner, person_id, kinds, start, end, mode, include_unconfirmed, limit, offset).model_dump(mode="json")
+
+
+    @mcp.tool(name="face_training_list")
+    def face_training_list(due_only: bool = False, limit: int = 100, offset: int = 0) -> list[dict]:
+        """List enrolled photo flashcards and review schedules, without image bytes."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [row.model_dump(mode="json") for row in list_cards(db, owner, due_only, limit, offset)]
+
+    @mcp.tool(name="face_training_enroll")
+    def face_training_enroll(person_id: str, active: bool = True, confirm: bool = False) -> dict:
+        """Enroll or pause a selected contact after explicit user approval."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return enroll(db, owner, Enrollment(person_id=person_id, active=active), "mcp").model_dump(mode="json")
+
+    @mcp.tool(name="face_training_review")
+    def face_training_review(card_id: str, data: Review, confirm: bool = False) -> dict:
+        """Record the user's own rating after explicit approval; never infer a rating."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return review_card(db, owner, card_id, data, "mcp").model_dump(mode="json")

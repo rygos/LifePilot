@@ -158,6 +158,19 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not timeline_result.isError
                         timeline_data = json.loads(timeline_result.content[0].text)
                         assert len(timeline_data["items"]) == 3 and timeline_data["items"][0]["occurrence"] == "end"
+                        with Session(engine) as db:
+                            db.get(Person, fact_person).photo_key = "training-test.jpg"
+                            db.commit()
+                        denied_training = await session.call_tool("face_training_enroll", {"person_id":fact_person})
+                        assert denied_training.isError
+                        enrollment = await session.call_tool("face_training_enroll", {"person_id":fact_person,"confirm":True})
+                        assert not enrollment.isError
+                        training = json.loads(enrollment.content[0].text)
+                        listed_training = await session.call_tool("face_training_list", {"due_only":True})
+                        assert not listed_training.isError and training["id"] in str(listed_training.content)
+                        rated_training = await session.call_tool("face_training_review", {"card_id":training["id"],"data":{"rating":"good","revision":training["revision"]},"confirm":True})
+                        assert not rated_training.isError
+                        assert json.loads(rated_training.content[0].text)["level"] == 1
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

@@ -689,3 +689,23 @@ class FactConflictDecision(Base):
     before: Mapped[dict] = mapped_column(JSON)
     after: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FaceTrainingCard(Base):
+    __tablename__ = "face_training_cards"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "person_id", name="uq_face_training_person"),
+        CheckConstraint("level BETWEEN 0 AND 7", name="ck_face_training_level"),
+        Index("ix_face_training_due", "owner_id", "active", "due_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"))
+    photo_key: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    level: Mapped[int] = mapped_column(Integer, default=0)
+    review_count: Mapped[int] = mapped_column(Integer, default=0)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
