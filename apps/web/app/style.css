@@ -339,3 +339,5 @@
 .decision-journal-panel{min-width:0}.decision-detail p{white-space:pre-wrap;overflow-wrap:anywhere}.decision-journal-panel fieldset{min-width:0;display:grid;gap:.5rem;border:1px solid var(--line,currentColor);border-radius:.5rem;padding:.75rem}
 .place-memory-panel{min-width:0}.place-detail p{white-space:pre-wrap;overflow-wrap:anywhere}
 .inventory-panel{min-width:0}.inventory-detail p{white-space:pre-wrap;overflow-wrap:anywhere}
+.shell[data-view="family"] .content>*:not(header):not(.notice):not(.family-panel){display:none}
+.family-panel,.family-detail,.family-fields{min-width:0}.family-detail p,.family-snapshot p{white-space:pre-wrap;overflow-wrap:anywhere}.family-fields{display:grid;gap:.5rem;border:1px solid var(--line,currentColor);border-radius:.5rem;padding:.75rem}.family-snapshot{display:grid;gap:.25rem}.family-snapshot p{margin-top:.25rem}

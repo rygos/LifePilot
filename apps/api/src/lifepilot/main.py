@@ -61,6 +61,7 @@ from lifepilot.decision_journal import router as decision_router, list_entries a
 from lifepilot.place_routes import router as place_router
 from lifepilot.inventory_routes import router as inventory_router, due_summary as inventory_due_summary
 from lifepilot.trash_routes import router as trash_router, move_to_trash
+from lifepilot.family_routes import router as family_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -119,6 +120,7 @@ app.include_router(decision_router)
 app.include_router(place_router)
 app.include_router(inventory_router)
 app.include_router(trash_router)
+app.include_router(family_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -160,6 +162,7 @@ def mcp_token(data: MCPTokenRequest, db: Session = Depends(get_db)):
     ensure_self_person(db, user); db.commit()
     scopes = ["memory:read"]
     if data.access == "read_write": scopes.append("memory:write")
+    if data.family_read: scopes.append("family:read")
     return {"access_token": create_token(user.id, scopes, token_use="mcp", token_version=user.token_version)}
 
 @app.get("/api/auth/me")

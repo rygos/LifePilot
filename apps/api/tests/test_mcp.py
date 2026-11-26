@@ -32,6 +32,14 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
     readonly_token = readonly.json()["access_token"]
     assert resolve_bearer_scopes(readonly_token) == ["memory:read"]
     assert client.get("/api/approvals", headers={"Authorization": f"Bearer {token}"}).status_code == 403
+    family_token_response = client.post("/api/auth/mcp-token", json={"username":"testuser","password":"test-password","family_read":True})
+    assert family_token_response.status_code == 200
+    family_token = family_token_response.json()["access_token"]
+    assert resolve_bearer_scopes(family_token) == ["memory:read","family:read"]
+    family_space = client.post("/api/family",headers=auth,json={"name":"MCP Familie"}).json()
+    family_space_id = family_space["id"]
+    family_item = client.post("/api/family/"+family_space_id+"/items",headers=auth,json={"kind":"note","title":"Gemeinsame MCP Notiz"}).json()
+    assert client.get("/api/family/"+family_space_id+"/items",headers={"Authorization":"Bearer "+family_token}).status_code == 403
     owner_id = client.get("/api/auth/me", headers=auth).json()["id"]
     with Session(engine) as db:
         other = User(username="mcp-private-user", password_hash="unused")
@@ -413,6 +421,22 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert denied_pet.isError
                         denied_person = await session.call_tool("person_create_tool", {"first_name": "Soll auch nicht gespeichert werden"})
                         assert denied_person.isError
+                        denied_family = await session.call_tool("family_spaces", {})
+                        assert denied_family.isError
+                        denied_items = await session.call_tool("family_items", {"space_id":family_space_id})
+                        assert denied_items.isError
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost:8002", headers={"Authorization":f"Bearer {family_token}"}) as http:
+                async with streamable_http_client("http://localhost:8002/mcp", http_client=http) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        family_spaces = await session.call_tool("family_spaces", {})
+                        assert not family_spaces.isError and family_space_id in str(family_spaces.content)
+                        family_items = await session.call_tool("family_items", {"space_id":family_space_id})
+                        assert not family_items.isError and family_item["id"] in str(family_items.content)
+                        family_shares = await session.call_tool("family_shared_records", {"space_id":family_space_id})
+                        assert not family_shares.isError
+                        assert (await session.call_tool("family_items", {"space_id":"unavailable"})).isError
+                        assert (await session.call_tool("task_create", {"title":"Nicht erlaubt"})).isError
         other_headers = {"Authorization": f"Bearer {create_token(other_user_id)}"}
         assert client.get("/api/audit", headers=other_headers).json() == []
 

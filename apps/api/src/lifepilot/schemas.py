@@ -15,6 +15,7 @@ class Credentials(BaseModel):
     password: str
 class MCPTokenRequest(Credentials):
     access: str = Field(default="read_only", pattern="^(read_only|read_write)$")
+    family_read: bool = False
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

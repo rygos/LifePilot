@@ -879,3 +879,60 @@ class TrashEntry(Base):
     snapshot: Mapped[dict] = mapped_column(JSON)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FamilySpace(Base):
+    __tablename__ = "family_spaces"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FamilyMembership(Base):
+    __tablename__ = "family_memberships"
+    __table_args__ = (
+        CheckConstraint("role IN ('viewer', 'editor')", name="ck_family_role"),
+        CheckConstraint("state IN ('pending', 'active')", name="ck_family_state"),
+    )
+    space_id: Mapped[str] = mapped_column(ForeignKey("family_spaces.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String(12))
+    state: Mapped[str] = mapped_column(String(12), default="pending")
+    invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FamilyShare(Base):
+    __tablename__ = "family_shares"
+    __table_args__ = (
+        UniqueConstraint("space_id", "owner_id", "kind", "resource_id", name="uq_family_share"),
+        CheckConstraint("kind IN ('memory', 'task', 'event', 'inventory')", name="ck_family_share_kind"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    space_id: Mapped[str] = mapped_column(ForeignKey("family_spaces.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))
+    resource_id: Mapped[str] = mapped_column(String(36))
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FamilyItem(Base):
+    __tablename__ = "family_items"
+    __table_args__ = (
+        CheckConstraint("kind IN ('note', 'task', 'event', 'inventory')", name="ck_family_item_kind"),
+        CheckConstraint("status IN ('open', 'done')", name="ck_family_item_status"),
+        Index("ix_family_items_space", "space_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    space_id: Mapped[str] = mapped_column(ForeignKey("family_spaces.id", ondelete="CASCADE"))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(12))
+    title: Mapped[str] = mapped_column(String(240))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location: Mapped[str] = mapped_column(String(500), default="")
+    status: Mapped[str] = mapped_column(String(12), default="open")
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
