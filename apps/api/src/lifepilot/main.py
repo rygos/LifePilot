@@ -52,6 +52,7 @@ from lifepilot.carddav_routes import router as carddav_router
 from lifepilot.mail_routes import router as mail_router
 from lifepilot.home_assistant_routes import router as home_assistant_router
 from lifepilot.temporal_facts import router as facts_router, person_current_facts
+from lifepilot.fact_conflicts import router as conflicts_router, list_conflicts
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,6 +102,7 @@ app.include_router(carddav_router)
 app.include_router(mail_router)
 app.include_router(home_assistant_router)
 app.include_router(facts_router)
+app.include_router(conflicts_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
@@ -662,6 +664,7 @@ def person_briefing(person_id: str, db: Session = Depends(get_db), user: User = 
     return {
         "person": PersonOut.model_validate(person).model_dump(mode="json"),
         "current_fact_candidates": person_current_facts(db, user, person_id),
+        "fact_conflicts": [row.model_dump(mode="json") for row in list_conflicts(db, user.id, person_id, limit=20)],
         "open_commitments": [CommitmentOut.model_validate(row).model_dump(mode="json") for row in db.scalars(select(Commitment).where(Commitment.owner_id == user.id, Commitment.person_id == person_id, Commitment.status == "open").order_by(Commitment.due_at.is_(None), Commitment.due_at, Commitment.id).limit(20))],
         "owner_relationships": [{"id": row.id, "relationship_type": row.relationship_type, "valid_from": row.valid_from, "valid_until": row.valid_until, "source_capture_id": row.source_capture_id, "confirmed": row.confirmed} for row in owner_relationships],
         "former_names": [{"id": row.id, "name": row.name, "valid_from": row.valid_from, "valid_until": row.valid_until, "confirmed": row.confirmed, "source_capture_id": row.source_capture_id} for row in db.scalars(select(PersonNameHistory).where(PersonNameHistory.owner_id == user.id, PersonNameHistory.person_id == person_id, PersonNameHistory.confirmed.is_(True)).order_by(PersonNameHistory.valid_until.desc().nullslast())).all()],

@@ -1,5 +1,7 @@
 """Explicitly reviewed person facts with day-level validity and evidence."""
 from datetime import date, datetime, timezone
+from hashlib import sha256
+from unicodedata import normalize
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -105,6 +107,10 @@ def list_facts(db, owner, person_id=None, predicate=None, status=None, as_of=Non
     return list(db.scalars(stmt.order_by(TemporalFact.valid_from.desc().nullslast(), TemporalFact.created_at.desc(), TemporalFact.id).limit(limit).offset(offset)))
 
 
+def fact_value_key(value: str):
+    return sha256(" ".join(normalize("NFC", value).casefold().split()).encode()).hexdigest()
+
+
 def create_fact(db, owner, data: FactIn, source="web"):
     if db.scalar(select(Person.id).where(Person.owner_id == owner, Person.id == data.person_id)) is None:
         raise HTTPException(404, "Person nicht gefunden")
@@ -114,7 +120,7 @@ def create_fact(db, owner, data: FactIn, source="web"):
             raise HTTPException(404, "Quellerfassung nicht gefunden")
         if data.source_quote not in capture.original_text:
             raise HTTPException(422, "Quellenzitat muss wörtlich in der Erfassung enthalten sein")
-    return persist(db, TemporalFact(owner_id=owner, **data.model_dump(), status="proposed"), "create", source)
+    return persist(db, TemporalFact(owner_id=owner, **data.model_dump(), value_key=fact_value_key(data.value), status="proposed"), "create", source)
 
 
 def set_fact_status(db, owner, fact_id, status: Status, source="web"):
@@ -122,6 +128,7 @@ def set_fact_status(db, owner, fact_id, status: Status, source="web"):
     if row.status == status:
         return row
     row.status = status
+    row.revision += 1
     return persist(db, row, "update", source)
 
 
@@ -136,6 +143,7 @@ def end_fact(db, owner, fact_id, until: date, source="web"):
     if row.valid_until == until:
         return row
     row.valid_until = until
+    row.revision += 1
     return persist(db, row, "update", source)
 
 

@@ -331,3 +331,4 @@
 .routines-panel progress {width:100%;accent-color:var(--green)}
 .voice-textarea,.voice-controls{display:grid;gap:.6rem;min-width:0}.voice-textarea textarea{width:100%;box-sizing:border-box}.voice-controls audio{max-width:100%;width:100%}.voice-controls{padding:.75rem;border:1px solid var(--line, currentColor);border-radius:.75rem}.voice-controls button{justify-self:start}
 .offline-queue{display:block;overflow-wrap:anywhere}.offline-queue details{margin:.5rem 0}.offline-queue a{display:inline-block;margin:.5rem 0}
+.fact-conflicts{display:grid;gap:.75rem;margin-block:1rem}.fact-conflict-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:.75rem}.fact-conflict-side{padding:.75rem;border:1px solid var(--line,currentColor);border-radius:.6rem;overflow-wrap:anywhere}

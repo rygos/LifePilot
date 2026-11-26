@@ -69,3 +69,89 @@ def test_unknown_bounds_and_pagination(client):
     next_page=client.get(path,headers=auth,params={"as_of":"2010-01-01","limit":1,"offset":1}).json()
     assert len(data)==len(next_page)==1 and data[0]["id"]!=next_page[0]["id"]
     assert client.get(path,headers=auth,params={"limit":201}).status_code==422
+
+
+def test_conflict_detection_resolution_and_history(client):
+    auth, other = account(client), account(client)
+    person = client.post("/api/people",headers=auth,json={"first_name":"Konflikttest"}).json()["id"]
+    path = "/api/facts"
+    def create(value, predicate="Wohnort", **dates):
+        response = client.post(path,headers=auth,json={"person_id":person,"predicate":predicate,"value":value,**dates})
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    def review(fid, status="confirmed"):
+        assert client.patch(f"{path}/{fid}/status",headers=auth,json={"status":status}).status_code == 200
+
+    def conflicts():
+        return client.get(path+"/conflicts",headers=auth,params={"person_id":person}).json()
+
+    def payload(pair, action, **extra):
+        return {"fact_a_id":pair["a"]["id"],"fact_b_id":pair["b"]["id"],"a_version":pair["a_version"],"b_version":pair["b_version"],"action":action,**extra}
+
+    old = create("Köln",valid_from="2015-01-01")
+    review(old)
+    new = create("Bonn",valid_from="2020-01-01")
+    create("Lesen",predicate="Hobby")
+    create("Wandern",predicate="Hobby")
+    historical = create("Aachen",valid_from="2010-01-01",valid_until="2015-01-01")
+    review(historical)
+    assert len(conflicts()) == 1
+    pair = conflicts()[0]
+    assert {pair["a"]["id"],pair["b"]["id"]} == {old,new}
+    assert pair["uncertain_period"] is True
+    assert client.get("/api/briefing/person/"+person,headers=auth).json()["fact_conflicts"]
+    assert client.get(path+"/conflicts",headers=other).json() == []
+    assert client.get(path+"/conflicts",headers=other,params={"person_id":person}).status_code == 404
+    assert client.post(path+"/conflicts/resolve",headers=other,json=payload(pair,"both")).status_code == 404
+    assert client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"changed",previous_fact_id=new)).status_code == 409
+    deferred = client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"defer",note="Noch prüfen"))
+    assert deferred.status_code == 201,deferred.text
+    assert deferred.json()["before"] == deferred.json()["after"]
+    assert len(conflicts()) == 1
+    changed = client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"changed",previous_fact_id=old))
+    assert changed.status_code == 201,changed.text
+    assert conflicts() == []
+    history = client.get(path+"/conflicts/history",headers=auth).json()
+    assert [d["action"] for d in history] == ["changed","defer"]
+    assert history[0]["before"] != history[0]["after"]
+    assert client.get(path+"/conflicts/history",headers=other).json() == []
+    assert client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"both")).status_code == 409
+    for day,value in [("2019-12-31","Köln"),("2020-01-01","Bonn")]:
+        rows = client.get(path,headers=auth,params={"person_id":person,"predicate":"wohnort","as_of":day,"status":"confirmed"}).json()
+        assert [row["value"] for row in rows] == [value]
+
+
+def test_parallel_facts_and_stale_decisions(client):
+    auth = account(client)
+    pid = client.post("/api/people",headers=auth,json={"first_name":"Parallel"}).json()["id"]
+    path = "/api/facts"
+    def create(value, **extra):
+        r=client.post(path,headers=auth,json={"person_id":pid,"predicate":"Arbeitgeber","value":value,**extra})
+        assert r.status_code==201,r.text
+        return r.json()["id"]
+
+    a = create("MÜLLER GmbH")
+    same = create("müller   gmbh")
+    assert client.get(path+"/conflicts",headers=auth).json() == []
+    b = create("Firma B")
+    def pairs():
+        return client.get(path+"/conflicts",headers=auth).json()
+    def payload(pair,action):
+        return {"fact_a_id":pair["a"]["id"],"fact_b_id":pair["b"]["id"],"a_version":pair["a_version"],"b_version":pair["b_version"],"action":action}
+
+    assert len(pairs()) == 2
+    assert client.patch(f"{path}/{same}/status",headers=auth,json={"status":"rejected"}).status_code==200
+    pair = pairs()[0]
+    r=client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"both"))
+    assert r.status_code==201,r.text
+    assert pairs()==[]
+    assert len(client.get(path,headers=auth,params={"status":"confirmed"}).json())==2
+    assert client.patch(f"{path}/{a}/status",headers=auth,json={"status":"proposed"}).status_code==200
+    reopened=pairs()[0]
+    assert client.post(path+"/conflicts/resolve",headers=auth,json=payload(pair,"both")).status_code==409
+    action="reject_a" if reopened["a"]["id"]==a else "reject_b"
+    result=client.post(path+"/conflicts/resolve",headers=auth,json=payload(reopened,action))
+    assert result.status_code==201,result.text
+    assert pairs()==[]
+    assert len(client.get(path,headers=auth,params={"status":"rejected"}).json())==2

@@ -136,6 +136,20 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not facts.isError and fact["id"] in str(facts.content)
                         ended_fact = await session.call_tool("temporal_fact_end", {"fact_id":fact["id"],"valid_until":"2022-01-01","confirm":True})
                         assert not ended_fact.isError
+                        conflicting = await session.call_tool("temporal_fact_propose", {"data":{"person_id":fact_person,"predicate":"Wohnort","value":"Bonn","valid_from":"2021-01-01"}})
+                        assert not conflicting.isError
+                        conflicts = await session.call_tool("temporal_fact_conflicts", {"person_id":fact_person})
+                        assert not conflicts.isError
+                        pair = json.loads(conflicts.content[0].text)
+                        if isinstance(pair, list):
+                            pair = pair[0]
+                        resolution = {"fact_a_id":pair["a"]["id"],"fact_b_id":pair["b"]["id"],"a_version":pair["a_version"],"b_version":pair["b_version"],"action":"both"}
+                        denied_resolution = await session.call_tool("temporal_fact_resolve", {"data":resolution})
+                        assert denied_resolution.isError
+                        resolved = await session.call_tool("temporal_fact_resolve", {"data":resolution,"confirm":True})
+                        assert not resolved.isError
+                        decisions = await session.call_tool("temporal_fact_conflict_history", {"person_id":fact_person})
+                        assert not decisions.isError and "both" in str(decisions.content)
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

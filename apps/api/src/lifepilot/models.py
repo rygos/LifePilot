@@ -658,6 +658,8 @@ class TemporalFact(Base):
     person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
     predicate: Mapped[str] = mapped_column(String(120))
     value: Mapped[str] = mapped_column(Text)
+    value_key: Mapped[str] = mapped_column(String(64))
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     confidence: Mapped[str] = mapped_column(String(10), default="medium")
@@ -667,3 +669,23 @@ class TemporalFact(Base):
     source_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class FactConflictDecision(Base):
+    __tablename__ = "fact_conflict_decisions"
+    __table_args__ = (
+        CheckConstraint("action IN ('changed', 'both', 'reject_a', 'reject_b', 'defer')", name="ck_fact_conflict_action"),
+        Index("ix_fact_conflict_pair", "owner_id", "fact_a_id", "fact_b_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
+    fact_a_id: Mapped[str] = mapped_column(ForeignKey("temporal_facts.id", ondelete="CASCADE"))
+    fact_b_id: Mapped[str] = mapped_column(ForeignKey("temporal_facts.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(12))
+    note: Mapped[str] = mapped_column(Text, default="")
+    a_revision: Mapped[int] = mapped_column(Integer)
+    b_revision: Mapped[int] = mapped_column(Integer)
+    before: Mapped[dict] = mapped_column(JSON)
+    after: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

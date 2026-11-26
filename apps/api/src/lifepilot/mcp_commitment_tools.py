@@ -7,6 +7,7 @@ from lifepilot.commitment_routes import (
 )
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
+from lifepilot.fact_conflicts import ResolveIn, DecisionOut, list_conflicts, list_decisions, resolve_conflict
 from lifepilot.temporal_facts import FactIn, FactOut, Status, list_facts, create_fact, set_fact_status, end_fact
 from lifepilot.routine_routes import RoutineCreate, RoutineSchedule, RoutineStepIn, ArchiveIn, CompletionIn, list_routines, create_routine, update_routine, archive_routine, add_step, archive_step, set_completion, routine_history
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
@@ -229,3 +230,30 @@ def register_commitment_tools(mcp: FastMCP) -> None:
             raise ValueError("Explizite Freigabe erforderlich")
         with mcp_session(owner) as db:
             return FactOut.model_validate(end_fact(db, owner, fact_id, valid_until, "mcp")).model_dump(mode="json")
+
+
+    @mcp.tool(name="temporal_fact_conflicts")
+    def temporal_fact_conflicts(person_id: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+        """Possible overlapping differing values for selected state properties; not proof of contradiction."""
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("Ungültige Seitengröße")
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [row.model_dump(mode="json") for row in list_conflicts(db, owner, person_id, limit, offset)]
+
+    @mcp.tool(name="temporal_fact_resolve")
+    def temporal_fact_resolve(data: ResolveIn, confirm: bool = False) -> dict:
+        """Resolve a reviewed pair using the IDs and versions returned by temporal_fact_conflicts. Explicit user approval required."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return DecisionOut.model_validate(resolve_conflict(db, owner, data, "mcp")).model_dump(mode="json")
+
+    @mcp.tool(name="temporal_fact_conflict_history")
+    def temporal_fact_conflict_history(person_id: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("Ungültige Seitengröße")
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return [DecisionOut.model_validate(row).model_dump(mode="json") for row in list_decisions(db, owner, person_id, limit, offset)]

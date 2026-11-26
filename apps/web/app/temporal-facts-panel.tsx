@@ -1,6 +1,8 @@
 "use client";
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 
+import { FactConflictsPanel } from "./fact-conflicts-panel";
+
 type Request = <T>(path:string,init?:RequestInit)=>Promise<T>;
 type Person = {id:string;first_name:string;last_name:string};
 type Status = "proposed"|"confirmed"|"rejected";
@@ -8,6 +10,7 @@ type Fact = {id:string;person_id:string;predicate:string;value:string;valid_from
 const statusLabel = {proposed:"Unbestätigt",confirmed:"Bestätigt",rejected:"Verworfen"};
 const confidenceLabel = {low:"Niedrig",medium:"Mittel",high:"Hoch"};
 export function TemporalFactsPanel({request,people,personId}:{request:Request;people:Person[];personId?:string}) {
+  const [revision,setRevision]=useState(0);
   const [subject,setSubject]=useState(personId??"");
   const [status,setStatus]=useState("");
   const [asOf,setAsOf]=useState("");
@@ -33,7 +36,7 @@ export function TemporalFactsPanel({request,people,personId}:{request:Request;pe
   useEffect(()=>{let live=true;setLoading(true);setError("");load().catch(e=>{if(live)setError(String(e));}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;generation.current++;};},[load]);
   async function run(action:()=>Promise<unknown>,after?:()=>void){
     setBusy(true);setError("");
-    try{await action();after?.();await load();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
+    try{await action();after?.();setRevision(v=>v+1);await load();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
   }
   function create(e:FormEvent<HTMLFormElement>){
     e.preventDefault();const form=e.currentTarget;const fields=new FormData(form);
@@ -48,6 +51,7 @@ export function TemporalFactsPanel({request,people,personId}:{request:Request;pe
     <div className="panel-head"><div><span className="eyebrow">GEDÄCHTNIS MIT ZEITBEZUG</span><h2>Zeitliche Fakten</h2></div><button type="button" className="quiet" onClick={()=>setCreating(v=>!v)}>{creating?"Schließen":"Fakt hinzufügen"}</button></div>
     <p className="muted">Fakten beginnen als unbestätigte Vorschläge. Unbekannte Datumsgrenzen sind keine Belege für Gültigkeit. Das Enddatum ist exklusiv (ab diesem Tag gilt der Fakt nicht mehr). Bestehende Profilfelder werden nicht automatisch verändert.</p>
     {error&&<p className="error" role="alert">{error}</p>}
+    <FactConflictsPanel key={subject||"all"} request={request} people={people} personId={subject||undefined} revision={revision} onResolved={async()=>{setRevision(v=>v+1);await load();}}/>
     {creating&&<form className="person-form" onSubmit={create}>
       <label>Person<select name="person_id" required defaultValue={subject}><option value="">Auswählen</option>{people.filter(p=>!personId||p.id===personId).map(p=><option value={p.id} key={p.id}>{p.first_name} {p.last_name}</option>)}</select></label>
       <label>Eigenschaft<input name="predicate" required maxLength={120} placeholder="z. B. Wohnort, Arbeitgeber, Hobby"/></label>
