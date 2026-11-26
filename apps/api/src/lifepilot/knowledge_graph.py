@@ -11,14 +11,14 @@ from lifepilot.db import get_db
 from lifepilot.models import (
     Person, Relationship, UserPersonRelationship, Organization, PersonOrganization,
     Conversation, ConversationParticipant, ConversationProject, Project, Event, EventParticipant,
-    Memory, MemoryProject, Commitment, TemporalFact, Task, User,
+    Memory, MemoryProject, Commitment, TemporalFact, Task, User, Place, PlaceEntry,
 )
 from lifepilot.security import current_user
 
 router = APIRouter(prefix="/api/graph", tags=["Wissensgraph"])
-Kind = Literal["person","organization","conversation","project","event","memory","commitment","fact","task"]
+Kind = Literal["person","organization","conversation","project","event","memory","commitment","fact","task","place","place_entry"]
 MODELS = {"person":Person,"organization":Organization,"conversation":Conversation,"project":Project,
-          "event":Event,"memory":Memory,"commitment":Commitment,"fact":TemporalFact,"task":Task}
+          "event":Event,"memory":Memory,"commitment":Commitment,"fact":TemporalFact,"task":Task,"place":Place,"place_entry":PlaceEntry}
 
 
 class Node(BaseModel):
@@ -65,6 +65,11 @@ LINKS = (
     (Commitment,"commitment","id","project","project_id","Projektbezug"),
     (Commitment,"commitment","id","conversation","conversation_id","Gesprächsbezug"),
     (TemporalFact,"person","person_id","fact","id","fact"),
+    (PlaceEntry,"place","place_id","place_entry","id","Ortseintrag"),
+    (PlaceEntry,"place_entry","id","person","person_id","Personenbezug"),
+    (PlaceEntry,"place_entry","id","event","event_id","Ereignisbezug"),
+    (PlaceEntry,"place_entry","id","conversation","conversation_id","Gesprächsbezug"),
+    (PlaceEntry,"place_entry","id","memory","memory_id","Erinnerungsbezug"),
 )
 
 
@@ -75,7 +80,7 @@ def key(kind, rid):
 def node_for(kind, row):
     if kind == "person":
         label = " ".join(filter(None,(row.first_name,row.last_name)))
-    elif kind in ("project","organization"):
+    elif kind in ("project","organization","place"):
         label = row.name
     elif kind == "fact":
         label = f"{row.predicate}: {row.value}"

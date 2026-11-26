@@ -200,6 +200,20 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not reviewed_decision.isError
                         review_history = await session.call_tool("decision_review_history", {"decision_id":entry["id"]})
                         assert not review_history.isError and "Ergebnis" in str(review_history.content)
+                        place_payload = {"name":"MCP Testort","address":"Testadresse"}
+                        denied_place = await session.call_tool("place_create", {"data":place_payload})
+                        assert denied_place.isError
+                        place_result = await session.call_tool("place_create", {"data":place_payload,"confirm":True})
+                        assert not place_result.isError
+                        place = json.loads(place_result.content[0].text)
+                        created_place_entry = await session.call_tool("place_entry_create", {"place_id":place["id"],"data":{"kind":"meeting","title":"Testbegegnung","person_id":fact_person},"confirm":True})
+                        assert not created_place_entry.isError
+                        place_entry_result = await session.call_tool("place_entry_list", {"place_id":place["id"]})
+                        assert not place_entry_result.isError and "Testbegegnung" in str(place_entry_result.content)
+                        places_result = await session.call_tool("place_list", {"person_id":fact_person})
+                        assert not places_result.isError and place["id"] in str(places_result.content)
+                        place_graph = await session.call_tool("knowledge_graph", {"root_kind":"place","root_id":place["id"],"depth":2})
+                        assert not place_graph.isError and fact_person in str(place_graph.content)
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

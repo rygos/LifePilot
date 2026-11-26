@@ -14,7 +14,7 @@
 .shell[data-view="people"] #tasks{display:none}
 .shell[data-view="people"] .content>.grid:has(#people){grid-template-columns:minmax(0,1fr)}
 .shell[data-view="person"] .content>*:not(header):not(.notice):not(.person-profile):not(.person-profile-tabs):not(.person-call-history):not(.contact-methods-panel):not(.resource-attachments-panel):not(.person-briefing):not(.person-life-events):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(.life-timeline-panel):not(.profile-dialog-backdrop){display:none}
-.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(.life-timeline-panel):not(.document-memory-panel):not(.decision-journal-panel):not(#memory-domain){display:none}
+.shell[data-view="memory"] .content>*:not(header):not(.notice):not(.search):not(.search-relationships):not([aria-live="polite"]):not(.memory-panel):not(.temporal-facts-panel):not(.knowledge-graph-panel):not(.life-timeline-panel):not(.document-memory-panel):not(.decision-journal-panel):not(.place-memory-panel):not(#memory-domain){display:none}
 .shell[data-view="memory"] #memory-domain>section:nth-child(2){display:none}
 .shell[data-view="memory"] #memory-domain{grid-template-columns:minmax(0,1fr)}
 .shell[data-view="things"] .content>*:not(header):not(.notice):not(#memory-domain){display:none}
@@ -337,3 +337,4 @@
 .training-photo{display:block;width:min(100%,280px);height:auto;aspect-ratio:1;object-fit:contain;margin:1rem auto;border-radius:1rem}.training-ratings{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.5rem}.training-ratings button small{display:block;font-size:.75rem}.face-training-panel{min-width:0}
 .document-excerpt{white-space:pre-wrap;overflow-wrap:anywhere;max-height:25rem;overflow:auto;padding:.75rem;border:1px solid var(--line,currentColor);border-radius:.5rem}.document-memory-panel{min-width:0}
 .decision-journal-panel{min-width:0}.decision-detail p{white-space:pre-wrap;overflow-wrap:anywhere}.decision-journal-panel fieldset{min-width:0;display:grid;gap:.5rem;border:1px solid var(--line,currentColor);border-radius:.5rem;padding:.75rem}
+.place-memory-panel{min-width:0}.place-detail p{white-space:pre-wrap;overflow-wrap:anywhere}

@@ -3,11 +3,11 @@ import {useEffect,useState} from "react";
 
 type Request = <T>(path:string,init?:RequestInit)=>Promise<T>;
 type Person = {id:string;first_name:string;last_name:string};
-type Kind = "conversation"|"event"|"memory"|"journal"|"life_event"|"call"|"fact"|"loan";
+type Kind = "conversation"|"event"|"memory"|"journal"|"life_event"|"call"|"fact"|"loan"|"place_entry";
 type Item = {id:string;kind:Kind;resource_id:string;title:string;occurrence:string;day:string|null;occurred_at:string|null;date_precision:string;status:string|null;people:{id:string;name:string}[];people_truncated:boolean};
 type Result = {items:Item[];next_offset:number|null;window_limited:boolean;timezone:string};
-const labels:Record<Kind,string>={conversation:"Gespräch",event:"Ereignis",memory:"Erinnerung",journal:"Tagebuch",life_event:"Biografie",call:"Telefonat",fact:"Zeitlicher Fakt",loan:"Leihgabe"};
-const icons:Record<Kind,string>={conversation:"💬",event:"📅",memory:"📝",journal:"📖",life_event:"◆",call:"☎",fact:"●",loan:"↔"};
+const labels:Record<Kind,string>={conversation:"Gespräch",event:"Ereignis",memory:"Erinnerung",journal:"Tagebuch",life_event:"Biografie",call:"Telefonat",fact:"Zeitlicher Fakt",loan:"Leihgabe",place_entry:"Ortseintrag"};
+const icons:Record<Kind,string>={conversation:"💬",event:"📅",memory:"📝",journal:"📖",life_event:"◆",call:"☎",fact:"●",loan:"↔",place_entry:"⌖"};
 const occurrence:Record<string,string>={start:"Beginn",end:"Ende der Gültigkeit (exklusiv)",lent:"Ausgeliehen",returned:"Zurückgegeben",unknown:"Gültigkeitszeitraum unbekannt"};
 const precision:Record<string,string>={unknown:"Datum unbekannt",approximate:"Ungefährer Zeitpunkt",month:"Monatsangabe",year:"Jahresangabe",day:"Tag bekannt",exact:"Zeitpunkt bekannt"};
 const dateLabel=(day:string)=>new Intl.DateTimeFormat("de-DE",{dateStyle:"long",timeZone:"UTC"}).format(new Date(day+"T00:00:00Z"));
@@ -52,7 +52,7 @@ export function LifeTimelinePanel({request,people,personId}:{request:Request;peo
       {data.items.length===0?<p>Keine passenden Einträge.</p>:<div className="life-timeline-list">{data.items.map((item,i)=>{
         const newDay=i===0||data.items[i-1].day!==item.day;
         const clock=item.occurred_at?new Intl.DateTimeFormat("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:data.timezone}).format(new Date(item.occurred_at)):null;
-        const type=item.kind==="event"?(item.status==="appointment"?"Kalendertermin":item.status==="experience"?"Erlebnis":labels.event):labels[item.kind];
+        const type=item.kind==="event"?(item.status==="appointment"?"Kalendertermin":item.status==="experience"?"Erlebnis":labels.event):item.kind==="place_entry"?({visit:"Besuch",meeting:"Begegnung",recommendation:"Empfehlung",memory:"Ortserinnerung",reference:"Ortsbezug"} as Record<string,string>)[item.status??""]??labels[item.kind]:labels[item.kind];
         return <div key={item.id}>{newDay&&<h3 className="timeline-day">{item.day?dateLabel(item.day):"Ohne konkretes Datum"}</h3>}<article className="timeline-entry"><span className="timeline-icon" aria-hidden="true">{icons[item.kind]}</span><div>
           <p className="muted">{type}{clock?" · "+clock:""}{occurrence[item.occurrence]?" · "+occurrence[item.occurrence]:""}{item.status==="proposed"?" · Unbestätigt":""}</p>
           <h4>{item.title}</h4>

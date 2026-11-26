@@ -3,12 +3,12 @@ import {useEffect,useMemo,useState} from "react";
 
 type Request = <T>(path:string,init?:RequestInit)=>Promise<T>;
 type Person = {id:string;first_name:string;last_name:string;is_self?:boolean};
-type Kind = "person"|"organization"|"conversation"|"project"|"event"|"memory"|"commitment"|"fact"|"task";
+type Kind = "person"|"organization"|"conversation"|"project"|"event"|"memory"|"commitment"|"fact"|"task"|"place"|"place_entry";
 type Node = {id:string;kind:Kind;resource_id:string;label:string;status:string|null};
 type Edge = {id:string;source:string;target:string;label:string;resource_type:string;resource_id:string;valid_from:string|null;valid_until:string|null;confirmed:boolean|null};
 type Graph = {root:string;nodes:Node[];edges:Edge[];truncated:boolean};
-const types:Record<Kind,string>={person:"Personen",organization:"Organisationen",conversation:"Gespräche",project:"Projekte",event:"Ereignisse",memory:"Erinnerungen",commitment:"Verpflichtungen",fact:"Zeitliche Fakten",task:"Aufgaben"};
-const colors:Record<Kind,string>={person:"#2563eb",organization:"#7c3aed",conversation:"#0f766e",project:"#b45309",event:"#be185d",memory:"#475569",commitment:"#a16207",fact:"#0369a1",task:"#15803d"};
+const types:Record<Kind,string>={person:"Personen",organization:"Organisationen",conversation:"Gespräche",project:"Projekte",event:"Ereignisse",memory:"Erinnerungen",commitment:"Verpflichtungen",fact:"Zeitliche Fakten",task:"Aufgaben",place:"Orte",place_entry:"Ortseinträge"};
+const colors:Record<Kind,string>={person:"#2563eb",organization:"#7c3aed",conversation:"#0f766e",project:"#b45309",event:"#be185d",memory:"#475569",commitment:"#a16207",fact:"#0369a1",task:"#15803d",place:"#a21caf",place_entry:"#0e7490"};
 const allKinds=Object.keys(types) as Kind[];
 const short=(label:string,n=18)=>label.length>n?label.slice(0,n-1)+"…":label;
 

@@ -8,6 +8,7 @@ from lifepilot.commitment_routes import (
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
+from lifepilot.place_routes import PlaceIn, EntryIn, EntryKind, list_places, get_place, create_place, update_place, archive_place, list_entries as list_place_entries, create_entry as create_place_entry
 from lifepilot.decision_journal import DecisionIn, ReviewIn, Status as DecisionStatus, list_entries as list_journal_entries, create_entry as create_decision_entry, get_entry as get_decision_entry, history as decision_history, add_review as add_decision_review
 from lifepilot.document_routes import list_documents, search_documents, read_document
 from lifepilot.face_training import Enrollment, Review, list_cards, enroll, review_card
@@ -370,3 +371,58 @@ def register_commitment_tools(mcp: FastMCP) -> None:
             raise ValueError("Explizite Freigabe erforderlich")
         with mcp_session(owner) as db:
             return add_decision_review(db, db.get(User, owner), decision_id, data, "mcp")
+
+
+    @mcp.tool(name="place_list")
+    def place_list(query: str | None = None, archived: bool = False, person_id: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+        """Find manually recorded places by name, address, category or notes, optionally by a directly linked person."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return list_places(db, owner, query, archived, person_id, limit, offset)
+
+    @mcp.tool(name="place_read")
+    def place_read(place_id: str) -> dict:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return get_place(db, owner, place_id)
+
+    @mcp.tool(name="place_create")
+    def place_create(data: PlaceIn, confirm: bool = False) -> dict:
+        """Store a place with user-provided details. Do not infer location or coordinates."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return create_place(db, owner, data, "mcp")
+
+    @mcp.tool(name="place_update")
+    def place_update(place_id: str, data: PlaceIn, confirm: bool = False) -> dict:
+        """Replace the editable fields of a place after explicit approval. Read existing values first."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return update_place(db, owner, place_id, data, "mcp")
+
+    @mcp.tool(name="place_archive")
+    def place_archive(place_id: str, archived: bool, confirm: bool = False) -> dict:
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return archive_place(db, owner, place_id, archived, "mcp")
+
+    @mcp.tool(name="place_entry_list")
+    def place_entry_list(place_id: str, kind: EntryKind | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return list_place_entries(db, owner, place_id, kind, limit, offset)
+
+    @mcp.tool(name="place_entry_create")
+    def place_entry_create(place_id: str, data: EntryIn, confirm: bool = False) -> dict:
+        """Record an explicitly supplied visit, meeting, recommendation, memory or reference. Leave unknown dates unset."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return create_place_entry(db, owner, place_id, data, "mcp")

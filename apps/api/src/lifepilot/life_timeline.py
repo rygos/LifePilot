@@ -12,12 +12,12 @@ from lifepilot.db import get_db
 from lifepilot.models import (
     Person, Conversation, ConversationParticipant, Event, EventParticipant,
     JournalEntry, JournalEntryPerson, Memory, PersonLifeEvent, PersonCallLog,
-    TemporalFact, Loan, User,
+    TemporalFact, Loan, User, Place, PlaceEntry,
 )
 from lifepilot.security import current_user
 
 router = APIRouter(prefix="/api/timeline", tags=["Lebenschronik"])
-Kind = Literal["conversation", "event", "memory", "journal", "life_event", "call", "fact", "loan"]
+Kind = Literal["conversation", "event", "memory", "journal", "life_event", "call", "fact", "loan", "place_entry"]
 Mode = Literal["dated", "undated"]
 MAX_OFFSET = 2000
 
@@ -60,6 +60,7 @@ SOURCES = (
     (TemporalFact, "fact", "end", "valid_until", "value", ("person_id",), None, None),
     (Loan, "loan", "lent", "lent_at", "item_name", ("lender_person_id","borrower_person_id"), None, None),
     (Loan, "loan", "returned", "returned_at", "item_name", ("lender_person_id","borrower_person_id"), None, None),
+    (PlaceEntry, "place_entry", "occurred", "occurred_on", "title", ("person_id",), None, None),
 )
 
 
@@ -95,7 +96,7 @@ def timeline(db: Session, owner: str, person_id=None, kinds=None, start=None, en
         if kind not in allowed:
             continue
         when = getattr(model, date_col)
-        day_only = model in (JournalEntry, TemporalFact)
+        day_only = model in (JournalEntry, TemporalFact, PlaceEntry)
         columns = [model.id, when.label("when"), (getattr(model,title_col) if title_col else null()).label("title"),
                    *[getattr(model,c) for c in direct_cols]]
         if model is PersonLifeEvent:
@@ -104,7 +105,11 @@ def timeline(db: Session, owner: str, person_id=None, kinds=None, start=None, en
             columns += [model.predicate, model.status]
         elif model is Event:
             columns += [model.record_type]
+        if model is PlaceEntry:
+            columns += [model.kind.label("place_kind"), select(Place.name).where(Place.id==model.place_id, Place.owner_id==owner).scalar_subquery().label("place_name")]
         stmt = select(*columns).where(model.owner_id==owner)
+        if model is PlaceEntry:
+            stmt = stmt.where(select(Place.id).where(Place.id==PlaceEntry.place_id,Place.owner_id==owner).exists())
         if person_id:
             if direct_cols:
                 stmt = stmt.where(or_(*[getattr(model,c)==person_id for c in direct_cols]))
@@ -146,12 +151,14 @@ def timeline(db: Session, owner: str, person_id=None, kinds=None, start=None, en
             precision=row.get("date_precision","day" if day_only else "exact") if value is not None or model is PersonLifeEvent else "unknown"
             if value is None and precision in ("exact","day"):
                 precision="unknown"
-            status=row.get("status",row.get("record_type"))
+            status=row.get("status",row.get("record_type",row.get("place_kind")))
             if model is PersonLifeEvent:
                 status="confirmed" if row["confirmed"] else "proposed"
             label=row["title"] or ("Telefonat" if model is PersonCallLog else "Tagebucheintrag" if model is JournalEntry else "Ohne Titel")
             if model is TemporalFact:
                 label=f"{row['predicate']}: {label}"
+            if model is PlaceEntry:
+                label=f"{row['place_name']}: {label}"
             actual_occurrence="unknown" if mode=="undated" and model is TemporalFact else occurrence
             item=TimelineItem(id=f"{kind}:{row['id']}:{actual_occurrence}",kind=kind,resource_id=row["id"],
                 title=label[:300],occurrence=actual_occurrence,day=day,occurred_at=instant if precision=="exact" else None,

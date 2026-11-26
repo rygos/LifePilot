@@ -58,6 +58,7 @@ from lifepilot.life_timeline import router as timeline_router
 from lifepilot.face_training import router as face_training_router
 from lifepilot.document_routes import router as document_router
 from lifepilot.decision_journal import router as decision_router, list_entries as list_decisions_due
+from lifepilot.place_routes import router as place_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -113,6 +114,7 @@ app.include_router(timeline_router)
 app.include_router(face_training_router)
 app.include_router(document_router)
 app.include_router(decision_router)
+app.include_router(place_router)
 
 @app.get("/health")
 def health(): return {"status": "ok"}
