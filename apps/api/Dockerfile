@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 COPY --from=build /app/version-commit ./version-commit
 COPY --from=build /app/alembic.ini ./alembic.ini
 COPY --from=build /app/migrations ./migrations
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng util-linux && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/data
 EXPOSE 8000 8002
 COPY entrypoint.sh ./entrypoint.sh

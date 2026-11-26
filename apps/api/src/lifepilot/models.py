@@ -709,3 +709,24 @@ class FaceTrainingCard(Base):
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DocumentIndex(Base):
+    __tablename__ = "document_indexes"
+    id: Mapped[str] = mapped_column(ForeignKey("attachments.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    digest: Mapped[str] = mapped_column(String(64))
+    total_pages: Mapped[int] = mapped_column(Integer)
+    partial: Mapped[bool] = mapped_column(Boolean)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DocumentPage(Base):
+    __tablename__ = "document_pages"
+    __table_args__ = (Index("ix_document_pages_owner", "owner_id", "document_id"),)
+    document_id: Mapped[str] = mapped_column(ForeignKey("document_indexes.id", ondelete="CASCADE"), primary_key=True)
+    page: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    content: Mapped[str] = mapped_column(Text)
+    method: Mapped[str] = mapped_column(String(12))
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)

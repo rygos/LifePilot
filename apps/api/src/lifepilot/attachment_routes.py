@@ -8,14 +8,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.responses import FileResponse
 
 from lifepilot.config import settings
 from lifepilot.db import get_db
-from lifepilot.models import Attachment, AuditEvent, Conversation, Event, Memory, Person, Project, User
+from lifepilot.models import Attachment, DocumentIndex, DocumentPage, AuditEvent, Conversation, Event, Memory, Person, Project, User
 from lifepilot.schemas import AttachmentOut, AttachmentResourceType
 from lifepilot.security import current_user
 
@@ -48,10 +48,16 @@ def owned_attachment_resource(db: Session, resource_type: AttachmentResourceType
         raise HTTPException(status_code=404, detail="Zugehöriger Eintrag nicht gefunden")
 
 
+def remove_document_index(db: Session, row: Attachment) -> None:
+    db.execute(delete(DocumentPage).where(DocumentPage.document_id == row.id, DocumentPage.owner_id == row.owner_id))
+    db.execute(delete(DocumentIndex).where(DocumentIndex.id == row.id, DocumentIndex.owner_id == row.owner_id))
+
+
 def attachment_files_for_resource(db: Session, owner_id: str, resource_type: AttachmentResourceType, resource_id: str) -> list[Path]:
     rows = db.scalars(select(Attachment).where(Attachment.owner_id == owner_id, Attachment.resource_type == resource_type, Attachment.resource_id == resource_id)).all()
     paths = [attachment_path(owner_id, row.storage_key) for row in rows]
     for row in rows:
+        remove_document_index(db, row)
         db.delete(row)
     return paths
 
@@ -60,6 +66,7 @@ def attachment_files_for_owner(db: Session, owner_id: str) -> list[Path]:
     rows = db.scalars(select(Attachment).where(Attachment.owner_id == owner_id)).all()
     paths = [attachment_path(owner_id, row.storage_key) for row in rows]
     for row in rows:
+        remove_document_index(db, row)
         db.delete(row)
     return paths
 
@@ -160,6 +167,7 @@ def attachment_delete(attachment_id: str, db: Session = Depends(get_db), user: U
         raise HTTPException(status_code=404, detail="Anhang nicht gefunden")
     path = attachment_path(user.id, row.storage_key)
     db.add(AuditEvent(owner_id=user.id, action="delete", resource_type="attachments", resource_id=row.id, source="web"))
+    remove_document_index(db, row)
     db.delete(row)
     db.commit()
     path.unlink(missing_ok=True)

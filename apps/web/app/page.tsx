@@ -17,6 +17,7 @@ import { CommitmentsPanel } from "./commitments/commitments-panel";
 import { TemporalFactsPanel } from "./temporal-facts-panel";
 import { KnowledgeGraphPanel } from "./knowledge-graph-panel";
 import { LifeTimelinePanel } from "./life-timeline-panel";
+import { DocumentMemoryPanel } from "./document-memory-panel";
 import { FaceTrainingPanel } from "./people/face-training-panel";
 import { NextActionPanel } from "./planning/next-action-panel";
 import { FocusPanel } from "./planning/focus-panel";
@@ -632,6 +633,7 @@ export default function Home() {
       {currentView === "admin" && currentUser?.role === "admin" && <AdminPanel request={request} currentUserId={currentUser.id} />}
       {currentView === "admin" && currentUser?.role !== "admin" && <section className="card panel"><h2>Kein Zugriff</h2><p>Für die Administration brauchst du ein Administratorkonto.</p></section>}
       {currentView === "journal" && <JournalPanel people={people} projects={projects} events={events} request={request} onMessage={setMessage} />}
+      {currentView === "memory" && <DocumentMemoryPanel request={request}/>}
       {currentView === "memory" && <LifeTimelinePanel request={request} people={people}/>}
       {currentView === "person" && selectedPerson && personProfileTab === "history" && <LifeTimelinePanel key={"timeline-"+selectedPerson.id} request={request} people={people} personId={selectedPerson.id}/>}
       {currentView === "memory" && <KnowledgeGraphPanel request={request} people={people}/>}

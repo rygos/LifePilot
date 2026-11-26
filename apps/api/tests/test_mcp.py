@@ -171,6 +171,18 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         rated_training = await session.call_tool("face_training_review", {"card_id":training["id"],"data":{"rating":"good","revision":training["revision"]},"confirm":True})
                         assert not rated_training.isError
                         assert json.loads(rated_training.content[0].text)["level"] == 1
+                        uploaded_doc = client.post("/api/attachments",headers=auth,data={"resource_type":"person","resource_id":fact_person},files={"file":("mcp-test.txt",b"Dokument MCP Beleg")})
+                        assert uploaded_doc.status_code == 201
+                        attachment_id = uploaded_doc.json()["id"]
+                        extracted_doc = client.post("/api/documents/"+attachment_id+"/extract",headers=auth,json={})
+                        assert extracted_doc.status_code == 200
+                        listed_docs = await session.call_tool("document_list", {})
+                        assert not listed_docs.isError and attachment_id in str(listed_docs.content)
+                        doc_hits = await session.call_tool("document_search", {"query":"Dokument MCP Beleg"})
+                        assert not doc_hits.isError and attachment_id in str(doc_hits.content)
+                        doc_page = await session.call_tool("document_read", {"attachment_id":attachment_id,"page":1})
+                        assert not doc_page.isError and "Dokument MCP Beleg" in str(doc_page.content)
+                        assert client.delete("/api/attachments/"+attachment_id,headers=auth).status_code == 204
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})
