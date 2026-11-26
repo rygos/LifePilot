@@ -183,6 +183,23 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         doc_page = await session.call_tool("document_read", {"attachment_id":attachment_id,"page":1})
                         assert not doc_page.isError and "Dokument MCP Beleg" in str(doc_page.content)
                         assert client.delete("/api/attachments/"+attachment_id,headers=auth).status_code == 204
+                        decision_payload = {"title":"MCP Entscheidung","decided_on":"2020-01-01","choice":"A","rationale":"Begründung","person_id":fact_person}
+                        denied_decision = await session.call_tool("decision_create", {"data":decision_payload})
+                        assert denied_decision.isError
+                        decision_result = await session.call_tool("decision_create", {"data":decision_payload,"confirm":True})
+                        assert not decision_result.isError
+                        entry = json.loads(decision_result.content[0].text)
+                        decisions = await session.call_tool("decision_list", {"person_id":fact_person})
+                        assert not decisions.isError and entry["id"] in str(decisions.content)
+                        decision_detail = await session.call_tool("decision_read", {"decision_id":entry["id"]})
+                        assert not decision_detail.isError and "Begründung" in str(decision_detail.content)
+                        review_payload = {"revision":0,"assessment":"as_expected","outcome":"Ergebnis","closed":True}
+                        denied_review = await session.call_tool("decision_review", {"decision_id":entry["id"],"data":review_payload})
+                        assert denied_review.isError
+                        reviewed_decision = await session.call_tool("decision_review", {"decision_id":entry["id"],"data":review_payload,"confirm":True})
+                        assert not reviewed_decision.isError
+                        review_history = await session.call_tool("decision_review_history", {"decision_id":entry["id"]})
+                        assert not review_history.isError and "Ergebnis" in str(review_history.content)
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})
                         assert not focus_history.isError and focus_id in str(focus_history.content)
                         recommended = await session.call_tool("next_best_action", {"minutes": 120, "energy": "high", "context": "computer"})

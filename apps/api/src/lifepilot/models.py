@@ -730,3 +730,47 @@ class DocumentPage(Base):
     content: Mapped[str] = mapped_column(Text)
     method: Mapped[str] = mapped_column(String(12))
     truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DecisionEntry(Base):
+    __tablename__ = "decision_entries"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'closed')", name="ck_decision_status"),
+        Index("ix_decision_due", "owner_id", "status", "review_on"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    memory_id: Mapped[str | None] = mapped_column(ForeignKey("memories.id", ondelete="SET NULL"), nullable=True)
+    attachment_id: Mapped[str | None] = mapped_column(ForeignKey("attachments.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(240))
+    decided_on: Mapped[date] = mapped_column(Date)
+    choice: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text)
+    alternatives: Mapped[list] = mapped_column(JSON, default=list)
+    expected_outcome: Mapped[str] = mapped_column(Text, default="")
+    review_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="open")
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DecisionReview(Base):
+    __tablename__ = "decision_reviews"
+    __table_args__ = (
+        UniqueConstraint("decision_id", "revision", name="uq_decision_review_revision"),
+        CheckConstraint("assessment IN ('better', 'as_expected', 'worse', 'unclear')", name="ck_decision_assessment"),
+        Index("ix_decision_review_owner", "owner_id", "decision_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    decision_id: Mapped[str] = mapped_column(ForeignKey("decision_entries.id", ondelete="CASCADE"))
+    revision: Mapped[int] = mapped_column(Integer)
+    assessment: Mapped[str] = mapped_column(String(16))
+    outcome: Mapped[str] = mapped_column(Text)
+    lessons: Mapped[str] = mapped_column(Text, default="")
+    next_review_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    closed: Mapped[bool] = mapped_column(Boolean)
+    reviewed_on: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

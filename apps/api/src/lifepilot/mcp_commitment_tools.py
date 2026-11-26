@@ -8,6 +8,7 @@ from lifepilot.commitment_routes import (
 from lifepilot.mcp_tools import mcp_session, mcp_user
 from lifepilot.models import User, WorkCheckpoint
 from lifepilot.knowledge_graph import Kind, graph
+from lifepilot.decision_journal import DecisionIn, ReviewIn, Status as DecisionStatus, list_entries as list_journal_entries, create_entry as create_decision_entry, get_entry as get_decision_entry, history as decision_history, add_review as add_decision_review
 from lifepilot.document_routes import list_documents, search_documents, read_document
 from lifepilot.face_training import Enrollment, Review, list_cards, enroll, review_card
 from lifepilot.life_timeline import Kind as TimelineKind, Mode as TimelineMode, timeline
@@ -331,3 +332,41 @@ def register_commitment_tools(mcp: FastMCP) -> None:
             if not document["pages"]:
                 raise ValueError("Seite nicht indexiert")
             return document
+
+
+    @mcp.tool(name="decision_list")
+    def decision_list(status: DecisionStatus | None = None, due_only: bool = False, person_id: str | None = None, project_id: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+        """List documented decisions, optionally due for review in the owner's timezone."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return list_journal_entries(db, db.get(User, owner), status, due_only, person_id, project_id, limit, offset)
+
+    @mcp.tool(name="decision_create")
+    def decision_create(data: DecisionIn, confirm: bool = False) -> dict:
+        """Record the user's actual decision and reasoning after explicit approval. Never invent motives or decide for the user."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return create_decision_entry(db, db.get(User, owner), data, "mcp")
+
+    @mcp.tool(name="decision_read")
+    def decision_read(decision_id: str) -> dict:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return get_decision_entry(db, db.get(User, owner), decision_id)
+
+    @mcp.tool(name="decision_review_history")
+    def decision_review_history(decision_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return decision_history(db, db.get(User, owner), decision_id, limit, offset)
+
+    @mcp.tool(name="decision_review")
+    def decision_review(decision_id: str, data: ReviewIn, confirm: bool = False) -> dict:
+        """Append the user's observed outcome and own assessment after explicit approval."""
+        owner = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Explizite Freigabe erforderlich")
+        with mcp_session(owner) as db:
+            return add_decision_review(db, db.get(User, owner), decision_id, data, "mcp")
