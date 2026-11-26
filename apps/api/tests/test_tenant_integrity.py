@@ -142,6 +142,21 @@ def test_postgres_migration_and_guards(request,monkeypatch):
         command.upgrade(config,"head")
         with Session(pg) as db:
             exercise_guards(db)
+        # Exercise real approval locking and transactional person merge on PostgreSQL.
+        from lifepilot.approval_policy import queue
+        from lifepilot.approval_routes import approval_approve
+        with Session(pg) as db:
+            a,b,pa,pb,oa,ob,ca,mb,sb=seed(db)
+            target=Person(owner_id=a.id,first_name="Merge target")
+            db.add(target);db.flush()
+            note=Memory(owner_id=a.id,person_id=pa.id,title="Keep",content="Kept")
+            db.add(note);db.commit()
+            source_id,target_id,note_id=pa.id,target.id,note.id
+            aid=queue(db,a.id,"person_merge",source_id,"",{"target_id":target_id})["approval_id"]
+            assert approval_approve(aid,db,a).status=="executed"
+            db.expire_all()
+            assert db.get(Person,source_id) is None
+            assert db.get(Memory,note_id).person_id==target_id
         command.downgrade(config,"0054_login_budgets")
         # Verify upgrade works with valid existing rows and reinstalls guards.
         command.upgrade(config,"head")

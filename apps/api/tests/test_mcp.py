@@ -280,7 +280,11 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         changed_contact = await session.call_tool("person_contact_method_update", {"method_id": contact_method_id, "method_type": "email", "value": "mcp-work@example.org", "label": "Geschäftlich"})
                         assert not changed_contact.isError and "mcp-work@example.org" in str(changed_contact.content)
                         deleted_contact = await session.call_tool("person_contact_method_delete", {"method_id": contact_method_id})
-                        assert not deleted_contact.isError and "deleted" in str(deleted_contact.content)
+                        assert not deleted_contact.isError and "approval_id" in str(deleted_contact.content)
+                        contact_approval = json.loads(deleted_contact.content[0].text)["approval_id"]
+                        assert any(m["id"]==contact_method_id for m in client.get(f"/api/people/{person_id}/contact-methods",headers=auth).json())
+                        assert client.post(f"/api/approvals/{contact_approval}/approve",headers={"Authorization":"Bearer "+token}).status_code==403
+                        assert client.post(f"/api/approvals/{contact_approval}/approve",headers=auth).status_code==200
                         child = await session.call_tool("person_create_tool", {"first_name": "MCP-Kind", "gender": "female"})
                         child_id = json.loads(child.content[0].text)["id"]
                         assert json.loads(child.content[0].text)["gender"] == "female"
@@ -327,10 +331,20 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not edited_note.isError and "Geänderter Notizinhalt" in str(edited_note.content)
                         found_note = await session.call_tool("note_search", {"query": "Geänderter Notizinhalt"})
                         assert not found_note.isError and note_id in str(found_note.content)
-                        reviewed = await session.call_tool("memory_review", {"capture_id": ready_capture_id, "accepted_indices": [0], "suggestions": [{"title": "Korrigierte Notiz", "content": "Korrigierter Inhalt", "kind": "fact"}]})
-                        assert not reviewed.isError and "Korrigierte Notiz" in str(reviewed.content)
-                        new_contact = await session.call_tool("memory_review", {"capture_id": new_person_capture_id, "accepted_indices": [0], "create_people": [0], "confirmations": [0]})
-                        assert not new_contact.isError and "conversation" in str(new_contact.content)
+                        reviewed_data = {"accepted_indices": [0], "suggestions": [{"title": "Korrigierte Notiz", "content": "Korrigierter Inhalt", "kind": "fact"}]}
+                        reviewed = await session.call_tool("memory_review", {"capture_id": ready_capture_id, **reviewed_data})
+                        assert reviewed.isError
+                        assert next(c for c in client.get("/api/captures",headers=auth).json() if c["id"]==ready_capture_id)["status"]=="ready"
+                        web_reviewed = client.post("/api/captures/"+ready_capture_id+"/review",headers=auth,json=reviewed_data)
+                        assert web_reviewed.status_code==201,web_reviewed.text
+                        assert "Korrigierte Notiz" in web_reviewed.text
+                        new_contact_data = {"accepted_indices": [0], "create_people": [0], "confirmations": [0]}
+                        new_contact = await session.call_tool("memory_review", {"capture_id": new_person_capture_id, **new_contact_data})
+                        assert new_contact.isError
+                        assert next(c for c in client.get("/api/captures",headers=auth).json() if c["id"]==new_person_capture_id)["status"]=="ready"
+                        web_new_contact = client.post("/api/captures/"+new_person_capture_id+"/review",headers=auth,json=new_contact_data)
+                        assert web_new_contact.status_code==201,web_new_contact.text
+                        assert "conversation" in web_new_contact.text
                         found_new_contact = await session.call_tool("person_search_tool", {"query": "MCP-Neu"})
                         assert not found_new_contact.isError and "Person" in str(found_new_contact.content)
                         relation = await session.call_tool("relationship_create", {"source_person_id": person_id, "target_person_id": child_id, "relationship_type": "Vater von"})
@@ -344,8 +358,13 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         assert not searched_label.isError and child_id in str(searched_label.content)
                         updated_relation = await session.call_tool("relationship_search", {"person_id": person_id})
                         assert not updated_relation.isError and "Sohn von" in str(updated_relation.content)
-                        owner_relationship = await session.call_tool("memory_review", {"capture_id": owner_relationship_capture_id, "accepted_indices": [0], "person_assignments": {"0": person_id}, "confirmations": [0]})
-                        assert not owner_relationship.isError and "owner_relationship" in str(owner_relationship.content)
+                        owner_relationship_data = {"accepted_indices": [0], "person_assignments": {"0": person_id}, "confirmations": [0]}
+                        owner_relationship = await session.call_tool("memory_review", {"capture_id": owner_relationship_capture_id, **owner_relationship_data})
+                        assert owner_relationship.isError
+                        assert next(c for c in client.get("/api/captures",headers=auth).json() if c["id"]==owner_relationship_capture_id)["status"]=="ready"
+                        web_owner_relationship = client.post("/api/captures/"+owner_relationship_capture_id+"/review",headers=auth,json=owner_relationship_data)
+                        assert web_owner_relationship.status_code==201,web_owner_relationship.text
+                        assert "owner_relationship" in web_owner_relationship.text
                         context = await session.call_tool("person_context", {"person_id": person_id})
                         assert not context.isError and "MCP-Kind" in str(context.content) and "Arbeitskollegin" in str(context.content)
                         forbidden = await session.call_tool("person_get", {"person_id": foreign_person_id})
@@ -407,12 +426,21 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         merge_source_id = json.loads(merge_source.content[0].text)["id"]
                         merge_note = await session.call_tool("note_create", {"title": "Wird übernommen", "content": "Erinnerung bleibt", "person_id": merge_source_id})
                         merge_note_id = json.loads(merge_note.content[0].text)["id"]
-                        merge_relation = await session.call_tool("memory_review", {"capture_id": merge_relationship_capture_id, "accepted_indices": [0], "person_assignments": {"0": merge_source_id}, "confirmations": [0]})
-                        assert not merge_relation.isError and "owner_relationship" in str(merge_relation.content)
+                        merge_relation_data = {"accepted_indices": [0], "person_assignments": {"0": merge_source_id}, "confirmations": [0]}
+                        merge_relation = await session.call_tool("memory_review", {"capture_id": merge_relationship_capture_id, **merge_relation_data})
+                        assert merge_relation.isError
+                        assert next(c for c in client.get("/api/captures",headers=auth).json() if c["id"]==merge_relationship_capture_id)["status"]=="ready"
+                        web_merge_relation = client.post("/api/captures/"+merge_relationship_capture_id+"/review",headers=auth,json=merge_relation_data)
+                        assert web_merge_relation.status_code==201,web_merge_relation.text
+                        assert "owner_relationship" in web_merge_relation.text
                         not_confirmed = await session.call_tool("person_merge", {"source_person_id": merge_source_id, "target_person_id": person_id})
                         assert not_confirmed.isError
                         merged = await session.call_tool("person_merge", {"source_person_id": merge_source_id, "target_person_id": person_id, "confirm": True})
-                        assert not merged.isError and person_id in str(merged.content)
+                        assert not merged.isError and "approval_id" in str(merged.content)
+                        merge_approval=json.loads(merged.content[0].text)["approval_id"]
+                        assert client.get("/api/people/"+merge_source_id,headers=auth).status_code==200
+                        assert client.post("/api/approvals/"+merge_approval+"/approve",headers=auth).status_code==200
+                        assert client.get("/api/people/"+merge_source_id,headers=auth).status_code==404
                         merged_note = await session.call_tool("note_get", {"note_id": merge_note_id})
                         assert not merged_note.isError and person_id in str(merged_note.content)
                         merged_context = await session.call_tool("person_context", {"person_id": person_id})

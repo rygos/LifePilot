@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import Text, or_, select
 from sqlalchemy.orm import Session
 from lifepilot.audit import ACTOR_KEY
+from lifepilot.approval_policy import queue as queue_approval
 from lifepilot.config import settings
 from lifepilot.db import engine
 from lifepilot.embedding_jobs import enqueue_memory_embedding
@@ -48,15 +49,8 @@ try:
         session.info[ACTOR_KEY] = owner_id
         return session
 
-    def request_approval(db: Session, owner_id: str, operation: str, resource_id: str, resource_label: str) -> dict:
-        row = db.scalar(select(ApprovalRequest).where(ApprovalRequest.owner_id == owner_id, ApprovalRequest.operation == operation, ApprovalRequest.resource_id == resource_id, ApprovalRequest.status == "pending"))
-        if row is not None:
-            return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
-        row = ApprovalRequest(owner_id=owner_id, operation=operation, resource_id=resource_id, resource_label=resource_label)
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-        return {"approval_id": row.id, "operation": operation, "resource_id": resource_id, "status": row.status, "message": "Im LifePilot-Eingang durch den Benutzer freigeben"}
+    def request_approval(db: Session, owner_id: str, operation: str, resource_id: str, resource_label: str, payload: dict | None = None) -> dict:
+        return queue_approval(db,owner_id,operation,resource_id,resource_label,payload)
     @mcp.tool()
     def person_create_tool(first_name: str, last_name: str = "", nickname: str | None = None, birthday: str | None = None, birthday_precision: Literal["exact", "month_day", "approximate", "unknown"] = "unknown", birthday_month: int | None = None, birthday_day: int | None = None, birthday_approximate_age: int | None = None, contact_interval_days: int | None = None, gender: Literal["female", "male", "diverse", "unspecified"] = "unspecified", email: str | None = None, phone: str | None = None, address: str = "", website: str | None = None, job_title: str | None = None, organization: str | None = None, how_met: str = "", tags: list[str] | None = None, is_favorite: bool = False, notes: str = "") -> dict:
         owner_id = mcp_user("memory:write")
@@ -97,8 +91,10 @@ try:
     def person_contact_method_delete_tool(method_id: str) -> dict:
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
-            person_contact_method_delete(method_id, db, db.get(User, owner_id))
-            return {"deleted": True, "method_id": method_id}
+            row = db.scalar(select(PersonContactMethod).where(PersonContactMethod.id == method_id, PersonContactMethod.owner_id == owner_id))
+            if row is None:
+                raise ValueError("Kontaktmöglichkeit nicht gefunden")
+            return request_approval(db,owner_id,"person_contact_method_delete",row.id,f"{row.method_type}: {row.label} {row.value}")
     @mcp.tool()
     def memory_capture_tool(title: str, content: str, person_id: str | None = None) -> dict:
         owner_id = mcp_user("memory:write")

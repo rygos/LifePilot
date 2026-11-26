@@ -45,6 +45,11 @@ class ApprovalOut(BaseModel):
     status: str
     created_at: datetime
     decided_at: datetime | None
+    payload: dict | None = None
+
+    @field_serializer("created_at", "decided_at")
+    def serialize_dates_as_utc(self, value: datetime | None) -> datetime | None:
+        return as_utc(value)
 
 class ReindexOut(BaseModel):
     queued: int

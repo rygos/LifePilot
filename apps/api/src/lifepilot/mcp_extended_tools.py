@@ -298,12 +298,12 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="memory_review")
     def memory_review_mcp(capture_id: str, accepted_indices: list[int], person_assignments: dict[int, str] | None = None, related_person_assignments: dict[int, str] | None = None, project_assignments: dict[int, str] | None = None, create_people: list[int] | None = None, create_related_people: list[int] | None = None, confirmations: list[int] | None = None, suggestions: list[CaptureSuggestion] | None = None) -> list[dict]:
+        """Review must happen in the authenticated web inbox; this tool no longer applies AI suggestions."""
         owner_id = mcp_user("memory:write")
         with mcp_session(owner_id) as db:
             if db.scalar(select(Capture.id).where(Capture.id == capture_id, Capture.owner_id == owner_id)) is None:
                 raise ValueError("Eingabe nicht gefunden")
-            created = capture_review(capture_id, CaptureReviewIn(accepted_indices=accepted_indices, person_assignments=person_assignments or {}, related_person_assignments=related_person_assignments or {}, project_assignments=project_assignments or {}, create_people=create_people or [], create_related_people=create_related_people or [], confirmations=confirmations or [], suggestions=suggestions), db, db.get(User, owner_id))
-            return [row.model_dump(mode="json") for row in created]
+            raise ValueError("Erfassung muss vom Benutzer im LifePilot-Web-Eingang geprüft werden. MCP kann keine Freigabe erteilen oder Vorschläge ersetzen.")
 
     @mcp.tool(name="relationship_update")
     def relationship_update_mcp(
@@ -385,6 +385,16 @@ def register_extended_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(name="person_merge")
     def person_merge_mcp(source_person_id: str, target_person_id: str, confirm: bool = False) -> dict:
+        """Request a server-side approval for merging two people. confirm only submits a request; the web user must approve."""
+        from lifepilot.mcp_tools import request_approval
+        owner_id = mcp_user("memory:write")
+        if not confirm:
+            raise ValueError("Setze confirm=true nur, um eine Freigabe anzufragen; die Zusammenführung erfolgt erst im Web-Eingang.")
+        with mcp_session(owner_id) as db:
+            return request_approval(db,owner_id,"person_merge",source_person_id,"",{"target_id":target_person_id})
+
+    # Legacy implementation retained unregistered pending consolidation of local edits.
+    def _legacy_person_merge_mcp(source_person_id: str, target_person_id: str, confirm: bool = False) -> dict:
         if not confirm:
             raise ValueError("Personenzusammenführung ist dauerhaft. Setze confirm=true, um fortzufahren.")
         owner_id = mcp_user("memory:write")

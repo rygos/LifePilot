@@ -9,6 +9,7 @@ from lifepilot.db import engine
 from lifepilot.models import ApprovalRequest, FocusSession, InventoryLoan, JournalEntryPerson, Reminder, Task, TrashEntry, User, WorkCheckpoint
 from lifepilot.security import create_token, hash_password
 from lifepilot import trash_routes
+from lifepilot.approval_policy import queue
 
 
 def account():
@@ -57,8 +58,7 @@ def test_task_restore_and_approval_are_atomic(client,monkeypatch):
     with Session(engine) as db:
         assert db.get(Reminder,rid).state=="muted"
         assert db.get(WorkCheckpoint,cid).task_id==tid
-        pending=ApprovalRequest(owner_id=owner,operation="task_delete",resource_id=tid,resource_label="Testaufgabe")
-        db.add(pending);db.commit();aid=pending.id
+        aid=queue(db,owner,"task_delete",tid,"Testaufgabe")["approval_id"]
     assert client.post("/api/trash/"+eid+"/restore",headers=auth).status_code==404
     approved=client.post("/api/approvals/"+aid+"/approve",headers=auth)
     assert approved.status_code==200,approved.text

@@ -463,6 +463,8 @@ class ApprovalRequest(Base):
     resource_id: Mapped[str] = mapped_column(String(36))
     resource_label: Mapped[str] = mapped_column(String(240), default="")
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    resource_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

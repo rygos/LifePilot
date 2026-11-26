@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from mcp.server.fastmcp import FastMCP
 
+from lifepilot.approval_policy import active_filters
 from lifepilot.models import ApprovalRequest, AuditEvent, Conversation, ConversationParticipant, ConversationProject, Gift, Loan, Person, Project, Relationship, Reminder, Task, User
 from lifepilot.entity_embedding_jobs import enqueue_entity_embedding
 from lifepilot.planner import event_update, reminder_create, reminder_update
@@ -57,7 +58,7 @@ def register_planning_tools(mcp: FastMCP) -> None:
     def approval_search_mcp() -> list[dict]:
         owner_id = mcp_user()
         with mcp_session(owner_id) as db:
-            rows = db.scalars(select(ApprovalRequest).where(ApprovalRequest.owner_id == owner_id, ApprovalRequest.status == "pending").order_by(ApprovalRequest.created_at)).all()
+            rows = db.scalars(select(ApprovalRequest).where(*active_filters(owner_id)).order_by(ApprovalRequest.created_at)).all()
             return [{"id": row.id, "operation": row.operation, "resource_id": row.resource_id, "resource_label": row.resource_label, "status": row.status, "created_at": row.created_at.isoformat()} for row in rows]
     @mcp.tool(name="task_update")
     def task_update_mcp(task_id: str, title: str | None = None, description: str | None = None, person_id: str | None = None, project_id: str | None = None, due_at: str | None = None, priority: int | None = None) -> dict:
