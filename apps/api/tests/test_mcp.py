@@ -99,11 +99,15 @@ def test_official_mcp_client_auth_and_scope_enforcement(client, auth, tmp_path, 
                         step_id = client.get(f"/api/tasks/{planning_task}/steps", headers=auth).json()[0]["id"]
                         checked_step = await session.call_tool("task_step_set_state", {"task_id": planning_task, "step_id": step_id, "completed": True})
                         assert not checked_step.isError
-                        focus = await session.call_tool("focus_start", {"task_id": planning_task, "planned_minutes": 15})
+                        focus = await session.call_tool("focus_start", {"task_id": planning_task, "planned_minutes": 15, "companion_interval_minutes": 5, "companion_goal": "MCP Ziel"})
                         assert not focus.isError
                         focus_id = json.loads(focus.content[0].text)["id"]
                         active_focus = await session.call_tool("focus_active", {})
                         assert not active_focus.isError and focus_id in str(active_focus.content)
+                        companion = await session.call_tool("focus_companion", {"session_id": focus_id})
+                        assert not companion.isError and "MCP Ziel" in str(companion.content)
+                        checkin = await session.call_tool("focus_checkin", {"session_id": focus_id, "data": {"request_id": "82be80ab-83d7-4d8c-9a30-e946cba99187", "state": "on_track", "next_step": "MCP nächster Schritt"}})
+                        assert not checkin.isError and "MCP nächster Schritt" in str(checkin.content)
                         ended_focus = await session.call_tool("focus_end", {"session_id": focus_id, "data": {"outcome": "finished"}})
                         assert not ended_focus.isError
                         focus_history = await session.call_tool("focus_history", {"task_id": planning_task})

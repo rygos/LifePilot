@@ -17,7 +17,8 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
     engine = create_engine(database_url)
     try:
         inspector = inspect(engine)
-        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps"}.issubset(inspector.get_table_names())
+        assert {"commitments", "work_checkpoints", "focus_sessions", "task_steps", "focus_checkins"}.issubset(inspector.get_table_names())
+        assert {"companion_interval_minutes", "companion_goal"}.issubset({column["name"] for column in inspector.get_columns("focus_sessions")})
         assert {"source_capture_id", "source_quote"}.issubset({column["name"] for column in inspector.get_columns("commitments")})
         assert {"estimated_minutes", "mental_effort", "start_friction", "work_context", "next_step"}.issubset(
             {column["name"] for column in inspector.get_columns("tasks")}
@@ -27,6 +28,7 @@ def test_planning_migrations_on_isolated_sqlite(tmp_path, monkeypatch):
         assert "commitments" not in inspector.get_table_names()
         assert "focus_sessions" not in inspector.get_table_names()
         assert "task_steps" not in inspector.get_table_names()
+        assert "focus_checkins" not in inspector.get_table_names()
         assert "estimated_minutes" not in {column["name"] for column in inspector.get_columns("tasks")}
         command.upgrade(config, "head")
     finally:

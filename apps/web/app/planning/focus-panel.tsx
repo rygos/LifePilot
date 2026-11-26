@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { FocusCompanion } from "./focus-companion";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type Task = { id: string; title: string; status?: string; next_step?: string | null; estimated_minutes?: number | null };
-type Focus = { id: string; task_id: string | null; task_title: string; planned_minutes: number; started_at: string; ended_at: string | null; elapsed_seconds: number | null; outcome: "finished" | "interrupted" | null; checkpoint_id: string | null };
+type Focus = { id: string; task_id: string | null; task_title: string; planned_minutes: number; started_at: string; ended_at: string | null; elapsed_seconds: number | null; outcome: "finished" | "interrupted" | null; checkpoint_id: string | null; companion_interval_minutes?: number | null; companion_goal?: string };
 const formatTime = (seconds: number) => [Math.floor(seconds / 60), seconds % 60].map(n => String(n).padStart(2, "0")).join(":");
 
 export function FocusPanel({request, tasks, onSaved}: {request: Request; tasks: Task[]; onSaved: () => Promise<void>}) {
@@ -12,6 +13,9 @@ export function FocusPanel({request, tasks, onSaved}: {request: Request; tasks: 
   const [history, setHistory] = useState<Focus[]>([]);
   const [taskId, setTaskId] = useState("");
   const [minutes, setMinutes] = useState("25");
+  const [companionInterval, setCompanionInterval] = useState("");
+  const [companionGoal, setCompanionGoal] = useState("");
+  const [prefill, setPrefill] = useState<{progress:string;blocker:string;next_step:string}|null>(null);
   const [now, setNow] = useState(Date.now());
   const [interrupt, setInterrupt] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,8 +41,8 @@ export function FocusPanel({request, tasks, onSaved}: {request: Request; tasks: 
   async function start(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); setBusy(true); setError("");
     try {
-      const session = await request<Focus>("/api/focus/start", {method:"POST",body:JSON.stringify({task_id:taskId,planned_minutes:Number(minutes)})});
-      setActive(session); setNow(Date.now()); setInterrupt(false);
+      const session = await request<Focus>("/api/focus/start", {method:"POST",body:JSON.stringify({task_id:taskId,planned_minutes:Number(minutes),companion_interval_minutes:companionInterval?Number(companionInterval):null,companion_goal:companionInterval?companionGoal:""})});
+      setActive(session); setNow(Date.now()); setInterrupt(false); setPrefill(null);
     } catch(e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -47,7 +51,7 @@ export function FocusPanel({request, tasks, onSaved}: {request: Request; tasks: 
     setBusy(true); setError("");
     try {
       await request<Focus>(`/api/focus/${active.id}/end`, {method:"POST",body:JSON.stringify({outcome,checkpoint:checkpoint ?? null})});
-      setActive(null); setInterrupt(false); await load(); await onSaved();
+      setActive(null); setInterrupt(false); setPrefill(null); await load(); await onSaved();
     } catch(e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -63,16 +67,17 @@ export function FocusPanel({request, tasks, onSaved}: {request: Request; tasks: 
       <div className="focus-clock" aria-label="Verbleibende Zeit">{formatTime(remaining)}</div>
       <progress aria-label="Fokusfortschritt" max={active.planned_minutes * 60} value={Math.min(elapsed, active.planned_minutes * 60)}/>
       <p className="muted" role="status">{remaining === 0 ? "Dein Zeitblock ist abgelaufen. Beende die Sitzung, sobald du fertig bist." : "Die Sitzung läuft. Du kannst die Seite neu laden und später fortsetzen."} Verstrichen: {formatTime(elapsed)}</p>
-      <div className="commitment-actions"><button type="button" disabled={busy} onClick={() => void end("finished")}>Fokus beenden</button><button type="button" className="quiet" disabled={busy} onClick={() => setInterrupt(v => !v)}>Unterbrechen</button></div>
+      <div className="commitment-actions"><button type="button" disabled={busy} onClick={() => void end("finished")}>Fokus beenden</button><button type="button" className="quiet" disabled={busy} onClick={() => {setPrefill(null);setInterrupt(v => !v);}}>Unterbrechen</button></div>
+      {!!active.companion_interval_minutes && !interrupt && <FocusCompanion key={active.id} request={request} sessionId={active.id} now={now} remaining={remaining} disabled={busy} onInterrupt={value=>{setPrefill(value);setInterrupt(true);}}/>}
       {interrupt && <form className="person-form" onSubmit={saveInterruption}>
-        <label>Was ist erledigt?<textarea name="progress" maxLength={20000}/></label><label>Was blockiert mich?<textarea name="blocker" maxLength={10000}/></label>
-        <label>Nächster Schritt<textarea name="next_step" required maxLength={10000} defaultValue={tasks.find(t => t.id === active.task_id)?.next_step ?? ""}/></label>
+        <label>Was ist erledigt?<textarea name="progress" maxLength={20000} defaultValue={prefill?.progress??""}/></label><label>Was blockiert mich?<textarea name="blocker" maxLength={10000} defaultValue={prefill?.blocker??""}/></label>
+        <label>Nächster Schritt<textarea name="next_step" required maxLength={10000} defaultValue={prefill?.next_step || tasks.find(t => t.id === active.task_id)?.next_step || ""}/></label>
         <label>Benötigte Dateien, Links oder Hinweise<textarea name="resources" maxLength={20000}/></label>
         <button type="submit" disabled={busy}>Unterbrechen und Arbeitsstand speichern</button><button type="button" className="quiet" disabled={busy} onClick={() => void end("interrupted")}>Ohne Arbeitsstand beenden</button>
       </form>}
     </> : <form className="person-form" onSubmit={start}>
       <label>Aufgabe<select required value={taskId} onChange={e => {const id=e.target.value;setTaskId(id);const estimate=tasks.find(t => t.id===id)?.estimated_minutes;if(estimate) setMinutes(String(Math.min(180,estimate)));}}><option value="">Aufgabe auswählen</option>{tasks.filter(t => !t.status || t.status==="open").map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select></label>
-      <label>Fokuszeit (Minuten)<input type="number" required min={1} max={180} value={minutes} onChange={e => setMinutes(e.target.value)}/></label><button type="submit" disabled={busy || !taskId}>Fokus starten</button>
+      <label>Fokuszeit (Minuten)<input type="number" required min={1} max={180} value={minutes} onChange={e => setMinutes(e.target.value)}/></label><label>Virtueller Arbeitsbegleiter<select value={companionInterval} onChange={e=>setCompanionInterval(e.target.value)}><option value="">Aus</option>{[2,5,10,15,20,30,60].map(m=><option key={m} value={m}>Alle {m} Minuten</option>)}</select></label>{companionInterval&&<label>Was möchte ich in dieser Sitzung erreichen?<textarea value={companionGoal} maxLength={1000} onChange={e=>setCompanionGoal(e.target.value)}/></label>}<button type="submit" disabled={busy || !taskId}>Fokus starten</button>
     </form>}
     {history.length > 0 && <div><h3>Letzte Fokussitzungen</h3>{history.map(row => <div className="list-item" key={row.id}><span>{row.task_title}<small>{new Date(row.started_at).toLocaleString("de-DE")} · {formatTime(row.elapsed_seconds ?? 0)} / {row.planned_minutes} Min. · {row.outcome === "interrupted" ? "Unterbrochen" : "Beendet"}</small></span>{row.checkpoint_id && <a href="/commitments">Arbeitsstand</a>}</div>)}</div>}
   </section>;

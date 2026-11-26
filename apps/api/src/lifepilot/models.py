@@ -507,6 +507,8 @@ class WorkCheckpoint(Base):
 
 class FocusSession(Base):
     __tablename__ = "focus_sessions"
+    companion_interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    companion_goal: Mapped[str] = mapped_column(Text, default="", server_default="")
     __table_args__ = (
         CheckConstraint("planned_minutes BETWEEN 1 AND 180", name="ck_focus_planned_minutes"),
         CheckConstraint("outcome IS NULL OR outcome IN ('finished', 'interrupted')", name="ck_focus_outcome"),
@@ -540,4 +542,21 @@ class TaskStep(Base):
     title: Mapped[str] = mapped_column(String(240))
     estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FocusCheckIn(Base):
+    __tablename__ = "focus_checkins"
+    __table_args__ = (
+        CheckConstraint("state IN ('on_track', 'distracted', 'blocked', 'skip')", name="ck_focus_checkin_state"),
+        UniqueConstraint("session_id", "request_id", name="uq_focus_checkin_request"),
+        Index("ix_focus_checkins_session_created", "session_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("focus_sessions.id", ondelete="CASCADE"))
+    request_id: Mapped[str] = mapped_column(String(36))
+    state: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str] = mapped_column(Text, default="")
+    next_step: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

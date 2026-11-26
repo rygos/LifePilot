@@ -10,7 +10,7 @@ from lifepilot.models import WorkCheckpoint
 from lifepilot.next_action import Context, Effort, TaskPlanning, next_actions, set_planning
 from lifepilot.schemas import TaskOut
 from lifepilot.task_steps import StepOut, StepBatch, StepState, list_steps, draft_steps, add_steps, set_step_state
-from lifepilot.focus_routes import FocusStart, FocusEnd, FocusOut, start_focus, end_focus, active_focus, focus_history
+from lifepilot.focus_routes import FocusStart, FocusEnd, FocusOut, start_focus, end_focus, active_focus, focus_history, CheckInIn, companion_context, record_checkin
 
 
 def register_commitment_tools(mcp: FastMCP) -> None:
@@ -74,10 +74,10 @@ def register_commitment_tools(mcp: FastMCP) -> None:
             return TaskOut.model_validate(set_planning(db, owner, task_id, planning, "mcp")).model_dump(mode="json")
 
     @mcp.tool(name="focus_start")
-    def focus_start_mcp(task_id: str, planned_minutes: int = 25) -> dict:
+    def focus_start_mcp(task_id: str, planned_minutes: int = 25, companion_interval_minutes: int | None = None, companion_goal: str = "") -> dict:
         owner = mcp_user("memory:write")
         with mcp_session(owner) as db:
-            return FocusOut.model_validate(start_focus(db, owner, FocusStart(task_id=task_id, planned_minutes=planned_minutes), "mcp")).model_dump(mode="json")
+            return FocusOut.model_validate(start_focus(db, owner, FocusStart(task_id=task_id, planned_minutes=planned_minutes, companion_interval_minutes=companion_interval_minutes, companion_goal=companion_goal), "mcp")).model_dump(mode="json")
 
     @mcp.tool(name="focus_active")
     def focus_active_mcp() -> dict | None:
@@ -125,3 +125,18 @@ def register_commitment_tools(mcp: FastMCP) -> None:
         owner = mcp_user("memory:write")
         with mcp_session(owner) as db:
             return StepOut.model_validate(set_step_state(db, owner, task_id, step_id, StepState(completed=completed), "mcp")).model_dump(mode="json")
+
+
+    @mcp.tool(name="focus_companion")
+    def focus_companion_mcp(session_id: str) -> dict:
+        """Read the virtual work companion, upcoming check-in and recent self-reports."""
+        owner = mcp_user()
+        with mcp_session(owner) as db:
+            return companion_context(db, owner, session_id).model_dump(mode="json")
+
+    @mcp.tool(name="focus_checkin")
+    def focus_checkin_mcp(session_id: str, data: CheckInIn) -> dict:
+        """Record the user's explicit self-report; use a unique request UUID for each check-in."""
+        owner = mcp_user("memory:write")
+        with mcp_session(owner) as db:
+            return record_checkin(db, owner, session_id, data, "mcp").model_dump(mode="json")
